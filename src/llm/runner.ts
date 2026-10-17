@@ -12,8 +12,11 @@ import type { PrivateStore } from '../store/private-store'
 import { type LlmAdapter, LlmBudgetExceededError, type LlmTask, LlmUnavailableError } from './types'
 
 export interface LlmRunnerOptions {
-  /** Chiamate massime al giorno (config `llm.dailyBudget`). */
-  dailyBudget: number
+  /**
+   * Chiamate massime al giorno (config `llm.dailyBudget`). Funzione perché il valore si può
+   * cambiare a caldo dalla UI: viene riletto a ogni chiamata.
+   */
+  dailyBudget: () => number
   log?: (msg: string) => void
 }
 
@@ -25,12 +28,12 @@ export class LlmRunner {
 
   /** Consumo di oggi rispetto al limite. */
   get budget (): { used: number, limit: number } {
-    return { used: this.store.callsToday(), limit: this.opts.dailyBudget }
+    return { used: this.store.callsToday(), limit: this.opts.dailyBudget() }
   }
 
   /** true se restano almeno `calls` chiamate nel budget di oggi. */
   hasBudget (calls = 1): boolean {
-    return this.store.callsToday() + calls <= this.opts.dailyBudget
+    return this.store.callsToday() + calls <= this.opts.dailyBudget()
   }
 
   available (): Promise<boolean> {
@@ -52,7 +55,7 @@ export class LlmRunner {
     if (!(await this.adapter.available())) throw new LlmUnavailableError(`LLM "${this.adapter.name}" non disponibile`)
     let lastError: unknown
     for (let attempt = 1; attempt <= 2; attempt++) {
-      if (!this.hasBudget()) throw new LlmBudgetExceededError(`budget giornaliero di ${this.opts.dailyBudget} chiamate esaurito`)
+      if (!this.hasBudget()) throw new LlmBudgetExceededError(`budget giornaliero di ${this.opts.dailyBudget()} chiamate esaurito`)
       this.store.countCall()
       const t0 = Date.now()
       try {

@@ -51,7 +51,8 @@ export interface PipelineDeps {
   store: PrivateStore
   /** null se l'utente ha scelto llm.adapter = "none". */
   llm: LlmRunner | null
-  models: { classify: string, distill: string }
+  /** Modelli da usare: è una funzione perché l'utente può cambiarli a caldo dalla UI. */
+  models: () => { classify: string, distill: string }
   /** Pubblica un ricordo nel team (evento memory.add). */
   publish: (memory: MemoryData) => Promise<{ id: string, duplicate: boolean }>
   /** Regole del filtro in vigore: default + quelle del team. */
@@ -59,6 +60,8 @@ export interface PipelineDeps {
   /** Lingua dei ricordi del team (`memory.language`). */
   language: () => Promise<string>
   log: (msg: string) => void
+  /** Avvisa chi osserva il nodo (UI) che una parte dello stato privato è cambiata. */
+  notify?: (topic: 'inbox' | 'jobs' | 'decisions') => void
 }
 
 /** Esito di un salvataggio esplicito, restituito a CLI e MCP. */
@@ -120,9 +123,9 @@ export class IngestPipeline {
 
   /** Avvia il worker della coda e la pulizia periodica dell'inbox. */
   start (): void {
-    this.deps.store.sweepInbox()
+    this.sweep()
     this.workerTimer = setInterval(() => { this.tick().catch((e) => this.deps.log(`errore worker: ${e.message}`)) }, WORKER_INTERVAL_MS)
-    this.sweepTimer = setInterval(() => this.deps.store.sweepInbox(), SWEEP_INTERVAL_MS)
+    this.sweepTimer = setInterval(() => this.sweep(), SWEEP_INTERVAL_MS)
     this.workerTimer.unref()
     this.sweepTimer.unref()
   }
@@ -151,7 +154,10 @@ export class IngestPipeline {
     return true
   }
 
-  /** Esegue un lavoro e decide se e quando riprovarlo in caso di errore. */
+  /**
+   * Esegue un lavoro e decide se e quando riprovarlo in caso di errore.
+   * Qualunque sia l'esito lo stato della coda cambia, quindi alla fine si notifica sempre "jobs".
+   */
   private async runJob (job: Job): Promise<void> {
     const { store, log } = this.deps
     try {
@@ -171,6 +177,8 @@ export class IngestPipeline {
         log(`lavoro ${job.id} fallito: ${msg}`)
         store.retryJob(job.id, msg, 5 * 60 * 1000)
       }
+    } finally {
+      this.notify('jobs')
     }
   }
 
@@ -181,7 +189,9 @@ export class IngestPipeline {
    * (il nodo), perché dipende dalla configurazione locale.
    */
   enqueueSession (payload: { sessionId: string, transcriptPath: string, cwd: string }): number {
-    return this.deps.store.enqueue('session', payload)
+    const id = this.deps.store.enqueue('session', payload)
+    this.notify('jobs')
+    return id
   }
 
   /**
@@ -205,11 +215,11 @@ export class IngestPipeline {
     const rules = await this.deps.rules()
     const filtered = applyFilter(ex.text, rules)
     if (filtered.blocked) {
-      store.logDecision(source, 'blocked', `parole chiave: ${filtered.reasons.join(', ')}`, firstUserLine(ex.text))
+      this.logDecision(source, 'blocked', `parole chiave: ${filtered.reasons.join(', ')}`, firstUserLine(ex.text))
       return done()
     }
     if (!llm) {
-      store.logDecision(source, 'discarded', 'nessun LLM configurato: sessione non elaborata', firstUserLine(ex.text))
+      this.logDecision(source, 'discarded', 'nessun LLM configurato: sessione non elaborata', firstUserLine(ex.text))
       return done()
     }
     // Servono due chiamate (classificazione + distillazione): meglio non iniziare se ne manca una.
@@ -219,11 +229,11 @@ export class IngestPipeline {
     const c = await this.classify(filtered.text)
     const r = route(c)
     if (r === 'private') {
-      store.logDecision(source, 'private', c.reason, firstUserLine(ex.text))
+      this.logDecision(source, 'private', c.reason, firstUserLine(ex.text))
       return done()
     }
     if (r === 'discard') {
-      store.logDecision(source, 'discarded', c.reason, firstUserLine(ex.text))
+      this.logDecision(source, 'discarded', c.reason, firstUserLine(ex.text))
       return done()
     }
 
@@ -231,7 +241,7 @@ export class IngestPipeline {
     //    concreti e non su un'intera sessione.
     const memories = await this.distill(filtered.text)
     if (memories.length === 0) {
-      store.logDecision(source, 'discarded', 'nessuna conoscenza riutilizzabile', firstUserLine(ex.text))
+      this.logDecision(source, 'discarded', 'nessuna conoscenza riutilizzabile', firstUserLine(ex.text))
       return done()
     }
     for (const raw of memories) {
@@ -245,7 +255,7 @@ export class IngestPipeline {
         log(`ricordo ${res.duplicate ? 'già presente' : 'pubblicato'} dalla sessione ${sessionId.slice(0, 8)}: ${fm.memory.title}`)
       } else {
         const reason = fm.blocked ? `parole chiave: ${fm.reasons.join(', ')}` : `da verificare: ${c.reason}`
-        store.addInbox(fm.memory, source, reason)
+        this.addInbox(fm.memory, source, reason)
       }
     }
     done()
@@ -269,12 +279,12 @@ export class IngestPipeline {
     const fm = filterMemory(memory, rules)
     if (fm.blocked) {
       const reason = `contiene argomenti personali o HR (${fm.reasons.join(', ')})`
-      store.logDecision(source, 'blocked', reason, memory.title)
+      this.logDecision(source, 'blocked', reason, memory.title)
       return { outcome: 'private', reason }
     }
 
     const toInbox = (reason: string): ExplicitOutcome => {
-      const item = store.addInbox(fm.memory, source, reason)
+      const item = this.addInbox(fm.memory, source, reason)
       return { outcome: 'inbox', inboxId: item.id, reason, memory: fm.memory }
     }
 
@@ -293,7 +303,7 @@ export class IngestPipeline {
         return { outcome: 'team', id: res.id, duplicate: res.duplicate, memory: fm.memory }
       }
       case 'private':
-        store.logDecision(source, 'private', c.reason, memory.title)
+        this.logDecision(source, 'private', c.reason, memory.title)
         return { outcome: 'private', reason: c.reason }
       // Un salvataggio ESPLICITO non viene mai scartato in silenzio: se il classificatore lo
       // ritiene inutile, decide l'utente dall'inbox.
@@ -321,14 +331,42 @@ export class IngestPipeline {
     const redacted = filterMemory(memory, await this.deps.rules()).memory
     const res = await this.deps.publish(redacted)
     this.deps.store.removeInbox(id)
+    this.notify('inbox')
     return { ...res, memory: redacted }
   }
 
   /** Rifiuta un elemento: non va al team e resta solo una riga nel registro delle decisioni. */
   reject (id: string): void {
     const item = this.requireInbox(id)
-    this.deps.store.logDecision(item.source, 'rejected', 'rifiutato dall\'utente', item.memory.title)
+    this.logDecision(item.source, 'rejected', 'rifiutato dall\'utente', item.memory.title)
     this.deps.store.removeInbox(id)
+    this.notify('inbox')
+  }
+
+  // ═════════════════════════ Scritture con notifica ═════════════════════════
+  // Ogni modifica all'archivio privato passa da qui, così la UI viene sempre avvisata.
+
+  private notify (topic: 'inbox' | 'jobs' | 'decisions'): void {
+    this.deps.notify?.(topic)
+  }
+
+  private logDecision (...args: Parameters<PrivateStore['logDecision']>): void {
+    this.deps.store.logDecision(...args)
+    this.notify('decisions')
+  }
+
+  private addInbox (...args: Parameters<PrivateStore['addInbox']>): InboxItem {
+    const item = this.deps.store.addInbox(...args)
+    this.notify('inbox')
+    return item
+  }
+
+  /** Elimina gli elementi scaduti dell'inbox (registrandoli come decisioni "expired"). */
+  private sweep (): void {
+    if (this.deps.store.sweepInbox() > 0) {
+      this.notify('inbox')
+      this.notify('decisions')
+    }
   }
 
   private requireInbox (id: string): InboxItem {
@@ -340,12 +378,12 @@ export class IngestPipeline {
   // ═══════════════════════════════ Chiamate LLM ═══════════════════════════════
 
   private classify (text: string): Promise<Classification> {
-    return this.deps.llm!.run({ name: 'classify', system: CLASSIFY_SYSTEM, input: text, schema: Classification, model: this.deps.models.classify })
+    return this.deps.llm!.run({ name: 'classify', system: CLASSIFY_SYSTEM, input: text, schema: Classification, model: this.deps.models().classify })
   }
 
   private async distill (text: string): Promise<Distilled['memories']> {
     const out = await this.deps.llm!.run({
-      name: 'distill', system: distillSystem(await this.deps.language()), input: text, schema: Distilled, model: this.deps.models.distill
+      name: 'distill', system: distillSystem(await this.deps.language()), input: text, schema: Distilled, model: this.deps.models().distill
     })
     return out.memories
   }

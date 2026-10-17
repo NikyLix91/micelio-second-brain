@@ -9,11 +9,16 @@
  * - export Markdown   (src/export).
  *
  * Non dipende da NestJS né da HTTP: il daemon lo espone via API e MCP, i test lo usano
- * direttamente. Ogni operazione "utente" (CLI, API, MCP, UI futura) passa da qui.
+ * direttamente. Ogni operazione "utente" (CLI, API, MCP, UI) passa da qui.
+ *
+ * Eventi: il nodo è un EventEmitter che emette `change` con un "argomento" (ChangeTopic) ogni
+ * volta che una parte del suo stato cambia. Il daemon li inoltra alla UI (SSE /api/events),
+ * che ricarica solo i dati interessati invece di interrogare il daemon a intervalli.
  *
  * Errori: le condizioni causate dall'utente (nodo non configurato, permessi, input non valido)
  * sono `UserError` e diventano HTTP 400 con un messaggio leggibile; il resto sono bug (500).
  */
+import { EventEmitter } from 'node:events'
 import fs from 'node:fs'
 import path from 'node:path'
 import { MemoryInput, memoryId, type MemoryData } from '../core/events'
@@ -47,6 +52,22 @@ export interface MicelioNodeOptions {
 /** Errore causato dall'utente o dallo stato del nodo: messaggio pensato per essere mostrato. */
 export class UserError extends Error {}
 
+/**
+ * Parti dello stato che possono cambiare, usate come "argomento" degli eventi `change`:
+ * - status:    stato del nodo e del team (peer, ruolo, configurazione del team);
+ * - memories:  ricordi del team;   members: membri;
+ * - inbox, jobs, decisions: archivio privato (inbox, coda di ingestione, registro);
+ * - settings:  impostazioni locali (cartelle abilitate, LLM).
+ */
+export type ChangeTopic = 'status' | 'memories' | 'members' | 'inbox' | 'jobs' | 'decisions' | 'settings'
+
+/** Impostazioni LOCALI modificabili dalla UI (config.json). */
+export interface NodeSettings {
+  llm: { adapter: string, command: string, classifyModel: string, distillModel: string, dailyBudget: number }
+  watched: string[]
+  port: number
+}
+
 /** Stato dell'ingestione, per `micelio ingest status` e la futura Dashboard. */
 export interface IngestStatus {
   llm: { adapter: string, available: boolean, budget: { used: number, limit: number } } | null
@@ -55,7 +76,7 @@ export interface IngestStatus {
   watched: string[]
 }
 
-export class MicelioNode {
+export class MicelioNode extends EventEmitter {
   private team: TeamNode | null = null
   private nodeName: string | null = null
   private readonly index: MemoryIndex
@@ -70,6 +91,7 @@ export class MicelioNode {
   private readonly log: (msg: string) => void
 
   constructor (private readonly paths: NodePaths, private readonly opts: MicelioNodeOptions = {}) {
+    super()
     this.log = opts.log ?? (() => {})
     fs.mkdirSync(paths.home, { recursive: true })
     this.config = loadConfig(paths)
@@ -78,17 +100,19 @@ export class MicelioNode {
 
     // Scelta dell'adapter: override dei test > configurazione.
     const adapter = opts.llm !== undefined ? opts.llm : createAdapter(this.config)
-    this.llm = adapter ? new LlmRunner(adapter, this.privateStore, { dailyBudget: this.config.llm.dailyBudget, log: this.log }) : null
+    // Budget e modelli si leggono da this.config a ogni uso: la UI può cambiarli senza riavvio.
+    this.llm = adapter ? new LlmRunner(adapter, this.privateStore, { dailyBudget: () => this.config.llm.dailyBudget, log: this.log }) : null
 
     this.pipeline = new IngestPipeline({
       store: this.privateStore,
       llm: this.llm,
-      models: { classify: this.config.llm.classifyModel, distill: this.config.llm.distillModel },
+      models: () => ({ classify: this.config.llm.classifyModel, distill: this.config.llm.distillModel }),
       publish: (m) => this.publish(m),
       // Regole e lingua si leggono dalla vista a ogni uso: un admin può cambiarle in qualunque momento.
       rules: async () => mergeRules(await this.team?.config('filter.blockKeywords')),
       language: async () => (await this.team?.config<string>('memory.language')) ?? 'it',
-      log: this.log
+      log: this.log,
+      notify: (topic) => this.changed(topic)
     })
   }
 
@@ -136,6 +160,7 @@ export class MicelioNode {
     this.nodeName = nodeName
     this.attach(team)
     await this.materialize()
+    this.changed('status')
     return this.status()
   }
 
@@ -153,6 +178,7 @@ export class MicelioNode {
     this.nodeName = nodeName
     this.attach(team)
     await this.materialize()
+    this.changed('status')
     return this.status()
   }
 
@@ -198,6 +224,17 @@ export class MicelioNode {
     await this.requireAdmin()
     await this.requireTeam().append({ type: 'team.config', key, value })
     await this.sync()
+    this.changed('status')
+  }
+
+  /** Configurazione condivisa del team (lingua, parole chiave del filtro), per la UI. */
+  async teamConfig (): Promise<{ language: string, blockKeywords: string[] }> {
+    const team = this.requireTeam()
+    const kw = await team.config<unknown>('filter.blockKeywords')
+    return {
+      language: (await team.config<string>('memory.language')) ?? 'it',
+      blockKeywords: Array.isArray(kw) ? kw.filter((k): k is string => typeof k === 'string') : []
+    }
   }
 
   // ═════════════════════════════════ Ricordi ═══════════════════════════════════
@@ -271,6 +308,7 @@ export class MicelioNode {
     this.config = updateConfig(this.paths, (c) => {
       if (!isInsideWatched(abs, c.watch.sessions)) c.watch.sessions.push(abs)
     })
+    this.changed('settings')
     return this.config.watch.sessions
   }
 
@@ -280,7 +318,31 @@ export class MicelioNode {
     this.config = updateConfig(this.paths, (c) => {
       c.watch.sessions = c.watch.sessions.filter((w) => canonicalPath(w) !== abs)
     })
+    this.changed('settings')
     return this.config.watch.sessions
+  }
+
+  /** Impostazioni locali correnti (per la schermata Impostazioni). */
+  settings (): NodeSettings {
+    const { adapter, command, classifyModel, distillModel, dailyBudget } = this.config.llm
+    return { llm: { adapter, command, classifyModel, distillModel, dailyBudget }, watched: this.config.watch.sessions, port: this.config.port }
+  }
+
+  /**
+   * Aggiorna modelli e budget LLM. Hanno effetto subito (vengono riletti a ogni chiamata).
+   * Cambiare adapter o comando richiede invece un riavvio del daemon: qui non sono modificabili.
+   */
+  updateLlmSettings (patch: { classifyModel?: string, distillModel?: string, dailyBudget?: number }): NodeSettings {
+    if (patch.dailyBudget !== undefined && (!Number.isInteger(patch.dailyBudget) || patch.dailyBudget < 0)) {
+      throw new UserError('Il budget giornaliero deve essere un intero maggiore o uguale a 0')
+    }
+    this.config = updateConfig(this.paths, (c) => {
+      if (patch.classifyModel) c.llm.classifyModel = patch.classifyModel
+      if (patch.distillModel) c.llm.distillModel = patch.distillModel
+      if (patch.dailyBudget !== undefined) c.llm.dailyBudget = patch.dailyBudget
+    })
+    this.changed('settings')
+    return this.settings()
   }
 
   /** Stato dell'ingestione: LLM, budget, coda, inbox. */
@@ -367,6 +429,12 @@ export class MicelioNode {
   private attach (team: TeamNode): void {
     this.team = team
     team.on('update', () => this.scheduleMaterialize())
+    team.on('peers', () => this.changed('status'))
+  }
+
+  /** Emette un evento `change` per ciascun argomento (vedi ChangeTopic). */
+  private changed (...topics: ChangeTopic[]): void {
+    for (const t of topics) this.emit('change', t)
   }
 
   /**
@@ -392,6 +460,7 @@ export class MicelioNode {
       const [memories, members] = await Promise.all([team.memories(), team.members()])
       this.index.rebuild(memories, members)
       writeExport(this.paths.export, memories, members)
+      this.changed('memories', 'members', 'status')
     })
     return this.materializing
   }

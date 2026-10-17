@@ -48,11 +48,11 @@ describe('IngestPipeline', () => {
   /** Crea una pipeline con budget configurabile; `llm: false` simula adapter "none". */
   const make = (opts: { budget?: number, llm?: boolean } = {}) => {
     fake = new FakeAdapter()
-    const runner = opts.llm === false ? null : new LlmRunner(fake, store, { dailyBudget: opts.budget ?? 100 })
+    const runner = opts.llm === false ? null : new LlmRunner(fake, store, { dailyBudget: () => opts.budget ?? 100 })
     return new IngestPipeline({
       store,
       llm: runner,
-      models: { classify: 'haiku', distill: 'sonnet' },
+      models: () => ({ classify: 'haiku', distill: 'sonnet' }),
       publish: async (m) => { published.push(m); return { id: 'id-' + published.length, duplicate: false } },
       rules: async () => mergeRules([]),
       language: async () => 'it',
