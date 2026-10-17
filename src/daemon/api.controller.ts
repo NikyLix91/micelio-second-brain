@@ -212,6 +212,13 @@ export class ApiController {
     return this.node.ingestStatus()
   }
 
+  /** Controlla subito le trascrizioni (sessioni in corso o perse) e accoda le parti nuove. */
+  @Post('ingest/scan')
+  @HttpCode(200)
+  ingestScan () {
+    return { queued: this.node.scanSessions() }
+  }
+
   /** Elabora subito il prossimo lavoro in coda (utile per provare senza aspettare il worker). */
   @Post('ingest/run')
   @HttpCode(200)

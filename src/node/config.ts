@@ -46,7 +46,19 @@ const WatchConfig = z.object({
    * Cartelle di documenti sorvegliate (Fase 4). `shareable`: se true, gli originali dei documenti
    * possono essere scaricati dai membri del team su richiesta (decisione D10).
    */
-  documents: z.array(z.object({ path: z.string(), shareable: z.boolean().default(false) })).default([])
+  documents: z.array(z.object({ path: z.string(), shareable: z.boolean().default(false) })).default([]),
+  /**
+   * Raccolta delle sessioni IN CORSO e recupero di quelle perse (vedi src/ingest/session-scanner.ts):
+   * ogni `intervalMinutes` si distilla la parte nuova delle sessioni in pausa da `idleMinutes`.
+   */
+  sessionScan: z.object({
+    enabled: z.boolean().default(true),
+    intervalMinutes: z.number().int().min(1).default(15),
+    idleMinutes: z.number().int().min(1).default(10),
+    minUserTurns: z.number().int().min(1).default(4),
+    minChars: z.number().int().min(100).default(6000),
+    staleHours: z.number().min(1).default(6)
+  }).prefault({})
 }).prefault({}) // prefault: il default {} passa dal parse, così si applicano i default interni
 
 /** Embedding per la ricerca semantica (Fase 5). */

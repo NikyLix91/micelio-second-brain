@@ -120,6 +120,12 @@ export class PrivateStore {
     return r ? { ...r, payload: JSON.parse(r.payload) } : null
   }
 
+  /** Id delle sessioni con un lavoro ancora in coda (per non accodarle due volte). */
+  pendingSessionIds (): Set<string> {
+    const rows = this.db.prepare("SELECT payload FROM jobs WHERE kind = 'session' AND status = 'pending'").all() as any[]
+    return new Set(rows.map((r) => JSON.parse(r.payload).sessionId as string))
+  }
+
   /** Segna un lavoro come completato. */
   finishJob (id: number): void {
     this.db.prepare("UPDATE jobs SET status = 'done', error = NULL, updated = ? WHERE id = ?").run(Date.now(), id)

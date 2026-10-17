@@ -400,6 +400,11 @@ ingest.command('status').description('LLM, budget, coda, inbox')
     console.log(`Inbox:     ${s.inbox}`)
     console.log(`Cartelle:  ${s.watched.length ? s.watched.join(', ') : 'nessuna'}`)
   })
+ingest.command('scan').description('cerca subito parti nuove nelle sessioni di Claude Code (anche in corso o perse) e le accoda')
+  .action(async () => {
+    const r = await client().call<{ queued: number }>('POST', '/api/ingest/scan')
+    console.log(r.queued ? `${r.queued} sessioni accodate per la distillazione` : 'Nessuna parte nuova da distillare (le sessioni attive vengono prese dopo 10 minuti di pausa)')
+  })
 ingest.command('run').description('elabora subito il prossimo lavoro in coda')
   .action(async () => {
     const r = await client().call<{ processed: boolean }>('POST', '/api/ingest/run', undefined, 600_000)

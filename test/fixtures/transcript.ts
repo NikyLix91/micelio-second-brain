@@ -10,12 +10,15 @@ type Turn =
   | { assistant: string, thinking?: string, tool?: { name: string, input: unknown, result: string } }
   | { sidechain: string }
 
-/** Converte una sequenza di turni nelle righe JSONL corrispondenti. */
-export function transcriptLines (turns: Turn[]): string[] {
+/**
+ * Converte una sequenza di turni nelle righe JSONL corrispondenti.
+ * @param cwd cartella di lavoro registrata nei messaggi dell'utente (come fa Claude Code)
+ */
+export function transcriptLines (turns: Turn[], cwd?: string): string[] {
   const lines: string[] = []
   for (const t of turns) {
     if ('user' in t) {
-      lines.push(JSON.stringify({ type: 'user', message: { role: 'user', content: t.user } }))
+      lines.push(JSON.stringify({ type: 'user', ...(cwd ? { cwd } : {}), message: { role: 'user', content: t.user } }))
     } else if ('sidechain' in t) {
       lines.push(JSON.stringify({ type: 'user', isSidechain: true, message: { role: 'user', content: t.sidechain } }))
     } else {
@@ -33,9 +36,9 @@ export function transcriptLines (turns: Turn[]): string[] {
 }
 
 /** Scrive (o estende) un file di trascrizione e ne restituisce il percorso. */
-export function writeTranscript (dir: string, sessionId: string, turns: Turn[], append = false): string {
+export function writeTranscript (dir: string, sessionId: string, turns: Turn[], append = false, cwd?: string): string {
   const file = path.join(dir, `${sessionId}.jsonl`)
-  const data = transcriptLines(turns).join('\n') + '\n'
+  const data = transcriptLines(turns, cwd).join('\n') + '\n'
   if (append) fs.appendFileSync(file, data)
   else fs.writeFileSync(file, data)
   return file

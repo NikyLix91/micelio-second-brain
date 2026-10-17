@@ -58,6 +58,8 @@ Dalla sessione estrai da 0 a 5 ricordi atomici di conoscenza riutilizzabile dal 
 - Ogni ricordo è autosufficiente: comprensibile senza la conversazione d'origine.
 - Preferisci soluzioni verificate, il "perché" delle decisioni e i gotcha alla cronaca di cosa è stato fatto.
 - Niente nomi di persone o clienti, niente dati personali, credenziali o segnaposto [REDACTED:...].
+- La sessione può essere ANCORA IN CORSO: estrai solo ciò che è concluso o verificato (problema risolto,
+  decisione presa); ignora ipotesi, tentativi aperti e lavoro a metà, verranno ripresi più avanti.
 - Zero ricordi è una risposta valida e frequente: la maggior parte delle sessioni non insegna niente di
   nuovo. Non salvare cose generiche che ogni sviluppatore sa già.
 - Scrivi in ${lang}; identificatori, nomi di API, comandi e codice restano invariati.

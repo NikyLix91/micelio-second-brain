@@ -44,6 +44,7 @@ import { mergeRules } from '../privacy/filter'
 import { mergeBlockedPaths } from '../privacy/paths'
 import { DocumentWatcher, hashFile } from '../ingest/documents'
 import { extractText } from '../ingest/extract'
+import { claudeProjectsDir, SessionScanner } from '../ingest/session-scanner'
 import { FileShare } from '../net/file-share'
 import { MemoryIndex } from '../store/memory-index'
 import { type Decision, type DocumentRecord, type InboxItem, PrivateStore } from '../store/private-store'
@@ -143,6 +144,8 @@ export class MicelioNode extends EventEmitter {
   private embedding: Promise<void> = Promise.resolve()
   private usageTimer: NodeJS.Timeout | null = null
   private dreamTimer: NodeJS.Timeout | null = null
+  private scanTimer: NodeJS.Timeout | null = null
+  private readonly scanner: SessionScanner
   private readonly dreamer: Dreamer
   /** Ricordi non attivi (archiviati o sostituiti), per la schermata Archivio. */
   private inactive: MemoryRecord[] = []
@@ -182,6 +185,7 @@ export class MicelioNode extends EventEmitter {
     })
     this.documents = new DocumentWatcher(this.pipeline, this.privateStore, this.log)
     this.embedder = opts.embedder !== undefined ? opts.embedder : createEmbedder(this.config)
+    this.scanner = new SessionScanner(this.privateStore)
     this.dreamer = new Dreamer({
       me: () => this.team?.localKey ?? '',
       llm: this.llm,
@@ -213,6 +217,10 @@ export class MicelioNode extends EventEmitter {
     // Pubblicazione periodica dell'uso locale dei ricordi (Fase 5).
     this.usageTimer = setInterval(() => { this.flushUsage().catch(() => {}) }, USAGE_FLUSH_MS)
     this.usageTimer.unref()
+    // Raccolta delle sessioni in corso e recupero di quelle finite mentre il daemon era spento.
+    const scanEvery = this.config.watch.sessionScan.intervalMinutes * 60_000
+    this.scanTimer = setInterval(() => { this.scanSessions() }, scanEvery)
+    this.scanTimer.unref()
     // Controllo periodico del turno di sogno (Fase 6).
     this.dreamTimer = setInterval(() => { this.checkDreamTurn().catch((e) => this.log(`dreaming: ${e.message}`)) }, DREAM_CHECK_MS)
     this.dreamTimer.unref()
@@ -227,12 +235,15 @@ export class MicelioNode extends EventEmitter {
     this.attach(team)
     await this.materialize()
     await this.documents.start(this.config.watch.documents)
+    // Recupero: sessioni lavorate mentre il daemon era spento (o parti nuove di sessioni lunghe).
+    this.scanSessions()
   }
 
   /** Ferma tutto in ordine: worker, indicizzazione in corso, rete, database. */
   async stop (): Promise<void> {
     if (this.usageTimer) clearInterval(this.usageTimer)
     if (this.dreamTimer) clearInterval(this.dreamTimer)
+    if (this.scanTimer) clearInterval(this.scanTimer)
     while (this.dreamer.busy) await new Promise((r) => setTimeout(r, 200))
     await this.flushUsage().catch(() => {})
     await this.embedding.catch(() => {})
@@ -622,6 +633,25 @@ export class MicelioNode extends EventEmitter {
     const jobId = this.pipeline.enqueueSession(payload)
     this.log(`sessione ${payload.sessionId.slice(0, 8)} accodata per l'ingestione`)
     return { queued: true, jobId }
+  }
+
+  /**
+   * Controlla le trascrizioni di Claude Code e accoda la parte nuova delle sessioni (in corso o
+   * concluse) delle cartelle abilitate. Chiamato all'avvio, periodicamente e da `micelio ingest scan`.
+   * @returns quante sessioni sono state accodate
+   */
+  scanSessions (): number {
+    const s = this.config.watch.sessionScan
+    if (!this.team || !s.enabled) return 0
+    try {
+      const found = this.scanner.scan({ projectsDir: claudeProjectsDir(), watched: this.config.watch.sessions, ...s })
+      for (const c of found) this.pipeline.enqueueSession(c)
+      if (found.length) this.log(`raccolta periodica: ${found.length} sessioni con parti nuove accodate`)
+      return found.length
+    } catch (err) {
+      this.log(`raccolta periodica non riuscita: ${(err as Error).message}`)
+      return 0
+    }
   }
 
   /** Cartelle opt-in per la raccolta dalle sessioni. */
