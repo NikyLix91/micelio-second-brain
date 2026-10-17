@@ -4,7 +4,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import type { NestExpressApplication } from '@nestjs/platform-express'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { nodePaths } from '../../src/core/paths'
-import { loadConfig } from '../../src/node/config'
+import { canonicalPath, loadConfig } from '../../src/node/config'
 import { startDaemon } from '../../src/daemon/main'
 import { writeTranscript } from '../fixtures/transcript'
 import { localDht, tmpHome } from '../helpers'
@@ -108,7 +108,7 @@ describe('daemon', () => {
     const ignored = await api('POST', '/api/ingest/session', body)
     expect(ignored.data).toMatchObject({ queued: false })
 
-    expect((await api('POST', '/api/watch', { path: project })).data).toContain(project)
+    expect((await api('POST', '/api/watch', { path: project })).data).toContain(canonicalPath(project)) // salvata in forma canonica (nome lungo)
     expect((await api('POST', '/api/ingest/session', body)).data).toMatchObject({ queued: true })
     expect((await api('POST', '/api/ingest/run')).data).toEqual({ processed: true })
 

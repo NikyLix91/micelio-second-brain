@@ -17,7 +17,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "e2e:docker": "bash test/e2e/docker/scenario.sh"
+    "e2e:docker": "bash test/e2e/docker/scenario.sh",
+    "eval:ingest": "vitest run --config vitest.eval.config.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",

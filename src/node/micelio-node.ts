@@ -29,7 +29,7 @@ import { TeamNode } from '../net/team-node'
 import { mergeRules } from '../privacy/filter'
 import { MemoryIndex } from '../store/memory-index'
 import { type Decision, type InboxItem, PrivateStore } from '../store/private-store'
-import { type Config, isInsideWatched, loadConfig, loadState, saveState, updateConfig } from './config'
+import { canonicalPath, type Config, isInsideWatched, loadConfig, loadState, saveState, updateConfig } from './config'
 
 export interface MicelioNodeOptions {
   /** Nodi bootstrap DHT (test o rete privata); assente = DHT pubblica. */
@@ -248,7 +248,11 @@ export class MicelioNode {
    */
   ingestSession (payload: { sessionId: string, transcriptPath: string, cwd: string }): { queued: boolean, reason?: string, jobId?: number } {
     if (!this.team) return { queued: false, reason: 'nodo non configurato' }
-    if (!isInsideWatched(payload.cwd, this.config.watch.sessions)) return { queued: false, reason: 'cartella non abilitata (micelio watch add)' }
+    if (!isInsideWatched(payload.cwd, this.config.watch.sessions)) {
+      // Riga di log volutamente presente: senza, una sessione ignorata sparisce senza lasciare traccia.
+      this.log(`sessione ${payload.sessionId.slice(0, 8)} ignorata: ${payload.cwd} non è una cartella abilitata`)
+      return { queued: false, reason: 'cartella non abilitata (micelio watch add)' }
+    }
     const jobId = this.pipeline.enqueueSession(payload)
     this.log(`sessione ${payload.sessionId.slice(0, 8)} accodata per l'ingestione`)
     return { queued: true, jobId }
@@ -261,8 +265,9 @@ export class MicelioNode {
 
   /** Abilita la raccolta automatica per una cartella (e sottocartelle). */
   watchAdd (dir: string): string[] {
-    const abs = path.resolve(dir)
-    if (!fs.existsSync(abs) || !fs.statSync(abs).isDirectory()) throw new UserError(`Cartella inesistente: ${abs}`)
+    if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) throw new UserError(`Cartella inesistente: ${path.resolve(dir)}`)
+    // Salviamo la forma canonica (nome lungo, link risolti): è quella che si vede nell'elenco.
+    const abs = canonicalPath(dir)
     this.config = updateConfig(this.paths, (c) => {
       if (!isInsideWatched(abs, c.watch.sessions)) c.watch.sessions.push(abs)
     })
@@ -271,9 +276,9 @@ export class MicelioNode {
 
   /** Disabilita la raccolta automatica per una cartella. */
   watchRemove (dir: string): string[] {
-    const abs = path.resolve(dir)
+    const abs = canonicalPath(dir)
     this.config = updateConfig(this.paths, (c) => {
-      c.watch.sessions = c.watch.sessions.filter((w) => path.resolve(w) !== abs)
+      c.watch.sessions = c.watch.sessions.filter((w) => canonicalPath(w) !== abs)
     })
     return this.config.watch.sessions
   }

@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Scenario end-to-end di Micelio su 4 container (DHT pubblica). Uso: npm run e2e:docker
+# I container usano il LLM finto (compose.yaml): i ricordi di prova devono avere un contenuto
+# di almeno ~30 caratteri, altrimenti il finto classificatore li considera banali (→ inbox).
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -43,8 +45,8 @@ converge 9 node1 node2 node3
 
 echo "== 3. Il fondatore va offline: node2 e node3 continuano a sincronizzarsi"
 dc stop node1 >/dev/null 2>&1
-m node2 remember "Scritto senza fondatore A" -b "a" >/dev/null
-m node3 remember "Scritto senza fondatore B" -b "b" >/dev/null
+m node2 remember "Scritto senza fondatore A" -b "Ricordo tecnico scritto mentre il fondatore è offline (A)." >/dev/null
+m node3 remember "Scritto senza fondatore B" -b "Ricordo tecnico scritto mentre il fondatore è offline (B)." >/dev/null
 converge 11 node2 node3
 
 echo "== 4. node2 invita node4 e va offline: node4 entra grazie a node3"
@@ -71,6 +73,8 @@ echo "== Albero degli inviti visto da node3"
 m node3 members | sed 's/^/    /'
 
 dc down -v >/dev/null 2>&1
+# Ogni rebuild lascia l'immagine precedente orfana (~480 MB): la eliminiamo per non saturare il disco.
+docker image prune -f --filter label=org.micelio.image=node >/dev/null
 echo
 echo "Risultato: $pass ok, $fail falliti"
 (( fail == 0 ))

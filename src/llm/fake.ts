@@ -1,12 +1,26 @@
-// Adapter finto e deterministico, per test ed end-to-end senza consumare l'abbonamento.
-// Si attiva con llm.adapter = "fake" (o MICELIO_LLM_ADAPTER=fake). NON usarlo in produzione.
+/**
+ * @file Adapter LLM finto e deterministico, per test ed end-to-end.
+ *
+ * Permette di provare tutta la pipeline senza consumare l'abbonamento e senza rete.
+ * Si attiva con `llm.adapter = "fake"` in config.json o con MICELIO_LLM_ADAPTER=fake.
+ * NON usarlo in produzione: le sue "decisioni" sono regole banali sul testo.
+ *
+ * Regole (documentate anche in test/unit/pipeline.test.ts):
+ * - classify: testo con "cliente", "credenziali", "valutazione"… → private;
+ *             testo più corto di 30 caratteri → discard; altrimenti → team;
+ *             "[incerto]" nel testo → confidenza 0.5 (caso dubbio → inbox).
+ * - distill:  un ricordo per ogni riga "LEZIONE: titolo | corpo" presente nell'input.
+ */
 import type { LlmAdapter, LlmTask } from './types'
 
+/** Parole che il finto classificatore considera "private". */
 const PRIVATE_HINTS = /\b(cliente|customer|credenziali|valutazione|personale)\b/i
-const TRIVIAL_HINTS = /^.{0,30}$/s // testi cortissimi = "banali"
+/** Testi cortissimi = banali. */
+const TRIVIAL_HINTS = /^.{0,30}$/s
 
 export class FakeAdapter implements LlmAdapter {
   readonly name = 'fake'
+  /** Registro delle chiamate ricevute: i test lo usano per verificare COSA è stato inviato al LLM. */
   calls: { name: string, model: string }[] = []
 
   async available (): Promise<boolean> { return true }
@@ -16,6 +30,7 @@ export class FakeAdapter implements LlmAdapter {
     if (task.name === 'classify') {
       const text = task.input
       const destination = PRIVATE_HINTS.test(text) ? 'private' : TRIVIAL_HINTS.test(text.trim()) ? 'discard' : 'team'
+      // Passiamo comunque dallo schema: così il finto adapter rispetta lo stesso contratto del vero.
       return task.schema.parse({
         destination,
         category: destination === 'private' ? 'personal' : 'technical',
@@ -26,7 +41,6 @@ export class FakeAdapter implements LlmAdapter {
       })
     }
     if (task.name === 'distill') {
-      // Un ricordo per ogni riga "LEZIONE: titolo | corpo" presente nella sessione.
       const memories = [...task.input.matchAll(/LEZIONE:\s*([^|\n]+)\|\s*([^\n]+)/g)].map((m) => ({
         kind: 'gotcha', title: m[1].trim(), body: m[2].trim(), tags: ['test']
       }))

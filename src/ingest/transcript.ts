@@ -1,8 +1,21 @@
-// Lettura delle trascrizioni JSONL di Claude Code (~/.claude/projects/<progetto>/<sessione>.jsonl).
-// Ne ricaviamo un testo compatto "UTENTE / ASSISTENTE" adatto a classificazione e distillazione:
-// niente ragionamenti interni, chiamate agli strumenti riassunte, output degli strumenti troncati.
+/**
+ * @file Lettura delle trascrizioni JSONL di Claude Code (~/.claude/projects/<progetto>/<sessione>.jsonl).
+ *
+ * Ogni riga del file è un oggetto JSON. Ci interessano solo:
+ * - type "user":      message.content è una stringa (domanda) o un array con blocchi "text"
+ *                     e "tool_result" (esiti degli strumenti);
+ * - type "assistant": message.content è un array di blocchi "text", "tool_use", "thinking".
+ * Tutto il resto (snapshot di file, titoli, permessi…) viene ignorato.
+ *
+ * Ne ricaviamo un testo compatto "UTENTE: … / ASSISTENTE: …" per classificazione e distillazione:
+ * - i blocchi "thinking" (ragionamento interno) sono esclusi;
+ * - le chiamate agli strumenti sono riassunte (nome + primi 200 caratteri dell'input);
+ * - gli esiti degli strumenti sono troncati a 400 caratteri;
+ * - i messaggi dei sotto-agenti (isSidechain) e di servizio (isMeta, comandi slash) sono esclusi.
+ */
 import fs from 'node:fs'
 
+/** Risultato dell'estrazione di (una parte di) una trascrizione. */
 export interface TranscriptExtract {
   /** Testo della conversazione a partire da `fromLine`. */
   text: string
@@ -12,15 +25,18 @@ export interface TranscriptExtract {
   userTurns: number
 }
 
+/** Limite di testo inviato al LLM: oltre, si tagliano le parti centrali. */
 const MAX_CHARS = 40_000
 const TOOL_INPUT_CHARS = 200
 const TOOL_RESULT_CHARS = 400
 
+/** Tronca a n caratteri aggiungendo un marcatore. */
 function clip (s: string, n: number): string {
   const t = s.replace(/\s+$/g, '')
   return t.length > n ? t.slice(0, n) + ' […]' : t
 }
 
+/** Testo di un blocco di contenuto, qualunque sia la sua forma (stringa o array annidato). */
 function blockText (block: any): string {
   if (typeof block?.text === 'string') return block.text
   if (typeof block?.content === 'string') return block.content
@@ -28,6 +44,11 @@ function blockText (block: any): string {
   return ''
 }
 
+/**
+ * Estrae il testo della conversazione.
+ * @param file     percorso del file .jsonl
+ * @param fromLine numero di righe già elaborate in precedenza: si legge solo da lì in avanti
+ */
 export function extractTranscript (file: string, fromLine = 0): TranscriptExtract {
   const all = fs.readFileSync(file, 'utf8').split('\n').filter((l) => l.trim())
   const parts: string[] = []

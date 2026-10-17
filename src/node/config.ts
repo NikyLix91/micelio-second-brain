@@ -138,12 +138,29 @@ export function bootstrapFromEnv (): { host: string, port: number }[] | undefine
 }
 
 /**
+ * Forma canonica di un percorso, per confrontarlo con altri.
+ *
+ * `realpathSync.native` risolve i link simbolici e, su Windows, espande i nomi corti 8.3
+ * (es. `C:\Users\MARIOR~1.ROS` → `C:\Users\mario.rossi`). Bug reale trovato in Fase 2:
+ * Claude Code riporta la cartella di lavoro con il nome lungo, mentre la cartella abilitata
+ * poteva essere salvata con quello corto, e il confronto falliva in silenzio.
+ * Se il percorso non esiste (cartella cancellata) si ripiega su `path.resolve`.
+ */
+export function canonicalPath (p: string): string {
+  try {
+    return fs.realpathSync.native(path.resolve(p))
+  } catch {
+    return path.resolve(p)
+  }
+}
+
+/**
  * true se `dir` è una delle cartelle opt-in o una loro sottocartella.
- * Confronto case-insensitive su Windows, dove i percorsi non distinguono le maiuscole.
+ * Confronto sui percorsi canonici, case-insensitive su Windows (dove le maiuscole non contano).
  */
 export function isInsideWatched (dir: string, watched: string[]): boolean {
   const norm = (p: string) => {
-    const r = path.resolve(p)
+    const r = canonicalPath(p)
     return process.platform === 'win32' ? r.toLowerCase() : r
   }
   const target = norm(dir)

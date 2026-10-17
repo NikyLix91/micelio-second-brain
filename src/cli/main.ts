@@ -351,8 +351,14 @@ program.command('hook')
       await client().call('POST', '/api/ingest/session', {
         session_id: input.session_id, transcript_path: input.transcript_path, cwd: input.cwd ?? process.cwd()
       }, 3000)
-    } catch {
-      // Silenzio voluto: daemon spento o errore → semplicemente la sessione non viene raccolta.
+    } catch (err) {
+      // Niente output verso Claude Code, ma l'errore va registrato: un hook che fallisce in
+      // silenzio è quasi impossibile da diagnosticare (es. daemon spento o su un'altra porta).
+      try {
+        const p = paths()
+        fs.mkdirSync(p.logs, { recursive: true })
+        fs.appendFileSync(path.join(p.logs, 'hook.log'), `${new Date().toISOString()} ${event}: ${(err as Error).message}\n`)
+      } catch {}
     }
   })
 

@@ -8,6 +8,9 @@ COPY src ./src
 RUN npm run build && npm prune --omit=dev
 
 FROM node:24-slim
+# Etichetta usata per ripulire SOLO le immagini orfane di Micelio dopo i rebuild
+# (docker image prune -f --filter label=org.micelio.image=node), senza toccare altri progetti.
+LABEL org.micelio.image=node
 WORKDIR /app
 ENV MICELIO_HOME=/data MICELIO_HOST=0.0.0.0 NODE_ENV=production
 COPY --from=build /app/node_modules ./node_modules
