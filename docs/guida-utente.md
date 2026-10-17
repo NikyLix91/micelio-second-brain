@@ -23,7 +23,14 @@ micelio status      # stato del nodo
 micelio stop        # ferma il daemon
 ```
 
-Il daemon deve restare attivo perché il nodo sincronizzi, perché gli assistenti AI possano usarlo e perché le sessioni vengano raccolte. Per ora va avviato a mano dopo ogni riavvio del PC; l'avvio automatico arriverà con l'app desktop (Fase 3).
+Il daemon deve restare attivo perché il nodo sincronizzi, perché gli assistenti AI possano usarlo e perché le sessioni vengano raccolte. Si accende in quattro modi:
+
+| Modo | Note |
+|---|---|
+| `micelio start` | A mano, da terminale |
+| App desktop (`npm run desktop`) | Se il daemon è spento, lo avvia lei |
+| `micelio autostart on` | **Consigliato.** Lo avvia a ogni accesso al PC, senza privilegi di amministratore: su Windows uno script nascosto nella cartella "Esecuzione automatica", su macOS un LaunchAgent, su Linux un servizio systemd utente. `micelio autostart off` per toglierlo |
+| Da solo, a fine sessione | Se una sessione di Claude Code finisce e il daemon è spento, l'hook lo accende (qualche secondo) |
 
 I dati del nodo stanno in `~/.micelio`:
 
@@ -130,6 +137,15 @@ micelio watch remove C:\progetti\ordini
 ```
 
 Quando chiudi una sessione di Claude Code in una cartella abilitata, l'hook avvisa il daemon. La sessione passa dal filtro privacy (§5) e, se è tecnica, Claude Sonnet ne **distilla** da 0 a 5 ricordi atomici, pubblicati nel team.
+
+**Sessioni lunghe (anche di giorni) e sessioni perse:** il daemon controlla le trascrizioni di Claude Code anche **mentre la sessione è aperta**:
+- **quando:** all'avvio, poi ogni 15 minuti, oppure subito con `micelio ingest scan`;
+- **cosa distilla:** la **parte nuova** di una sessione in **pausa da almeno 10 minuti** con abbastanza contenuto (4 tuoi messaggi o 6.000 caratteri). Una sessione ferma da più di 6 ore viene presa in ogni caso;
+- **niente doppioni:** ogni parte viene distillata **una sola volta**, che arrivi da qui o dall'hook;
+- **cosa ignora:** il prompt di distillazione lascia fuori i tentativi ancora aperti;
+- **recupero:** le sessioni finite mentre il daemon era spento vengono recuperate al primo avvio. Anche quelle aperte prima di `micelio setup` vengono raccolte.
+
+Le soglie si cambiano in `config.json`, in `watch.sessionScan`: `intervalMinutes`, `idleMinutes`, `minUserTurns`, `minChars`, `staleHours`, `enabled`.
 - **Fedeltà alla fonte:** la distillazione riporta solo ciò che è stato detto o dimostrato nella sessione, senza aggiunte.
 - **Sessioni brevi:** quelle che non insegnano nulla non producono ricordi.
 - **Sessioni riprese:** se riprendi una sessione, viene elaborata solo la parte nuova.

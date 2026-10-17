@@ -255,7 +255,7 @@ La stessa UI funziona anche dal browser con `micelio ui`.
 | 7.4 | Metriche (`micelio metrics`, `GET /api/metrics`) | ✅ |
 | 7.5 | **Rotazione della chiave di team all'offboarding** | ⬜ Da fare: richiede di creare una nuova Autobase cifrata con una chiave nuova e migrare i membri rimasti; lavoro delicato, da progettare insieme |
 | 7.6 | **Eliminazione locale dei blocchi redatti** (oltre alla vista) | ⬜ Da fare |
-| 7.7 | **Installer dell'app desktop** (Windows/macOS/Linux) e avvio all'accesso | ⬜ Rinviato per decisione D16 |
+| 7.7 | **Installer dell'app desktop** (Windows/macOS/Linux) | ⬜ Rinviato per decisione D16. L'avvio automatico del daemon all'accesso c'è già: `micelio autostart on` |
 | 7.8 | **Test su macOS** e prova reale con Codex, VS Code e WebStorm | ⬜ Serve una macchina macOS e i client installati |
 | 7.9 | **Set di valutazione del dreaming** con Claude reale (come quello della Fase 2) | ⬜ Da fare prima di attivare il dreaming su un team vero |
 
@@ -279,3 +279,4 @@ La stessa UI funziona anche dal browser con `micelio ui`.
 | 2026-10-17 | Fase 5 completata: attivazione, ricerca ibrida con embedding locali, voti, pin, uso condiviso (G-Counter), collegamenti semantici. Avvio della Fase 6 |
 | 2026-10-17 | Fase 6 completata: dreaming coordinato (fusioni, superati, collegamenti, decadimento, diario, archivio). Avvio della Fase 7 |
 | 2026-10-17 | Fase 7 parziale: shim MCP stdio, configurazioni per Codex/VS Code/WebStorm, redazione, metriche. Restano rotazione della chiave, installer, test su macOS e valutazione del dreaming |
+| 2026-10-17 | Raccolta affidabile: sessioni di Claude Code in corso distillate a capitoli e recupero di quelle perse (session-scanner); l'hook accende il daemon se è spento; `micelio autostart on/off` (Windows, macOS, Linux). Verificati dal vero hook e script di avvio su Windows |

@@ -55,7 +55,8 @@ export function installSessionEndHook (home: string, cliMain = CLI_MAIN): string
   const groups: any[] = (settings.hooks.SessionEnd ?? [])
     .map((g: any) => ({ ...g, hooks: (g.hooks ?? []).filter((h: any) => !isMicelioHook(h)) }))
     .filter((g: any) => g.hooks.length > 0)
-  groups.push({ hooks: [{ type: 'command', command: hookCommand(home, cliMain), timeout: 10 }] })
+  // Timeout 30 s: di norma l'hook impiega un istante, ma se il daemon è spento lo avvia.
+  groups.push({ hooks: [{ type: 'command', command: hookCommand(home, cliMain), timeout: 30 }] })
   settings.hooks.SessionEnd = groups
   fs.mkdirSync(path.dirname(file), { recursive: true })
   fs.writeFileSync(file, JSON.stringify(settings, null, 2))

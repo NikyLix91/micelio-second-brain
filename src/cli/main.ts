@@ -19,6 +19,7 @@ import { MEMORY_KINDS } from '../core/events'
 import type { MemberRecord, NodeStatus, RecallHit } from '../core/model'
 import { nodePaths, type NodePaths } from '../core/paths'
 import type { ExplicitOutcome } from '../ingest/pipeline'
+import { autostartOff, autostartOn, autostartStatus } from '../node/autostart'
 import { claudeSettingsFile, hookCommand, IntegrationError, mcpAddArgs, setupClaudeCode } from '../node/integrations'
 import type { IngestStatus } from '../node/micelio-node'
 import type { Decision, InboxItem } from '../store/private-store'
@@ -101,28 +102,40 @@ program.command('daemon')
     await startDaemon(paths())
   })
 
+/**
+ * Avvia il daemon in background (staccato dal terminale) e attende che risponda.
+ * Usata da `micelio start` e dall'hook di fine sessione quando trova il daemon spento.
+ * @returns true se il daemon risponde entro `waitMs`
+ */
+async function startInBackground (p: NodePaths, waitMs = 30_000): Promise<boolean> {
+  const c = new DaemonClient(p)
+  if (await c.health()) return true
+  fs.mkdirSync(p.logs, { recursive: true })
+  const out = fs.openSync(path.join(p.logs, 'daemon.log'), 'a')
+  // Rilanciamo questo stesso script con il comando `daemon`, staccato dal processo corrente.
+  const child = spawn(process.execPath, [__filename, 'daemon'], {
+    detached: true,
+    stdio: ['ignore', out, out],
+    env: { ...process.env, MICELIO_HOME: p.home, NO_COLOR: '1' }, // log su file: niente colori ANSI
+    windowsHide: true
+  })
+  child.unref()
+  // Attende che il daemon risponda (apertura dei feed, annuncio sulla DHT…).
+  for (let t = 0; t < waitMs; t += 500) {
+    if (await c.health()) return true
+    await new Promise((r) => setTimeout(r, 500))
+  }
+  return false
+}
+
 program.command('start')
   .description('avvia il daemon in background')
   .action(async () => {
     const p = paths()
     const c = new DaemonClient(p)
     if (await c.health()) return console.log(`Daemon già attivo su ${c.baseUrl}`)
-    fs.mkdirSync(p.logs, { recursive: true })
     const logFile = path.join(p.logs, 'daemon.log')
-    const out = fs.openSync(logFile, 'a')
-    // Rilanciamo questo stesso script con il comando `daemon`, staccato dal terminale.
-    const child = spawn(process.execPath, [__filename, 'daemon'], {
-      detached: true,
-      stdio: ['ignore', out, out],
-      env: { ...process.env, MICELIO_HOME: p.home, NO_COLOR: '1' }, // log su file: niente colori ANSI
-      windowsHide: true
-    })
-    child.unref()
-    // Attende fino a 30 s che il daemon risponda (apertura dei feed, annuncio sulla DHT…).
-    for (let i = 0; i < 60; i++) {
-      if (await c.health()) return console.log(`Daemon avviato su ${c.baseUrl} (log: ${logFile})`)
-      await new Promise((r) => setTimeout(r, 500))
-    }
+    if (await startInBackground(p)) return console.log(`Daemon avviato su ${c.baseUrl} (log: ${logFile})`)
     throw new DaemonError(`Il daemon non è partito entro 30 s: controlla ${logFile}`)
   })
 
@@ -133,6 +146,23 @@ program.command('stop')
     if (!(await c.health())) return console.log('Il daemon non è in esecuzione')
     await c.call('POST', '/api/shutdown')
     console.log('Daemon in chiusura')
+  })
+
+/** Avvio automatico all'accesso al PC (src/node/autostart.ts): nessun privilegio di amministratore. */
+program.command('autostart')
+  .description('avvio automatico del daemon all\'accesso al PC: on | off | status')
+  .argument('[azione]', 'on | off | status', 'status')
+  .action((azione: string) => {
+    const home = paths().home
+    if (azione === 'on') {
+      const file = autostartOn(__filename, home)
+      console.log(`Avvio automatico attivo: il daemon partirà a ogni accesso al PC.\n(${file})`)
+    } else if (azione === 'off') {
+      console.log(autostartOff(__filename, home) ? 'Avvio automatico disattivato' : 'L\'avvio automatico non era attivo')
+    } else {
+      const file = autostartStatus(__filename, home)
+      console.log(file ? `Avvio automatico attivo (${file})` : 'Avvio automatico non attivo: `micelio autostart on` per attivarlo')
+    }
   })
 
 program.command('status')
@@ -417,8 +447,9 @@ ingest.command('run').description('elabora subito il prossimo lavoro in coda')
  * Chiamato da Claude Code alla fine di ogni sessione (hook SessionEnd), con un JSON su stdin:
  * { session_id, transcript_path, cwd, hook_event_name, reason }.
  *
- * Regole: deve terminare in fretta, non stampare nulla e NON fallire mai (exit 0 sempre):
- * un errore qui disturberebbe l'utente di Claude Code per un problema di Micelio.
+ * Regole: non stampare nulla e NON fallire mai (exit 0 sempre): un errore qui disturberebbe
+ * l'utente di Claude Code per un problema di Micelio. Di norma termina in un istante; solo se il
+ * daemon è spento lo avvia, impiegando qualche secondo.
  */
 program.command('hook')
   .description('(interno) hook per Claude Code')
@@ -430,6 +461,12 @@ program.command('hook')
       const raw = await Promise.race([readStdin(), new Promise<string>((r) => setTimeout(() => r(''), 2000))])
       const input = JSON.parse(raw || '{}')
       if (!input.session_id || !input.transcript_path) return
+      // Daemon spento? Lo accendiamo noi invece di perdere la sessione. Se non fa in tempo, non è
+      // grave: appena avviato, il daemon recupera da solo le sessioni finite (session-scanner).
+      const p = paths()
+      if (!(await new DaemonClient(p).health()) && !(await startInBackground(p, 20_000))) {
+        throw new Error('daemon spento e non avviato in tempo: la sessione sarà recuperata al prossimo avvio')
+      }
       await client().call('POST', '/api/ingest/session', {
         session_id: input.session_id, transcript_path: input.transcript_path, cwd: input.cwd ?? process.cwd()
       }, 3000)
