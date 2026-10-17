@@ -451,7 +451,7 @@ Nel brain viaggia solo la conoscenza distillata (principio 3). Per approfondire 
 
 ## 12-ter. UI di monitoraggio, controllo e decisioni
 
-- **Architettura:** web app **Angular** servita dal daemon (NestJS) e apribile anche nel browser su `localhost`, dentro un guscio **Electron**. Il guscio aggiunge icona nell'area di notifica, notifiche e avvio automatico del daemon, e copre così l'avvio come servizio.
+- **Architettura:** web app **React** (Vite) servita dal daemon (NestJS) e apribile anche nel browser su `localhost`, dentro un guscio **Electron**. Il guscio aggiunge icona nell'area di notifica, notifiche e avvio automatico del daemon, e copre così l'avvio come servizio.
 - **Dati:** la UI usa la stessa API locale della CLI, più un canale **SSE** di eventi in tempo reale (sincronizzazione, nuovi ricordi, inbox, richieste, sogni). Autenticazione con lo stesso token: Electron lo legge da `config.json`, nel browser viene passato una sola volta tramite un link aperto da `micelio ui`.
 - **Schermate:** Dashboard (nodo, peer, sincronizzazione, coda e budget LLM), Memoria (ricerca, dettaglio, fonte), Inbox (decisioni), Team (membri, albero degli inviti, inviti, ruoli), Privato, Impostazioni (cartelle opt-in, regole del filtro, budget, modelli, lingua). Le fasi successive aggiungono Richieste documenti, Voti e pin, Diario dei sogni.
 - **Fase:** 3 (UI base, subito dopo l'ingestione); ogni fase successiva aggiunge la propria schermata.
@@ -530,7 +530,7 @@ src/
 | **0 — Spike** | Ridurre i rischi tecnici | (a) 3 nodi Autobase in container Docker si sincronizzano via Hyperswarm, anche con nodi che entrano tardi o vanno offline; (b) `claude -p` headless restituisce JSON valido su Windows (`codex` da verificare quando sarà disponibile); (c) embedding con transformers.js funzionanti in Node su Windows |
 | **1 — MVP** | Brain condiviso minimo | Creazione del team, invito/join, `memory.add`, vista SQLite + FTS, MCP `remember`/`recall`, export Markdown. Due nodi reali allineati |
 | **2 — Ingestione AI** | Raccolta automatica con filtro | Hook Claude Code, sessioni Codex, filtro deterministico, classificazione, distillazione, ambito privato, inbox |
-| **3 — UI base** | Monitoraggio, controllo, decisioni | Web app Angular servita dal daemon + guscio Electron, SSE, schermate Dashboard/Memoria/Inbox/Team/Privato/Impostazioni |
+| **3 — UI base** | Monitoraggio, controllo, decisioni | Web app React servita dal daemon + guscio Electron, SSE, schermate Dashboard/Memoria/Inbox/Team/Privato/Impostazioni |
 | **4 — Documenti** | Cartelle sorvegliate + originale su richiesta | Watcher, estrazione PDF/DOCX/XLSX, elaborazione incrementale, `fetch_source` P2P (§12-bis) |
 | **5 — Priorità** | Ricerca intelligente | Vettori, ricerca ibrida, `usage.report`, attivazione, voti e pin |
 | **6 — Dreaming** | Consolidamento | Elezione per epoca, fasi 1–7, diario dei sogni |

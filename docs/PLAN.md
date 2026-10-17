@@ -1,7 +1,7 @@
 # Micelio — Piano di lavoro
 
 > Documento vivo: viene aggiornato a ogni avanzamento. Design di riferimento: [DESIGN.md](DESIGN.md). Indice della documentazione: [README.md](README.md).
-> Ultimo aggiornamento: **2026-10-17**. Fase 2 completata, Fase 3 in attesa di approvazione.
+> Ultimo aggiornamento: **2026-10-17**. Fase 3 in corso.
 
 ## Stato
 
@@ -10,7 +10,7 @@
 | 0 — Spike | Ridurre i rischi tecnici | ✅ Completata |
 | 1 — MVP | Brain condiviso minimo, usabile da Claude Code | ✅ Completata |
 | 2 — Ingestione AI | Raccolta automatica con filtro privacy | ✅ Completata |
-| 3 — UI base | App desktop di monitoraggio, controllo e decisioni (Electron) | ⏸️ In attesa di approvazione |
+| 3 — UI base | App desktop di monitoraggio, controllo e decisioni (React + Electron) | 🔄 In corso |
 | 4 — Documenti | Cartelle sorvegliate + documento originale su richiesta | ⬜ Da fare |
 | 5 — Priorità | Vettori, ricerca ibrida, attivazione | ⬜ Da fare |
 | 6 — Dreaming | Consolidamento coordinato | ⬜ Da fare |
@@ -30,7 +30,7 @@
 | D6–D9 | Ingestione AI | Vedi Fase 2 |
 | D10 | Consenso al download dell'originale di un documento | Automatico per cartella: "scaricabili su richiesta sì/no" scelto quando si aggiunge la cartella (DESIGN §12-bis) |
 | D11 | Chi serve l'originale | Solo il nodo proprietario. Le copie scaricate restano in cache locale per 30 giorni e non vengono ri-servite |
-| D12 | UI | Web app Angular servita dal daemon + guscio Electron (notifiche, icona nell'area di notifica, avvio automatico del daemon). Fase dedicata subito dopo la Fase 2 (DESIGN §12-ter) |
+| D12 | UI | Web app **React** servita dal daemon + guscio Electron (notifiche, icona nell'area di notifica, avvio automatico del daemon). Fase dedicata subito dopo la Fase 2 (DESIGN §12-ter). Inizialmente proposta in Angular; il team usa React |
 
 ---
 
@@ -121,18 +121,18 @@ Resoconto completo: [spike-fase-0.md](spike-fase-0.md). In sintesi: P2P 6/6 scen
 
 ---
 
-## Fase 3 — UI base ⏸️ (proposta, da approvare)
+## Fase 3 — UI base 🔄
 
 **Obiettivo:** un'app desktop per monitorare il nodo, cercare nel sapere del team, prendere le decisioni (inbox, membri) e configurare la raccolta, senza usare il terminale. Riferimento: DESIGN §12-ter.
 
-### Decisioni da confermare
+### Decisioni
 
-| # | Domanda | Proposta |
+| # | Domanda | Esito |
 |---|---|---|
-| D13 | Dove vive il codice | Stesso repository: `ui/` (workspace Angular, ultima versione stabile) e `desktop/` (Electron). Il daemon serve la UI compilata su `http://127.0.0.1:7337/ui` |
-| D14 | Accesso dal browser | `micelio ui` apre il browser con un link monouso che consegna il token alla pagina (nessun token nell'URL dopo il primo caricamento). L'app Electron legge il token direttamente da `config.json` |
-| D15 | Notifiche | Nuovi elementi in inbox, nodo isolato da più di 10 minuti, budget LLM quasi esaurito. Configurabili |
-| D16 | Pacchetti di installazione | In Fase 3 solo la build eseguibile per sviluppo e un pacchetto Windows non firmato per provarla. Installer firmati per tutti i sistemi in Fase 7 |
+| D13 | Dove vive il codice | ✅ Stesso repository: `ui/` (React + Vite) e `desktop/` (Electron), come workspace npm. Il daemon serve la UI compilata su `http://127.0.0.1:7337/ui` |
+| D14 | App o browser | ✅ Si preferisce l'**app desktop**, ma la stessa UI funziona anche nel browser: `micelio ui` apre un link monouso che consegna il token alla pagina. L'app Electron legge il token direttamente da `config.json` |
+| D15 | Notifiche | ✅ Nuovi elementi in inbox, nodo isolato da più di 10 minuti, budget LLM quasi esaurito |
+| D16 | Pacchetti di installazione | ✅ **Nessuno per ora**: l'app si avvia da console (`npm run desktop`). Installer per tutti i sistemi, e avvio automatico all'accesso, in Fase 7 |
 
 ### Attività
 
@@ -140,15 +140,15 @@ Resoconto completo: [spike-fase-0.md](spike-fase-0.md). In sintesi: P2P 6/6 scen
 |---|---|---|
 | 3.1 | Daemon: canale di eventi in tempo reale (SSE `/api/events`): sincronizzazione, nuovi ricordi, inbox, coda, peer | ⬜ |
 | 3.2 | Daemon: pubblicazione della UI compilata e comando `micelio ui` con link monouso | ⬜ |
-| 3.3 | Angular: scheletro, navigazione, tema chiaro/scuro, client API tipizzato e servizio eventi | ⬜ |
+| 3.3 | React: scheletro, navigazione, tema chiaro/scuro, client API tipizzato, aggiornamenti in tempo reale | ⬜ |
 | 3.4 | Schermata Dashboard: nodo, team, peer, sincronizzazione, LLM e budget, coda | ⬜ |
 | 3.5 | Schermata Memoria: ricerca, dettaglio, autore, fonte | ⬜ |
 | 3.6 | Schermata Inbox: anteprima, approva (con modifica), rifiuta | ⬜ |
 | 3.7 | Schermata Team: albero degli inviti, crea e copia un invito, promuovi ed espelli (solo admin), impostazioni di team | ⬜ |
 | 3.8 | Schermata Privato: registro delle decisioni | ⬜ |
 | 3.9 | Schermata Impostazioni: cartelle abilitate, budget e modelli LLM, configurazione di Claude Code | ⬜ |
-| 3.10 | Electron: avvio automatico del daemon, finestra, icona nell'area di notifica, notifiche (D15), avvio all'accesso al PC | ⬜ |
-| 3.11 | Test: SSE e API (integrazione), componenti Angular principali (unità) | ⬜ |
+| 3.10 | Electron: avvio automatico del daemon, finestra, icona nell'area di notifica, notifiche (D15), avvio da console | ⬜ |
+| 3.11 | Test: SSE e API (integrazione), componenti React principali (unità), screenshot delle schermate dall'app reale | ⬜ |
 | 3.12 | Documentazione: guida all'app, sviluppo della UI | ⬜ |
 
 **Criterio di completamento:** sul PC Windows, l'app desktop avvia da sola il daemon e permette, senza terminale, di:
@@ -160,13 +160,13 @@ Resoconto completo: [spike-fase-0.md](spike-fase-0.md). In sintesi: P2P 6/6 scen
 
 La stessa UI funziona anche dal browser con `micelio ui`.
 
-**Nota sul disco:** Angular ed Electron aggiungono circa 600–800 MB di dipendenze di sviluppo in `node_modules` (nessuna immagine Docker in più). Per i test della UI non userò Playwright, che scaricherebbe altri browser: bastano i test dei componenti e la verifica manuale nell'app.
+**Nota sul disco:** React, Vite ed Electron aggiungono circa 600–800 MB di dipendenze di sviluppo in `node_modules` (nessuna immagine Docker in più). Per i test della UI non userò Playwright, che scaricherebbe altri browser: bastano i test dei componenti e la verifica manuale nell'app.
 
 ---
 
 ## Fasi successive
 
-- **Fase 3 — UI base:** web app Angular servita dal daemon + guscio Electron. Canale SSE di eventi. Schermate Dashboard (nodo, peer, sincronizzazione, coda e budget LLM), Memoria, Inbox, Team, Privato, Impostazioni. Notifiche, icona nell'area di notifica, avvio automatico del daemon. Comando `micelio ui`.
+- **Fase 3 — UI base:** web app React servita dal daemon + guscio Electron. Canale SSE di eventi. Schermate Dashboard (nodo, peer, sincronizzazione, coda e budget LLM), Memoria, Inbox, Team, Privato, Impostazioni. Notifiche, icona nell'area di notifica, avvio automatico del daemon. Comando `micelio ui`.
 - **Fase 4 — Documenti:** watcher sulle cartelle (con il flag "scaricabili su richiesta"), estrazione PDF/DOCX/XLSX/PPTX, elaborazione incrementale per hash, stessa pipeline di filtro della Fase 2. **Documento originale su richiesta:** canale P2P dedicato, tool MCP `fetch_source`, `micelio fetch`, cache con scadenza, schermata Richieste.
 - **Fase 5 — Priorità:** embedding in un worker su richiesta, sqlite-vec, ricerca ibrida RRF, `usage.report`, attivazione, voti e pin (anche dalla UI), indicizzazione incrementale.
 - **Fase 6 — Dreaming:** elezione per epoca, consolidamento, contraddizioni, collegamenti, decadimento, diario dei sogni (schermata UI), budget.
@@ -186,3 +186,4 @@ La stessa UI funziona anche dal browser con `micelio ui`.
 | 2026-10-17 | Nuove funzioni: documento originale su richiesta (D10–D11, Fase 4) e UI desktop Electron (D12, nuova Fase 3). Fasi successive rinumerate. Fase 2 avviata |
 | 2026-10-17 | Su richiesta: codice riscritto con commenti abbondanti (regola nelle convenzioni). Igiene di Docker: immagini orfane rimosse e pulizia automatica |
 | 2026-10-17 | Fase 2 completata: 66 test + e2e 11/11 + valutazione con Claude reale 22/22 (sensibili 8/8) + prova reale dell'hook di Claude Code (sessione tecnica → ricordo; mail di valutazione → bloccata localmente). Fase 3 proposta (decisioni D13–D16) |
+| 2026-10-17 | Decisioni D13–D16 confermate: **React** al posto di Angular, stessa repository, app desktop preferita (browser supportato), nessun installer per ora (avvio da console). Fase 3 avviata |
