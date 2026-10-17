@@ -156,6 +156,38 @@ Ogni sessione elaborata costa 2 chiamate a Claude (classificazione + distillazio
 
 (dopo una modifica: `micelio stop && micelio start`)
 
+## 7-bis. Cartelle di documenti
+
+Micelio può leggere anche i documenti del team: PDF, Word, Excel, PowerPoint, OpenDocument, RTF, Markdown, testo.
+
+```bash
+micelio docs add C:\documenti\architettura --shareable   # i colleghi potranno scaricare gli originali
+micelio docs add C:\documenti\appunti                    # solo distillato: gli originali restano qui
+micelio docs                                              # cartelle e conteggi (elaborati, in coda, bloccati…)
+micelio docs remove C:\documenti\appunti
+```
+
+- **Elaborazione:** ogni documento nuovo o modificato passa dallo stesso filtro privacy delle sessioni ed è distillato in ricordi. Un documento invariato non viene mai rielaborato, nemmeno dopo un riavvio.
+- **Cartelle protette:** i documenti in cartelle come `HR`, `contratti`, `buste paga`, `valutazioni`, `candidati` o `privato` **non vengono nemmeno aperti**: restano privati e il motivo compare in `micelio private`. Gli admin possono aggiungere altri percorsi con `micelio team config filter.blockedPaths '["**/clienti/acme/**"]'`.
+- **Documenti molto lunghi:** vengono distillati a parti, fino a 6 parti da circa 12.000 caratteri ciascuna.
+- **Limiti:** i file oltre 20 MB e quelli protetti da password vengono saltati.
+
+Anche dall'app: **Impostazioni → Cartelle di documenti**.
+
+### Scaricare il documento originale
+
+Al team arriva solo il distillato. Se serve approfondire, dal ricordo si può chiedere l'**originale**:
+
+```bash
+micelio fetch 8ea1102f047d      # id del ricordo
+```
+
+- **Da dove arriva:** dal PC del collega che possiede il documento. Quel PC deve essere acceso, e la cartella deve essere stata aggiunta con `--shareable`.
+- **Dove finisce:** in `~/.micelio/sources/` e resta lì 30 giorni. Le copie scaricate non vengono mai ripassate ad altri: se cambi idea su una cartella, nessuna copia continua a circolare.
+- **Verifiche:** chi chiede deve essere un membro attivo del team, e il file ricevuto viene controllato con la sua impronta (hash). Un collega non può mandarti un contenuto diverso.
+
+Dall'app c'è il pulsante **Scarica l'originale** nel dettaglio del ricordo. Da Claude Code: *"scarica il documento originale di questo ricordo"* (tool `fetch_source`).
+
 ## 8. Inbox: i casi dubbi
 
 L'inbox contiene **solo** ciò su cui il filtro non ha potuto decidere da solo. I contenuti puliti vanno al team senza chiederti nulla, quelli chiaramente personali restano privati. L'inbox è locale: nessun collega la vede.

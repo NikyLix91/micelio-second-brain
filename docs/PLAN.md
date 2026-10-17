@@ -1,7 +1,7 @@
 # Micelio — Piano di lavoro
 
 > Documento vivo: viene aggiornato a ogni avanzamento. Design di riferimento: [DESIGN.md](DESIGN.md). Indice della documentazione: [README.md](README.md).
-> Ultimo aggiornamento: **2026-10-17**. Fase 3 completata, Fase 4 in corso (lavoro in autonomia).
+> Ultimo aggiornamento: **2026-10-17**. Fase 4 completata, Fase 5 in corso (lavoro in autonomia).
 
 ## Stato
 
@@ -11,8 +11,8 @@
 | 1 — MVP | Brain condiviso minimo, usabile da Claude Code | ✅ Completata |
 | 2 — Ingestione AI | Raccolta automatica con filtro privacy | ✅ Completata |
 | 3 — UI base | App desktop di monitoraggio, controllo e decisioni (React + Electron) | ✅ Completata |
-| 4 — Documenti | Cartelle sorvegliate + documento originale su richiesta | 🔄 In corso |
-| 5 — Priorità | Vettori, ricerca ibrida, attivazione | ⬜ Da fare |
+| 4 — Documenti | Cartelle sorvegliate + documento originale su richiesta | ✅ Completata |
+| 5 — Priorità | Vettori, ricerca ibrida, attivazione | 🔄 In corso |
 | 6 — Dreaming | Consolidamento coordinato | ⬜ Da fare |
 | 7 — Hardening | Offboarding, redazione, installer, altri client | ⬜ Da fare |
 
@@ -178,10 +178,33 @@ La stessa UI funziona anche dal browser con `micelio ui`.
 
 ---
 
+## Fase 4 — Documenti ✅
+
+| # | Attività | Stato |
+|---|---|---|
+| 4.1 | Cartelle di documenti in config (con flag "condivisibile", D10), CLI `micelio docs`, API, schermata Impostazioni | ✅ |
+| 4.2 | Sorveglianza con chokidar, elaborazione incrementale per hash (tabella `documents` nell'archivio privato) | ✅ |
+| 4.3 | Estrazione del testo con officeparser (PDF, DOCX, XLSX, PPTX, ODT, RTF, MD…), suddivisione in parti | ✅ |
+| 4.4 | Regole sui percorsi (rinviate dalla Fase 2): cartelle HR/contratti/… mai aperte, più regole del team (`filter.blockedPaths`) | ✅ |
+| 4.5 | Riferimento alla fonte nei ricordi (hash, nome, dimensione, tipo; mai il percorso) | ✅ |
+| 4.6 | Protocollo P2P `micelio/file/v1`: solo membri attivi (firma legata alla connessione), solo dal proprietario (D11), verifica dell'hash, cache locale di 30 giorni | ✅ |
+| 4.7 | `micelio fetch`, tool MCP `fetch_source` (percorso + testo), pulsante "Scarica l'originale" nell'app | ✅ |
+| 4.8 | Test (unità + integrazione su nodi reali con DOCX veri), team demo con documenti, documentazione | ✅ |
+
+**Esito:** 85 test del daemon + 8 della UI. Verificato anche fra daemon reali nel team demo: Bruno ha scaricato da Alice `architettura-ordini.docx`, identico byte per byte.
+
+**Problemi emersi e risolti:**
+1. **Canale di scambio file chiuso subito** (gara fra i due lati all'apertura): risolto con `protomux.pair`.
+2. **"Non sei un membro"** anche per un membro: in Hypercore 11 la chiave del feed e la chiave di firma sono diverse. Risolto con la verifica tramite manifest (DESIGN §12-bis).
+3. **Nessun documento rilevato sotto una cartella nascosta (`.demo/`):** la regola che ignora `.git` e simili si applicava all'intero percorso; ora si applica solo sotto la cartella sorvegliata.
+4. **chokidar usa "/" anche su Windows:** i confronti con i percorsi configurati fallivano. Normalizzati.
+5. **Percorsi brevi e lunghi di Windows** anche nei test: confronti sui percorsi canonici.
+
+---
+
 ## Fasi successive
 
 - **Fase 3 — UI base:** web app React servita dal daemon + guscio Electron. Canale SSE di eventi. Schermate Dashboard (nodo, peer, sincronizzazione, coda e budget LLM), Memoria, Inbox, Team, Privato, Impostazioni. Notifiche, icona nell'area di notifica, avvio automatico del daemon. Comando `micelio ui`.
-- **Fase 4 — Documenti:** watcher sulle cartelle (con il flag "scaricabili su richiesta"), estrazione PDF/DOCX/XLSX/PPTX, elaborazione incrementale per hash, stessa pipeline di filtro della Fase 2. **Documento originale su richiesta:** canale P2P dedicato, tool MCP `fetch_source`, `micelio fetch`, cache con scadenza, schermata Richieste.
 - **Fase 5 — Priorità:** embedding in un worker su richiesta, sqlite-vec, ricerca ibrida RRF, `usage.report`, attivazione, voti e pin (anche dalla UI), indicizzazione incrementale.
 - **Fase 6 — Dreaming:** elezione per epoca, consolidamento, contraddizioni, collegamenti, decadimento, diario dei sogni (schermata UI), budget.
 - **Fase 7 — Hardening:** rotazione della chiave all'offboarding, redazione, `micelio setup` per Codex, VS Code e WebStorm, shim MCP stdio, installer dell'app desktop per Windows/macOS/Linux, test su macOS, osservabilità.
@@ -202,3 +225,4 @@ La stessa UI funziona anche dal browser con `micelio ui`.
 | 2026-10-17 | Fase 2 completata: 66 test + e2e 11/11 + valutazione con Claude reale 22/22 (sensibili 8/8) + prova reale dell'hook di Claude Code (sessione tecnica → ricordo; mail di valutazione → bloccata localmente). Fase 3 proposta (decisioni D13–D16) |
 | 2026-10-17 | Decisioni D13–D16 confermate: **React** al posto di Angular, stessa repository, app desktop preferita (browser supportato), nessun installer per ora (avvio da console). Fase 3 avviata |
 | 2026-10-17 | Richiesta: home "wow" in 3D con navigazione guidata (stile ologramma) e viste 2D per scopi specifici. Fase 3 completata: UI React + app Electron, Nucleo 3D, Mappa 2D, notifiche, team demo, documentazione con catture reali. Avvio della Fase 4 in autonomia |
+| 2026-10-17 | Fase 4 completata: cartelle di documenti, regole sui percorsi, documento originale su richiesta via P2P (verificato fra daemon reali). Avvio della Fase 5 |

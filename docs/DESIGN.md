@@ -447,7 +447,11 @@ Nel brain viaggia solo la conoscenza distillata (principio 3). Per approfondire 
 - **Chi serve il file (decisione D11):** **solo il nodo proprietario**. Se è offline il documento non è disponibile. Le copie scaricate restano in una cache locale (`~/.micelio/sources/`), scadono dopo 30 giorni e **non** vengono ri-servite: se il proprietario rende una cartella non scaricabile, nessuna copia continua a circolare.
 - **Protocollo:** canale `protomux` dedicato sulle connessioni Hyperswarm esistenti (già cifrate con Noise). Il nodo proprietario verifica che la chiave del richiedente sia un membro attivo nella vista, che l'hash corrisponda a un file ancora presente e invariato in una cartella scaricabile, e poi trasmette il file a blocchi con verifica dell'hash all'arrivo.
 - **Accesso:** tool MCP `fetch_source(memoryId)`, `micelio fetch <id>`, pulsante nella UI.
-- **Fase:** 4 (documenti), insieme alle cartelle sorvegliate che creano i riferimenti.
+- **Fase:** 4 (documenti), insieme alle cartelle sorvegliate che creano i riferimenti. **Implementato** in `src/net/file-share.ts`.
+- **Dettagli emersi nell'implementazione:**
+  - In Hypercore 11 la chiave di un feed (identità del membro) è l'hash del suo *manifest*, non la chiave che firma. La richiesta porta quindi sia `writer` sia `signer`. Il proprietario verifica la firma con `signer` e controlla nel manifest del feed `writer` (che replica) che `signer` sia davvero la sua chiave di firma.
+  - Il canale va registrato con `protomux.pair` oltre che aperto: se un lato lo apre prima che l'altro sia pronto, l'apertura viene rifiutata e il canale si chiude su entrambi i lati.
+  - La firma copre l'hash della sessione Noise (`handshakeHash`) più l'hash del file, quindi non è riutilizzabile su un'altra connessione.
 
 ## 12-ter. UI di monitoraggio, controllo e decisioni
 
