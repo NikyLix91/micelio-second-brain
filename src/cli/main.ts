@@ -10,7 +10,7 @@
  *
  * Ordine dei comandi nel file = ordine in cui compaiono in `micelio --help`.
  */
-import { spawn, spawnSync } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -19,6 +19,7 @@ import { MEMORY_KINDS } from '../core/events'
 import type { MemberRecord, NodeStatus, RecallHit } from '../core/model'
 import { nodePaths, type NodePaths } from '../core/paths'
 import type { ExplicitOutcome } from '../ingest/pipeline'
+import { claudeSettingsFile, hookCommand, IntegrationError, mcpAddArgs, setupClaudeCode } from '../node/integrations'
 import type { IngestStatus } from '../node/micelio-node'
 import type { Decision, InboxItem } from '../store/private-store'
 import { DaemonClient, DaemonError } from './client'
@@ -364,43 +365,6 @@ program.command('hook')
 
 // ═══════════════════════════════ Integrazioni ═══════════════════════════════
 
-/** Cartella di configurazione di Claude Code (rispetta CLAUDE_CONFIG_DIR se impostata). */
-function claudeSettingsFile (): string {
-  return path.join(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'settings.json')
-}
-
-/** Riconosce un hook installato da Micelio (per non duplicarlo e per poterlo rimuovere). */
-const isMicelioHook = (h: any) => typeof h?.command === 'string' && h.command.includes('hook session-end') && h.command.includes('micelio')
-
-/**
- * Installa (o reinstalla) l'hook SessionEnd di Micelio in settings.json di Claude Code.
- * Preserva tutto il resto del file e ne salva una copia di backup prima di modificarlo.
- * @returns il percorso del file modificato
- */
-function installSessionEndHook (home: string): string {
-  const file = claudeSettingsFile()
-  let settings: any = {}
-  if (fs.existsSync(file)) {
-    const raw = fs.readFileSync(file, 'utf8')
-    try { settings = JSON.parse(raw) } catch { throw new DaemonError(`${file} non è JSON valido: correggilo prima di installare l'hook`) }
-    fs.writeFileSync(file + '.micelio-backup', raw)
-  }
-  // Comando con percorsi assoluti: l'hook funziona anche se `micelio` non è nel PATH.
-  // Barre "/" e virgolette: interpretabile sia da cmd che da bash.
-  const slash = (p: string) => p.replace(/\\/g, '/')
-  const command = `"${slash(process.execPath)}" "${slash(__filename)}" --home "${slash(home)}" hook session-end`
-  settings.hooks ??= {}
-  // Rimuove eventuali installazioni precedenti, poi aggiunge quella attuale.
-  const groups: any[] = (settings.hooks.SessionEnd ?? [])
-    .map((g: any) => ({ ...g, hooks: (g.hooks ?? []).filter((h: any) => !isMicelioHook(h)) }))
-    .filter((g: any) => g.hooks.length > 0)
-  groups.push({ hooks: [{ type: 'command', command, timeout: 10 }] })
-  settings.hooks.SessionEnd = groups
-  fs.mkdirSync(path.dirname(file), { recursive: true })
-  fs.writeFileSync(file, JSON.stringify(settings, null, 2))
-  return file
-}
-
 program.command('setup')
   .description('configura un client AI per usare Micelio (MCP + raccolta di fine sessione)')
   .argument('<client>', 'client da configurare: claude-code')
@@ -410,20 +374,41 @@ program.command('setup')
     if (target !== 'claude-code') throw new DaemonError(`Client non supportato: ${target}. Disponibile: claude-code`)
     const p = paths()
     const c = new DaemonClient(p)
-    const args = ['mcp', 'add', '--transport', 'http', '--scope', 'user', 'micelio', c.mcpUrl, '--header', `Authorization: Bearer ${c.config.token}`]
     if (o.print) {
+      const args = mcpAddArgs(c.mcpUrl, c.config.token)
       console.log(`claude ${args.map((a) => (/\s/.test(a) ? JSON.stringify(a) : a)).join(' ')}`)
-      if (o.hook) console.log(`+ hook SessionEnd in ${claudeSettingsFile()}`)
+      if (o.hook) console.log(`+ hook SessionEnd in ${claudeSettingsFile()}:\n  ${hookCommand(p.home)}`)
       return
     }
-    // 1) Server MCP (rimuoviamo prima un'eventuale registrazione vecchia, es. token cambiato).
-    spawnSync('claude', ['mcp', 'remove', '--scope', 'user', 'micelio'], { stdio: 'ignore' })
-    const r = spawnSync('claude', args, { stdio: 'inherit' })
-    if (r.error || r.status !== 0) throw new DaemonError('Registrazione MCP non riuscita: prova `micelio setup claude-code --print` ed esegui il comando a mano')
-    // 2) Hook di fine sessione: raccoglie solo nelle cartelle abilitate con `micelio watch add`.
-    if (o.hook) console.log(`Hook di fine sessione installato in ${installSessionEndHook(p.home)}`)
+    try {
+      // Stessa logica del pulsante nelle Impostazioni della UI (src/node/integrations.ts).
+      const r = setupClaudeCode({ mcpUrl: c.mcpUrl, token: c.config.token, home: p.home, hook: o.hook })
+      console.log(`Server MCP registrato: ${r.mcpUrl}`)
+      if (r.hookFile) console.log(`Hook di fine sessione installato in ${r.hookFile} (copia di backup accanto)`)
+    } catch (err) {
+      throw err instanceof IntegrationError ? new DaemonError(err.message + '\nProva `micelio setup claude-code --print` ed esegui i comandi a mano.') : err
+    }
     console.log('\nClaude Code configurato. Il daemon deve essere attivo (`micelio start`).')
     console.log('Abilita la raccolta automatica nei progetti con:  micelio watch add <cartella>')
+  })
+
+/**
+ * Apre la UI nel browser predefinito. Il daemon genera un link MONOUSO (valido 60 s) che
+ * consegna il token alla pagina; il token non resta nell'URL né nella cronologia.
+ * Per l'app desktop: `npm run desktop` dalla cartella del progetto.
+ */
+program.command('ui')
+  .description('apre l\'interfaccia di Micelio nel browser')
+  .option('--print', 'stampa il link senza aprire il browser')
+  .action(async (o: { print?: boolean }) => {
+    const { url } = await client().call<{ url: string }>('POST', '/api/ui/link')
+    if (o.print) return console.log(url)
+    // Comando di sistema per aprire un URL: start (Windows), open (macOS), xdg-open (Linux).
+    const [cmd, args] = process.platform === 'win32'
+      ? ['cmd', ['/c', 'start', '""', url]]
+      : [process.platform === 'darwin' ? 'open' : 'xdg-open', [url]]
+    spawn(cmd, args as string[], { detached: true, stdio: 'ignore', windowsHide: true }).unref()
+    console.log('Interfaccia aperta nel browser (il link è monouso e scade in 60 secondi).')
   })
 
 program.parseAsync().catch((err: Error) => {

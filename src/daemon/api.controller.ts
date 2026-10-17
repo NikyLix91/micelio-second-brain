@@ -7,12 +7,15 @@
  * Tutte le rotte richiedono il token (TokenGuard), tranne /api/health.
  * Gli errori diventano JSON `{ error }` tramite ErrorFilter (400 per errori dell'utente).
  */
-import { Body, Controller, Delete, Get, HttpCode, Param, Post, Query, SetMetadata } from '@nestjs/common'
+import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Post, Put, Query, SetMetadata } from '@nestjs/common'
 import { z } from 'zod'
 import { MEMORY_KINDS } from '../core/events'
+import { IntegrationError, setupClaudeCode } from '../node/integrations'
+import { UserError } from '../node/micelio-node'
+import type { DaemonOptions } from './micelio.module'
 import { MicelioService } from './micelio.service'
 import { shutdownSignal } from './shutdown'
-import { PUBLIC_ROUTE } from './tokens'
+import { DAEMON_OPTIONS, PUBLIC_ROUTE } from './tokens'
 
 // ── Schemi dei body ───────────────────────────────────────────────────────────────────
 const InitBody = z.object({ team: z.string().trim().min(1).max(100), name: z.string().trim().min(1).max(100) })
@@ -28,10 +31,20 @@ const ApproveBody = z.object({
   kind: z.enum(MEMORY_KINDS).optional(),
   tags: z.array(z.string()).max(20).optional()
 }).default({})
+/** Impostazioni LLM modificabili a caldo dalla UI. */
+const LlmSettingsBody = z.object({
+  classifyModel: z.string().min(1).max(100).optional(),
+  distillModel: z.string().min(1).max(100).optional(),
+  dailyBudget: z.number().int().min(0).max(100_000).optional()
+})
+const SetupBody = z.object({ hook: z.boolean().default(true) }).default({ hook: true })
 
 @Controller('api')
 export class ApiController {
-  constructor (private readonly micelio: MicelioService) {}
+  constructor (
+    private readonly micelio: MicelioService,
+    @Inject(DAEMON_OPTIONS) private readonly options: DaemonOptions
+  ) {}
 
   private get node () { return this.micelio.node }
 
@@ -198,5 +211,43 @@ export class ApiController {
   @Get('decisions')
   decisions (@Query('limit') limit = '50') {
     return this.node.decisions(Math.min(Math.max(Number(limit) || 50, 1), 500))
+  }
+
+  // ═══════════════════════════════ Impostazioni ═══════════════════════════════
+
+  /** Impostazioni locali (LLM, cartelle abilitate, porta). */
+  @Get('settings')
+  settings () {
+    return this.node.settings()
+  }
+
+  /** Modifica modelli e budget LLM (effetto immediato, senza riavvio). */
+  @Put('settings/llm')
+  updateLlm (@Body() body: unknown) {
+    return this.node.updateLlmSettings(LlmSettingsBody.parse(body))
+  }
+
+  /** Configurazione condivisa del team (lingua, parole chiave del filtro). */
+  @Get('team/config')
+  teamConfig () {
+    return this.node.teamConfig()
+  }
+
+  /**
+   * Configura Claude Code (MCP + hook di fine sessione) come `micelio setup claude-code`.
+   * Modifica la configurazione dell'utente: la UI chiede conferma prima di chiamarla.
+   */
+  @Post('setup/claude-code')
+  @HttpCode(200)
+  setupClaudeCode (@Body() body: unknown) {
+    const { hook } = SetupBody.parse(body ?? {})
+    const { host, port, token } = this.options.config
+    const h = host === '0.0.0.0' ? '127.0.0.1' : host
+    try {
+      return setupClaudeCode({ mcpUrl: `http://${h}:${port}/mcp`, token, home: this.options.paths.home, hook })
+    } catch (err) {
+      // Errori di configurazione (claude assente, settings.json non valido) → 400 leggibile.
+      throw err instanceof IntegrationError ? new UserError(err.message) : err
+    }
   }
 }

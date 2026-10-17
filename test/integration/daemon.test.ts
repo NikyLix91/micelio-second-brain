@@ -128,6 +128,48 @@ describe('daemon', () => {
     expect((await api('POST', '/api/inbox/inesistente/reject')).status).toBe(400)
   })
 
+  it('SSE: un cambiamento arriva come evento "change" con il suo argomento', async () => {
+    const ctrl = new AbortController()
+    const res = await fetch(`${base}/api/events`, { headers: { authorization: `Bearer ${token}` }, signal: ctrl.signal })
+    expect(res.headers.get('content-type')).toMatch(/text\/event-stream/)
+    const reader = res.body!.getReader()
+    const decoder = new TextDecoder()
+    let received = ''
+    // Legge lo stream finché non vede un evento "inbox" (o scade il tempo).
+    const waitFor = async (pattern: RegExp) => {
+      const t0 = Date.now()
+      while (!pattern.test(received) && Date.now() - t0 < 10_000) {
+        const { value } = await reader.read()
+        received += decoder.decode(value)
+      }
+    }
+    await waitFor(/event: hello/)
+    await api('POST', '/api/memories', { title: 'Evento SSE [incerto]', body: 'Questo finisce in inbox e genera un evento.' })
+    await waitFor(/"topic":"inbox"/)
+    ctrl.abort()
+    expect(received).toMatch(/event: change\ndata: \{"topic":"inbox"\}/)
+    // Pulizia: rifiuta l'elemento creato, per non alterare i conteggi dei test successivi
+    const inbox = await api('GET', '/api/inbox')
+    for (const i of inbox.data) await api('POST', `/api/inbox/${i.id}/reject`)
+  })
+
+  it('link monouso per il browser: valido una sola volta', async () => {
+    const { data } = await api('POST', '/api/ui/link')
+    const code = new URL(data.url).searchParams.get('code')
+    const first = await api('POST', '/api/ui/exchange', { code }, false)
+    expect(first.data.token).toBe(token)
+    const second = await api('POST', '/api/ui/exchange', { code }, false)
+    expect(second.status).toBe(401)
+  })
+
+  it('impostazioni LLM modificabili a caldo, con validazione', async () => {
+    const r = await api('PUT', '/api/settings/llm', { dailyBudget: 42, distillModel: 'opus' })
+    expect(r.data.llm).toMatchObject({ dailyBudget: 42, distillModel: 'opus' })
+    expect((await api('GET', '/api/ingest/status')).data.llm.budget.limit).toBe(42)
+    expect((await api('PUT', '/api/settings/llm', { dailyBudget: -1 })).status).toBe(400)
+    await api('PUT', '/api/settings/llm', { dailyBudget: 300, distillModel: 'sonnet' })
+  })
+
   it('dopo un riavvio il nodo ritrova team e ricordi', async () => {
     await app.close()
     await start()
