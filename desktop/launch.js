@@ -14,5 +14,12 @@ const electron = require('electron') // nel processo Node, `require('electron')`
 const env = { ...process.env }
 delete env.ELECTRON_RUN_AS_NODE
 
+// `npm run desktop` esegue questo script DENTRO la cartella desktop/: un MICELIO_HOME relativo
+// (es. ".demo\alice") verrebbe risolto come desktop\.demo\alice, cioè un nodo nuovo e vuoto.
+// Lo risolviamo rispetto alla cartella da cui l'utente ha lanciato il comando (INIT_CWD, impostata da npm).
+if (env.MICELIO_HOME && !path.isAbsolute(env.MICELIO_HOME)) {
+  env.MICELIO_HOME = path.resolve(process.env.INIT_CWD || process.cwd(), env.MICELIO_HOME)
+}
+
 const child = spawn(electron, [path.join(__dirname), ...process.argv.slice(2)], { stdio: 'inherit', env, windowsHide: false })
 child.on('exit', (code) => process.exit(code ?? 0))
