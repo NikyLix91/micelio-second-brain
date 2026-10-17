@@ -39,6 +39,7 @@ const LlmSettingsBody = z.object({
   distillModel: z.string().min(1).max(100).optional(),
   dailyBudget: z.number().int().min(0).max(100_000).optional()
 })
+const RedactBody = z.object({ reason: z.string().max(500).default('') }).default({ reason: '' })
 const VoteBody = z.object({ delta: z.union([z.literal(-1), z.literal(0), z.literal(1)]) })
 const SetupBody = z.object({ hook: z.boolean().default(true) }).default({ hook: true })
 
@@ -297,6 +298,20 @@ export class ApiController {
   @Get('archive')
   archived () {
     return this.node.archived()
+  }
+
+  /** Redazione di un ricordo (solo admin). */
+  @Post('memories/:id/redact')
+  @HttpCode(200)
+  async redact (@Param('id') id: string, @Body() body: unknown) {
+    await this.node.redact(id, RedactBody.parse(body ?? {}).reason)
+    return { ok: true }
+  }
+
+  /** Metriche sintetiche del nodo. */
+  @Get('metrics')
+  metrics () {
+    return this.node.metrics()
   }
 
   @Post('archive/:id/restore')

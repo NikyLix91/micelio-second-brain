@@ -290,10 +290,22 @@ async function applyEvent (ev: TeamEvent, author: string, view: any, host: any):
     }
     case 'memory.restore': {
       const m = await get<MemoryRecord>(view, KEYS.memory(ev.id))
-      if (!m || m.status === 'active') return
+      if (!m || m.status === 'active' || m.status === 'redacted') return
       const { supersededBy, statusReason, ...rest } = m
       void supersededBy; void statusReason
       await view.put(KEYS.memory(ev.id), { ...rest, status: 'active' })
+      return
+    }
+
+    // ── memory.redact ────────────────────────────────────────────────────────────────
+    // Solo admin. Titolo e corpo vengono sostituiti: nessun nodo li mostrerà più, e lo stato
+    // "redacted" non si può ripristinare (restore ignora i ricordi redatti).
+    case 'memory.redact': {
+      if (!isAdmin) return
+      const m = await get<MemoryRecord>(view, KEYS.memory(ev.id))
+      if (!m || m.status === 'redacted') return
+      await view.put(KEYS.memory(ev.id), { ...m, title: '[contenuto rimosso]', body: '', tags: [], status: 'redacted', statusReason: ev.reason })
+      await view.del(KEYS.pin(ev.id))
       return
     }
 

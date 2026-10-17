@@ -32,7 +32,7 @@ export interface MemoryRecord {
    * (`supersededBy`); 'archived' è decaduto o obsoleto. Gli ultimi due restano come storico e si
    * possono ripristinare.
    */
-  status: 'active' | 'superseded' | 'archived'
+  status: 'active' | 'superseded' | 'archived' | 'redacted'
   supersededBy?: string
   /** Motivo dell'archiviazione o della sostituzione. */
   statusReason?: string

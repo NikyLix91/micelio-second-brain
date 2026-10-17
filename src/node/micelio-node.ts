@@ -447,9 +447,41 @@ export class MicelioNode extends EventEmitter {
     return [...this.inactive].sort((a, b) => b.ts - a.ts)
   }
 
+  /**
+   * Redazione (solo admin): toglie dalla vista di tutti il contenuto di un ricordo pubblicato per
+   * errore (es. un dato sensibile sfuggito al filtro). Limite intrinseco: chi l'aveva già letto
+   * o esportato ne conserva una copia, e i blocchi cifrati restano nei log replicati.
+   */
+  async redact (id: string, reason: string): Promise<void> {
+    await this.requireAdmin()
+    const rec = this.requireMemory(id)
+    await this.requireTeam().append({ type: 'memory.redact', id: rec.id, reason: reason || 'rimosso da un admin' })
+    await this.sync()
+  }
+
+  /** Metriche sintetiche del nodo (per monitoraggio esterno o diagnostica). */
+  async metrics (): Promise<Record<string, unknown>> {
+    const s = await this.status()
+    const ingest = await this.ingestStatus()
+    return {
+      uptimeSeconds: Math.round(process.uptime()),
+      memoryRssMb: Math.round(process.memoryUsage().rss / 1024 / 1024),
+      peers: s.peers,
+      members: s.members,
+      memories: s.memories,
+      archived: this.inactive.length,
+      inbox: ingest.inbox,
+      jobs: ingest.jobs,
+      documents: this.documentStats(),
+      llmCallsToday: ingest.llm?.budget.used ?? 0,
+      llmBudget: ingest.llm?.budget.limit ?? 0,
+      dreams: this.team ? (await this.team.dreamLogs()).length : 0
+    }
+  }
+
   /** Ripristina un ricordo archiviato o sostituito. */
   async restore (id: string): Promise<void> {
-    const m = this.inactive.find((x) => x.id === id || x.id.startsWith(id.toLowerCase()))
+    const m = this.inactive.find((x) => (x.id === id || x.id.startsWith(id.toLowerCase())) && x.status !== 'redacted')
     if (!m) throw new UserError(`Nessun ricordo archiviato con id ${id}`)
     await this.requireTeam().append({ type: 'memory.restore', id: m.id })
     await this.sync()

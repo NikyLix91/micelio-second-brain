@@ -172,6 +172,18 @@ describe('daemon', () => {
     await api('PUT', '/api/settings/llm', { dailyBudget: 300, distillModel: 'sonnet' })
   })
 
+  it('Fase 7: metriche e redazione (admin)', async () => {
+    const m = await api('GET', '/api/metrics')
+    expect(m.data).toMatchObject({ members: 1 })
+    expect(typeof m.data.uptimeSeconds).toBe('number')
+    const r = await api('POST', '/api/memories', { title: 'Ricordo da redigere per errore', body: 'Contenuto pubblicato per sbaglio nel team.' })
+    expect(r.data.outcome).toBe('team')
+    expect((await api('POST', `/api/memories/${r.data.id}/redact`, { reason: 'errore' })).status).toBe(200)
+    expect((await api('GET', '/api/memories/search?q=redigere')).data).toEqual([])
+    // Ripristino non permesso per un ricordo redatto
+    expect((await api('POST', `/api/archive/${r.data.id}/restore`)).status).toBe(400)
+  })
+
   it('dopo un riavvio il nodo ritrova team e ricordi', async () => {
     await app.close()
     await start()

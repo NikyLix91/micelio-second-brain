@@ -107,6 +107,11 @@ export const TeamEvent = z.discriminatedUnion('type', [
   z.object({ ...base, type: z.literal('dream.claim'), epoch: z.string().min(1).max(40) }),
   /** Diario del sogno: cosa è stato consolidato, archiviato, collegato. */
   z.object({ ...base, type: z.literal('dream.complete'), epoch: z.string().min(1).max(40), summary: z.string().max(4000), stats: z.record(z.string(), z.number()) }),
+  /**
+   * Redazione (solo admin, DESIGN §10.3): il contenuto di un ricordo finito per errore nel team
+   * viene tolto dalla vista di tutti i nodi. Best-effort: i blocchi cifrati del log restano.
+   */
+  z.object({ ...base, type: z.literal('memory.redact'), id: z.string().regex(/^[0-9a-f]{64}$/), reason: z.string().max(500) }),
   /** Configurazione condivisa del team, es. `memory.language` (solo admin). */
   z.object({ ...base, type: z.literal('team.config'), key: z.string().min(1).max(100), value: z.unknown() })
 ])

@@ -270,6 +270,16 @@ program.command('archive').description('ricordi archiviati o sostituiti (storico
     if (!list.length) return console.log('Archivio vuoto')
     for (const m of list) console.log(`[${m.status === 'superseded' ? 'sostituito' : 'archiviato'}] id:${m.id.slice(0, 12)} ${m.title}\n   ↳ ${m.statusReason ?? ''}`)
   })
+program.command('redact').description('rimuove il contenuto di un ricordo per tutto il team (solo admin; non reversibile)')
+  .argument('<id>').option('-r, --reason <motivo>', 'motivo, visibile nell\'archivio', '')
+  .action(async (id: string, o: { reason: string }) => {
+    await client().call('POST', `/api/memories/${encodeURIComponent(id)}/redact`, { reason: o.reason })
+    console.log('Contenuto rimosso per tutto il team. Nota: chi l\'aveva già letto o esportato ne conserva una copia.')
+  })
+
+program.command('metrics').description('metriche sintetiche del nodo (JSON)')
+  .action(async () => console.log(JSON.stringify(await client().call('GET', '/api/metrics'), null, 2)))
+
 program.command('restore').description('ripristina un ricordo archiviato o sostituito').argument('<id>')
   .action(async (id: string) => { await client().call('POST', `/api/archive/${encodeURIComponent(id)}/restore`); console.log('Ripristinato') })
 
@@ -431,13 +441,51 @@ program.command('hook')
 
 // ═══════════════════════════════ Integrazioni ═══════════════════════════════
 
+/**
+ * Server MCP su stdio (shim verso il daemon): per i client che lanciano i server MCP come
+ * processo. NON stampare nulla su stdout qui: è il canale del protocollo.
+ */
+program.command('mcp')
+  .description('server MCP su stdio (per client che non supportano HTTP): inoltra al daemon')
+  .action(async () => {
+    const c = client()
+    const { runStdioProxy } = require('../mcp/stdio-proxy') as typeof import('../mcp/stdio-proxy')
+    await runStdioProxy(c.mcpUrl, c.config.token)
+  })
+
+/** Configurazioni pronte da incollare per i client MCP diversi da Claude Code (Fase 7). */
+function clientSnippet (target: string, home: string): string | null {
+  const slash = (p: string) => p.replace(/\\/g, '/')
+  const cmd = slash(process.execPath)
+  const args = [slash(__filename), '--home', slash(home), 'mcp']
+  switch (target) {
+    case 'codex':
+      return `# ~/.codex/config.toml\n[mcp_servers.micelio]\ncommand = ${JSON.stringify(cmd)}\nargs = ${JSON.stringify(args)}\n`
+    case 'vscode':
+      return `// .vscode/mcp.json (progetto) oppure "mcp" nelle impostazioni utente di VS Code\n${JSON.stringify({ servers: { micelio: { type: 'stdio', command: cmd, args } } }, null, 2)}\n`
+    case 'webstorm':
+    case 'jetbrains':
+      return `// Impostazioni → Strumenti → AI Assistant → Model Context Protocol (MCP) → aggiungi da JSON\n${JSON.stringify({ mcpServers: { micelio: { command: cmd, args } } }, null, 2)}\n`
+    default:
+      return null
+  }
+}
+
 program.command('setup')
   .description('configura un client AI per usare Micelio (MCP + raccolta di fine sessione)')
-  .argument('<client>', 'client da configurare: claude-code')
+  .argument('<client>', 'claude-code (configura) | codex | vscode | webstorm (stampa la configurazione da incollare)')
   .option('--print', 'mostra cosa verrebbe fatto senza modificare nulla')
   .option('--no-hook', 'non installare l\'hook di fine sessione (solo MCP)')
   .action((target: string, o: { print?: boolean, hook: boolean }) => {
-    if (target !== 'claude-code') throw new DaemonError(`Client non supportato: ${target}. Disponibile: claude-code`)
+    if (target !== 'claude-code') {
+      // Per gli altri client stampiamo la configurazione da incollare: i loro file di configurazione
+      // cambiano spesso formato fra una versione e l'altra, meglio non modificarli alla cieca.
+      const snippet = clientSnippet(target, paths().home)
+      if (!snippet) throw new DaemonError(`Client non supportato: ${target}. Disponibili: claude-code, codex, vscode, webstorm`)
+      console.log(snippet)
+      console.log('Il daemon deve essere attivo (`micelio start`). Lo shim `micelio mcp` inoltra le richieste al daemon.')
+      return
+    }
     const p = paths()
     const c = new DaemonClient(p)
     if (o.print) {

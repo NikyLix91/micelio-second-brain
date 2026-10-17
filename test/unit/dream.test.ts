@@ -88,6 +88,16 @@ describe('apply: eventi del dreaming', () => {
     expect(view.data.get(KEYS.memory(M2))).toEqual(mem(M2))
   })
 
+  it('redazione: solo un admin; il contenuto sparisce e non si ripristina', async () => {
+    const view = await setup()
+    await applyNodes([node(B, { type: 'memory.redact', id: M1, reason: 'tentativo da membro' })], view, host)
+    expect(view.data.get(KEYS.memory(M1)).status).toBe('active') // B non è admin
+    await applyNodes([node(A, { type: 'memory.redact', id: M1, reason: 'dato sensibile' })], view, host)
+    expect(view.data.get(KEYS.memory(M1))).toMatchObject({ status: 'redacted', title: '[contenuto rimosso]', body: '' })
+    await applyNodes([node(A, { type: 'memory.restore', id: M1 })], view, host)
+    expect(view.data.get(KEYS.memory(M1)).status).toBe('redacted')
+  })
+
   it('un\'epoca ha un solo sognatore: vale la prima rivendicazione, e il diario solo da lui', async () => {
     const view = await setup()
     await applyNodes([

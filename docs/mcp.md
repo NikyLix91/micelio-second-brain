@@ -51,7 +51,19 @@ claude --mcp-config '{"mcpServers":{"micelio":{"type":"http","url":"http://127.0
 
 ### Altri client (Codex CLI, VS Code, WebStorm)
 
-`micelio setup` per questi client è previsto in Fase 7. Nel frattempo, ogni client che supporta MCP su HTTP si configura a mano con lo stesso URL e lo stesso header.
+Per i client che lanciano i server MCP come **processo** (stdio), Micelio ha uno shim: `micelio mcp`. Espone su stdio gli stessi tool del daemon e inoltra ogni richiesta all'endpoint HTTP locale, quindi il daemon deve essere attivo.
+
+`micelio setup` stampa la configurazione già pronta, con i percorsi della tua macchina, da incollare nel client:
+
+```bash
+micelio setup codex      # blocco per ~/.codex/config.toml
+micelio setup vscode     # blocco per .vscode/mcp.json o impostazioni utente
+micelio setup webstorm   # JSON per AI Assistant → Model Context Protocol (anche altri IDE JetBrains)
+```
+
+Per questi client Micelio non modifica i file di configurazione: i loro formati cambiano spesso fra una versione e l'altra. Lo shim è verificato con un client MCP stdio reale. Le tre configurazioni seguono i formati documentati dai rispettivi client, ma non sono state provate dentro Codex, VS Code e WebStorm, che non erano disponibili.
+
+I client che supportano MCP su HTTP possono anche collegarsi direttamente all'URL del daemon con l'header del token.
 
 ## Sicurezza
 

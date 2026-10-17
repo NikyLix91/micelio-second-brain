@@ -1,7 +1,7 @@
 # Micelio — Piano di lavoro
 
 > Documento vivo: viene aggiornato a ogni avanzamento. Design di riferimento: [DESIGN.md](DESIGN.md). Indice della documentazione: [README.md](README.md).
-> Ultimo aggiornamento: **2026-10-17**. Fase 6 completata, Fase 7 in corso (lavoro in autonomia).
+> Ultimo aggiornamento: **2026-10-17**. Fasi 0–6 completate, Fase 7 parziale. In attesa di revisione dopo il lavoro in autonomia.
 
 ## Stato
 
@@ -245,8 +245,19 @@ La stessa UI funziona anche dal browser con `micelio ui`.
 
 ---
 
-## Fasi successive
-- **Fase 7 — Hardening:** rotazione della chiave all'offboarding, redazione, `micelio setup` per Codex, VS Code e WebStorm, shim MCP stdio, installer dell'app desktop per Windows/macOS/Linux, test su macOS, osservabilità.
+## Fase 7 — Hardening 🔄 (parziale)
+
+| # | Attività | Stato |
+|---|---|---|
+| 7.1 | Shim MCP stdio (`micelio mcp`): inoltra al daemon, verificato con un client MCP stdio reale | ✅ |
+| 7.2 | `micelio setup codex / vscode / webstorm`: stampa la configurazione da incollare (formati documentati dai client, non provati nei client stessi) | ✅ |
+| 7.3 | Redazione (`memory.redact`, solo admin, non ripristinabile) via CLI e API | ✅ |
+| 7.4 | Metriche (`micelio metrics`, `GET /api/metrics`) | ✅ |
+| 7.5 | **Rotazione della chiave di team all'offboarding** | ⬜ Da fare: richiede di creare una nuova Autobase cifrata con una chiave nuova e migrare i membri rimasti; lavoro delicato, da progettare insieme |
+| 7.6 | **Eliminazione locale dei blocchi redatti** (oltre alla vista) | ⬜ Da fare |
+| 7.7 | **Installer dell'app desktop** (Windows/macOS/Linux) e avvio all'accesso | ⬜ Rinviato per decisione D16 |
+| 7.8 | **Test su macOS** e prova reale con Codex, VS Code e WebStorm | ⬜ Serve una macchina macOS e i client installati |
+| 7.9 | **Set di valutazione del dreaming** con Claude reale (come quello della Fase 2) | ⬜ Da fare prima di attivare il dreaming su un team vero |
 
 ---
 
@@ -267,3 +278,4 @@ La stessa UI funziona anche dal browser con `micelio ui`.
 | 2026-10-17 | Fase 4 completata: cartelle di documenti, regole sui percorsi, documento originale su richiesta via P2P (verificato fra daemon reali). Avvio della Fase 5 |
 | 2026-10-17 | Fase 5 completata: attivazione, ricerca ibrida con embedding locali, voti, pin, uso condiviso (G-Counter), collegamenti semantici. Avvio della Fase 6 |
 | 2026-10-17 | Fase 6 completata: dreaming coordinato (fusioni, superati, collegamenti, decadimento, diario, archivio). Avvio della Fase 7 |
+| 2026-10-17 | Fase 7 parziale: shim MCP stdio, configurazioni per Codex/VS Code/WebStorm, redazione, metriche. Restano rotazione della chiave, installer, test su macOS e valutazione del dreaming |

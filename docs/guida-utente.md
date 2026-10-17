@@ -286,6 +286,30 @@ micelio members                 # albero degli inviti: chi ha invitato chi
 micelio members remove pc-x     # solo admin
 ```
 
+### Redazione (solo admin)
+
+Se un dato sensibile è arrivato al team per errore:
+
+```bash
+micelio redact <id> --reason "conteneva un dato di un cliente"
+```
+
+Titolo e contenuto spariscono dalla vista di tutti i nodi e il ricordo non si può ripristinare.
+
+**Limite:** chi l'aveva già letto, esportato o scaricato ne conserva una copia, e i blocchi cifrati restano nei log replicati. Per questo la difesa principale resta il filtro in ingresso.
+
+### Metriche
+
+`micelio metrics` (o `GET /api/metrics`) restituisce in JSON:
+- uptime e memoria del processo;
+- peer, membri, ricordi e archiviati;
+- inbox, coda e documenti;
+- chiamate LLM di oggi e numero di sogni.
+
+Utile per la diagnostica o per un monitoraggio esterno.
+
+### Espulsioni
+
 Un membro espulso non può più scrivere nel team. **Limite intrinseco:** ciò che aveva già ricevuto resta sulla sua macchina. La rotazione della chiave per proteggere il sapere futuro è prevista in Fase 7.
 
 ## 13. Risoluzione problemi
