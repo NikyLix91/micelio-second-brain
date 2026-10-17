@@ -2,12 +2,12 @@
  * @file Pannello di dettaglio di un ricordo, condiviso dalle viste a grafo (Nucleo 3D, Mappa 2D).
  * Il corpo si carica al momento dell'apertura (il grafo contiene solo titolo e metadati).
  */
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { api, type GraphNode } from '../api/client'
 import { dateTime, KIND_LABEL, short } from '../format'
 import { authorColor } from '../pages/colors'
-import { Card, Empty, ErrorBox, Markdown } from './ui'
+import { Card, Empty, ErrorBox, Markdown, Meter } from './ui'
 
 /**
  * Riquadro "documento originale" (Fase 4): il ricordo è stato distillato da un documento, che si
@@ -33,6 +33,31 @@ function SourceBox ({ id, name, size }: { id: string, name: string, size?: numbe
   )
 }
 
+/**
+ * Priorità del ricordo (Fase 5): attivazione, usi, voti e pin. I voti e il pin sono segnali per
+ * tutto il team: i ricordi utili salgono nelle ricerche, quelli fissati non decadono mai.
+ */
+function Signals ({ id, activation, votes, uses, pinned }: { id: string, activation: number, votes: number, uses: number, pinned: boolean }) {
+  const client = useQueryClient()
+  const refresh = () => { void client.invalidateQueries({ queryKey: ['memories'] }); void client.invalidateQueries({ queryKey: ['graph'] }) }
+  const vote = useMutation({ mutationFn: (d: -1 | 0 | 1) => api.vote(id, d), onSuccess: refresh })
+  const pin = useMutation({ mutationFn: () => api.pin(id, !pinned), onSuccess: refresh })
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div className='row small'><span>Attivazione</span><span className='spacer' /><span>{Math.round(activation * 100)}%</span></div>
+      <Meter value={activation} max={1} />
+      <div className='row small' style={{ marginTop: 8 }}>
+        <span className='muted'>{uses} usi · voti {votes > 0 ? '+' : ''}{votes}</span>
+        <span className='spacer' />
+        <button className='btn small' title='Utile' onClick={() => vote.mutate(1)}>👍</button>
+        <button className='btn small' title='Fuorviante o obsoleto' onClick={() => vote.mutate(-1)}>👎</button>
+        <button className={`btn small ${pinned ? 'primary' : ''}`} title={pinned ? 'Sblocca' : 'Fissa: non decade e non viene archiviato'} onClick={() => pin.mutate()}>📌</button>
+      </div>
+      <ErrorBox error={vote.error ?? pin.error} />
+    </div>
+  )
+}
+
 export function MemoryPanel ({ node, onClose }: { node: GraphNode, onClose: () => void }) {
   const full = useQuery({ queryKey: ['memories', 'one', node.id], queryFn: () => api.memory(node.id) })
   return (
@@ -46,6 +71,7 @@ export function MemoryPanel ({ node, onClose }: { node: GraphNode, onClose: () =
         <dt>Autore</dt><dd><span className='dot' style={{ background: authorColor(node.author), marginRight: 6 }} />{node.authorName ?? short(node.author)}</dd>
         <dt>Scritto il</dt><dd>{dateTime(node.ts)}</dd>
       </dl>
+      {full.data && <Signals id={node.id} activation={full.data.activation ?? 0} votes={full.data.votes ?? 0} uses={full.data.uses ?? 0} pinned={!!full.data.pinned} />}
       {full.data?.source?.type === 'document' && <SourceBox id={node.id} name={full.data.source.name ?? 'documento'} size={full.data.source.size} />}
       <p className='small' style={{ marginBottom: 0 }}><Link to='/memoria'>Apri nella ricerca →</Link></p>
     </Card>

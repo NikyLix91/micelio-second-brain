@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import createTestnet from 'hyperdht/testnet'
 import { nodePaths } from '../src/core/paths'
+import { HashEmbedder } from '../src/embed/embedder'
 import { FakeAdapter } from '../src/llm/fake'
 import type { ExplicitOutcome } from '../src/ingest/pipeline'
 import { MicelioNode } from '../src/node/micelio-node'
@@ -24,6 +25,8 @@ export function makeNode (label: string, bootstrap: { host: string, port: number
     materializeDelayMs: 50,
     // LLM finto e deterministico: i test non consumano l'abbonamento e non dipendono dalla rete.
     llm: new FakeAdapter(),
+    // Embedder finto: i test non scaricano il modello (130 MB) e restano deterministici.
+    embedder: new HashEmbedder(),
     log: verbose ? (m) => console.log(`[${label}] ${m}`) : undefined
   })
   return { node, home }

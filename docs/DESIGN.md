@@ -330,7 +330,7 @@ Ricerca ibrida:
 
 I ricordi `archived`, `superseded` e `redacted` sono esclusi di default (`include_archived` per includerli).
 
-**Embedding locali** con `@huggingface/transformers` (transformers.js) e un modello multilingue piccolo (es. `multilingual-e5-small`). Restano locali, quindi coerenti con il vincolo "niente API". Il modello è fissato in `team.config`, così tutti i nodi calcolano vettori confrontabili. Se il modello cambia, ogni nodo reindicizza localmente.
+**Embedding locali** (implementati in Fase 5, `src/embed/`) con transformers.js e `multilingual-e5-small`, in un worker thread. Restano locali, quindi coerenti con il vincolo "niente API". Il nome del modello è salvato accanto a ogni vettore: se cambia, i vettori vengono ricalcolati. La ricerca vettoriale è esaustiva in JavaScript (niente sqlite-vec: con migliaia di ricordi costa millisecondi e non serve un’estensione nativa).
 
 Misure dello spike C (`Xenova/multilingual-e5-small`, quantizzato q8, Windows):
 

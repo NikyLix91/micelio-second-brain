@@ -1,7 +1,7 @@
 # Micelio — Piano di lavoro
 
 > Documento vivo: viene aggiornato a ogni avanzamento. Design di riferimento: [DESIGN.md](DESIGN.md). Indice della documentazione: [README.md](README.md).
-> Ultimo aggiornamento: **2026-10-17**. Fase 4 completata, Fase 5 in corso (lavoro in autonomia).
+> Ultimo aggiornamento: **2026-10-17**. Fase 5 completata, Fase 6 in corso (lavoro in autonomia).
 
 ## Stato
 
@@ -12,8 +12,8 @@
 | 2 — Ingestione AI | Raccolta automatica con filtro privacy | ✅ Completata |
 | 3 — UI base | App desktop di monitoraggio, controllo e decisioni (React + Electron) | ✅ Completata |
 | 4 — Documenti | Cartelle sorvegliate + documento originale su richiesta | ✅ Completata |
-| 5 — Priorità | Vettori, ricerca ibrida, attivazione | 🔄 In corso |
-| 6 — Dreaming | Consolidamento coordinato | ⬜ Da fare |
+| 5 — Priorità | Vettori, ricerca ibrida, attivazione | ✅ Completata |
+| 6 — Dreaming | Consolidamento coordinato | 🔄 In corso |
 | 7 — Hardening | Offboarding, redazione, installer, altri client | ⬜ Da fare |
 
 ---
@@ -202,10 +202,31 @@ La stessa UI funziona anche dal browser con `micelio ui`.
 
 ---
 
+## Fase 5 — Priorità ✅
+
+| # | Attività | Stato |
+|---|---|---|
+| 5.1 | Eventi `memory.vote`, `memory.pin`/`unpin`, `usage.report` (G-Counter: si tiene il massimo per nodo) | ✅ |
+| 5.2 | Attivazione (DESIGN §8.2): recency con emivita per tipo, usi, voti, collegamenti, pin | ✅ |
+| 5.3 | Embedding locali in un worker thread (multilingual-e5-small), caricati su richiesta e scaricati dopo 10 minuti; calcolo in background dei vettori mancanti | ✅ |
+| 5.4 | Ricerca ibrida: BM25 + coseno con soglia per modello, fusione RRF, peso dell'attivazione | ✅ |
+| 5.5 | Contatori d'uso locali pubblicati ogni 30 minuti e alla chiusura | ✅ |
+| 5.6 | Collegamenti semantici nella costellazione; nel Nucleo stelle più grandi e dorate per i ricordi più vivi | ✅ |
+| 5.7 | `micelio vote/pin/unpin`, tool MCP `vote`, 👍 👎 📌 e attivazione nell'app | ✅ |
+| 5.8 | Test (unità: attivazione, RRF, G-Counter; integrazione: voti/uso/pin propagati, collegamenti semantici) e documentazione | ✅ |
+
+**Esito:** 98 test del daemon + 8 della UI. Embedder vero verificato dal codice compilato: modello scaricato una volta (130 MB, cache condivisa), "quale ORM usare per un nuovo microservizio" trova il ricordo su Drizzle.
+
+**Scelte e problemi:**
+1. **Niente sqlite-vec:** la ricerca vettoriale è esaustiva in JavaScript. Con qualche migliaio di ricordi da 384 dimensioni costa millisecondi, e non introduce un'estensione nativa da distribuire su tre sistemi operativi. Da rivalutare oltre ~50.000 ricordi.
+2. **Il worker teneva il processo "staccato" anche con richieste aperte:** fuori dal daemon il processo terminava prima della risposta. Ora resta agganciato finché ci sono richieste.
+3. **Soglia semantica dipendente dal modello:** e5 ha punteggi compressi fra 0,8 e 0,9 (spike C), quindi la soglia è 0,83. L'embedder finto dei test usa 0,3.
+4. **Test, e2e e demo usano l'embedder finto** (`MICELIO_EMBEDDER=hash`): veloce, deterministico, senza download. In produzione il default è quello vero.
+
+---
+
 ## Fasi successive
 
-- **Fase 3 — UI base:** web app React servita dal daemon + guscio Electron. Canale SSE di eventi. Schermate Dashboard (nodo, peer, sincronizzazione, coda e budget LLM), Memoria, Inbox, Team, Privato, Impostazioni. Notifiche, icona nell'area di notifica, avvio automatico del daemon. Comando `micelio ui`.
-- **Fase 5 — Priorità:** embedding in un worker su richiesta, sqlite-vec, ricerca ibrida RRF, `usage.report`, attivazione, voti e pin (anche dalla UI), indicizzazione incrementale.
 - **Fase 6 — Dreaming:** elezione per epoca, consolidamento, contraddizioni, collegamenti, decadimento, diario dei sogni (schermata UI), budget.
 - **Fase 7 — Hardening:** rotazione della chiave all'offboarding, redazione, `micelio setup` per Codex, VS Code e WebStorm, shim MCP stdio, installer dell'app desktop per Windows/macOS/Linux, test su macOS, osservabilità.
 
@@ -226,3 +247,4 @@ La stessa UI funziona anche dal browser con `micelio ui`.
 | 2026-10-17 | Decisioni D13–D16 confermate: **React** al posto di Angular, stessa repository, app desktop preferita (browser supportato), nessun installer per ora (avvio da console). Fase 3 avviata |
 | 2026-10-17 | Richiesta: home "wow" in 3D con navigazione guidata (stile ologramma) e viste 2D per scopi specifici. Fase 3 completata: UI React + app Electron, Nucleo 3D, Mappa 2D, notifiche, team demo, documentazione con catture reali. Avvio della Fase 4 in autonomia |
 | 2026-10-17 | Fase 4 completata: cartelle di documenti, regole sui percorsi, documento originale su richiesta via P2P (verificato fra daemon reali). Avvio della Fase 5 |
+| 2026-10-17 | Fase 5 completata: attivazione, ricerca ibrida con embedding locali, voti, pin, uso condiviso (G-Counter), collegamenti semantici. Avvio della Fase 6 |

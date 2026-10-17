@@ -7,7 +7,7 @@ x-node: &node
   restart: "no"
   stop_grace_period: 10s
   # Nei container non c'è Claude Code: LLM finto e deterministico (vedi src/llm/fake.ts).
-  environment: { MICELIO_LLM_ADAPTER: fake }
+  environment: { MICELIO_LLM_ADAPTER: fake, MICELIO_EMBEDDER: hash }
 
 services:
   node1: { <<: *node, hostname: node1 }

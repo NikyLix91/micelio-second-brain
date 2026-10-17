@@ -407,6 +407,35 @@ export class TeamNode extends EventEmitter {
     return this.scan<MemoryRecord>(RANGES.memories)
   }
 
+  /** Voti per ricordo: somma dei voti di tutti i nodi. */
+  async votes (): Promise<Map<string, number>> {
+    const out = new Map<string, number>()
+    for await (const { key, value } of this.base.view.createReadStream(RANGES.votes)) {
+      const id = String(key).split('/')[1]
+      out.set(id, (out.get(id) ?? 0) + (value as { delta: number }).delta)
+    }
+    return out
+  }
+
+  /** Ricordi fissati (id). */
+  async pins (): Promise<Set<string>> {
+    const out = new Set<string>()
+    for await (const { key } of this.base.view.createReadStream(RANGES.pins)) out.add(String(key).split('/')[1])
+    return out
+  }
+
+  /** Uso per ricordo, sommato su tutti i nodi: totale e ultimo utilizzo. */
+  async usage (): Promise<Map<string, { count: number, last: number }>> {
+    const out = new Map<string, { count: number, last: number }>()
+    for await (const { key, value } of this.base.view.createReadStream(RANGES.usage)) {
+      const id = String(key).split('/')[1]
+      const v = value as { count: number, last: number }
+      const prev = out.get(id) ?? { count: 0, last: 0 }
+      out.set(id, { count: prev.count + v.count, last: Math.max(prev.last, v.last) })
+    }
+    return out
+  }
+
   /** Inviti non ancora usati né annullati. */
   async invites (): Promise<InviteRecord[]> {
     return this.scan<InviteRecord>(RANGES.invites)

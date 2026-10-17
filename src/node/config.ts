@@ -49,6 +49,14 @@ const WatchConfig = z.object({
   documents: z.array(z.object({ path: z.string(), shareable: z.boolean().default(false) })).default([])
 }).prefault({}) // prefault: il default {} passa dal parse, così si applicano i default interni
 
+/** Embedding per la ricerca semantica (Fase 5). */
+const EmbeddingsConfig = z.object({
+  /** "local" = modello vero in locale (consigliato); "hash" = finto, solo test/demo; "none" = solo parole chiave. */
+  adapter: z.enum(['local', 'hash', 'none']).default('local'),
+  /** Modello: deve essere lo stesso su tutti i nodi del team, altrimenti i vettori non sono confrontabili. */
+  model: z.string().default('Xenova/multilingual-e5-small')
+}).prefault({})
+
 const Config = z.object({
   /** Interfaccia di ascolto: 127.0.0.1 (solo questa macchina); 0.0.0.0 nei container. */
   host: z.string().default('127.0.0.1'),
@@ -56,7 +64,8 @@ const Config = z.object({
   /** Token per l'API locale e per MCP. Persistente, così la configurazione dei client resta valida. */
   token: z.string().min(32),
   llm: LlmConfig,
-  watch: WatchConfig
+  watch: WatchConfig,
+  embeddings: EmbeddingsConfig
 })
 export type Config = z.infer<typeof Config>
 
@@ -101,6 +110,9 @@ export function loadConfig (paths: NodePaths): Config {
   if (process.env.MICELIO_PORT) cfg.port = Number(process.env.MICELIO_PORT)
   const adapter = process.env.MICELIO_LLM_ADAPTER
   if (adapter === 'claude' || adapter === 'none' || adapter === 'fake') cfg.llm.adapter = adapter
+  // MICELIO_EMBEDDER: local | hash | none (test, e2e, demo)
+  const emb = process.env.MICELIO_EMBEDDER
+  if (emb === 'local' || emb === 'hash' || emb === 'none') cfg.embeddings.adapter = emb
   return cfg
 }
 

@@ -25,6 +25,8 @@ export interface GraphNode {
   author: string
   authorName: string | null
   ts: number
+  /** Attivazione 0..1 (Fase 5), aggiunta dal nodo: i ricordi più "vivi" brillano di più. */
+  activation?: number
 }
 
 export interface GraphLink {

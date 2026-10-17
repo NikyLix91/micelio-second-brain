@@ -18,6 +18,13 @@ import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import type { MemberRecord, MemoryRecord, RecallHit } from '../core/model'
 
+/** Segnali di priorità letti dalla vista (Fase 5). */
+export interface Signals {
+  votes: Map<string, number>
+  pins: Set<string>
+  usage: Map<string, { count: number, last: number }>
+}
+
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS memories (
   id TEXT PRIMARY KEY,
@@ -36,6 +43,11 @@ CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
   tokenize='unicode61 remove_diacritics 2'
 );
 CREATE TABLE IF NOT EXISTS members (key TEXT PRIMARY KEY, name TEXT NOT NULL);
+-- Fase 5: vettori di significato (embedding), calcolati in locale. NON vengono cancellati a ogni
+-- ricostruzione (calcolarli costa): si eliminano solo quelli di ricordi non più presenti.
+CREATE TABLE IF NOT EXISTS vectors (id TEXT PRIMARY KEY, model TEXT NOT NULL, vec BLOB NOT NULL);
+-- Fase 5: segnali di priorità del team, copiati dalla vista a ogni ricostruzione.
+CREATE TABLE IF NOT EXISTS signals (id TEXT PRIMARY KEY, uses INTEGER NOT NULL, last_used INTEGER, votes INTEGER NOT NULL, pinned INTEGER NOT NULL);
 `
 
 /**
@@ -65,7 +77,7 @@ export class MemoryIndex {
    * riordina la storia. Con qualche migliaio di ricordi costa decine di millisecondi; un
    * aggiornamento incrementale è previsto in Fase 5.
    */
-  rebuild (memories: MemoryRecord[], members: MemberRecord[]): void {
+  rebuild (memories: MemoryRecord[], members: MemberRecord[], signals?: Signals): void {
     this.db.exec('BEGIN')
     try {
       // 'delete-all' è il comando FTS5 per svuotare un indice external-content.
@@ -80,6 +92,15 @@ export class MemoryIndex {
       }
       const insU = this.db.prepare('INSERT INTO members (key, name) VALUES (?, ?)')
       for (const u of members) insU.run(u.key, u.name)
+      // Segnali di priorità (Fase 5)
+      this.db.exec('DELETE FROM signals')
+      const insS = this.db.prepare('INSERT INTO signals (id, uses, last_used, votes, pinned) VALUES (?, ?, ?, ?, ?)')
+      for (const m of memories) {
+        const u = signals?.usage.get(m.id)
+        insS.run(m.id, u?.count ?? 0, u?.last ?? null, signals?.votes.get(m.id) ?? 0, signals?.pins.has(m.id) ? 1 : 0)
+      }
+      // Vettori di ricordi non più presenti
+      this.db.exec('DELETE FROM vectors WHERE id NOT IN (SELECT id FROM memories)')
       this.db.exec('COMMIT')
     } catch (err) {
       this.db.exec('ROLLBACK')
@@ -122,6 +143,53 @@ export class MemoryIndex {
       SELECT m.*, u.name AS authorName FROM memories m LEFT JOIN members u ON u.key = m.author
       WHERE m.id = ? OR m.id LIKE ? LIMIT 1`).get(id, `${id}%`) as any
     return r ? { ...rowToHit(r), score: 0 } : null
+  }
+
+  // ═══════════════════════════════ Fase 5: vettori ═══════════════════════════════
+
+  /** Ricordi senza vettore per il modello indicato (o con un vettore di un altro modello). */
+  missingVectors (model: string, limit = 32): { id: string, text: string }[] {
+    return (this.db.prepare(`SELECT m.id, m.title, m.body FROM memories m LEFT JOIN vectors v ON v.id = m.id
+      WHERE v.id IS NULL OR v.model != ? LIMIT ?`).all(model, limit) as any[]).map((r) => ({ id: r.id, text: `${r.title}\n${r.body}` }))
+  }
+
+  /** Salva i vettori calcolati (Float32 come BLOB). */
+  setVectors (model: string, items: { id: string, vec: Float32Array }[]): void {
+    const ins = this.db.prepare('INSERT INTO vectors (id, model, vec) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET model = excluded.model, vec = excluded.vec')
+    for (const { id, vec } of items) ins.run(id, model, Buffer.from(vec.buffer, vec.byteOffset, vec.byteLength))
+  }
+
+  /** Tutti i vettori di un modello (per la ricerca semantica e i collegamenti). */
+  vectors (model: string): Map<string, Float32Array> {
+    const out = new Map<string, Float32Array>()
+    for (const r of this.db.prepare('SELECT id, vec FROM vectors WHERE model = ?').all(model) as any[]) {
+      const b = r.vec as Uint8Array
+      out.set(r.id, new Float32Array(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength)))
+    }
+    return out
+  }
+
+  // ═══════════════════════════════ Fase 5: segnali ═══════════════════════════════
+
+  /** Segnali di priorità per ricordo. */
+  signals (): Map<string, { uses: number, lastUsed: number | null, votes: number, pinned: boolean }> {
+    const out = new Map<string, { uses: number, lastUsed: number | null, votes: number, pinned: boolean }>()
+    for (const r of this.db.prepare('SELECT * FROM signals').all() as any[]) out.set(r.id, { uses: r.uses, lastUsed: r.last_used, votes: r.votes, pinned: !!r.pinned })
+    return out
+  }
+
+  /** Solo gli id della ricerca per parole chiave, dal più pertinente (per la ricerca ibrida). */
+  keywordIds (query: string, limit = 50): string[] {
+    const match = toFtsQuery(query)
+    if (!match) return []
+    return (this.db.prepare(`SELECT m.id FROM memories_fts JOIN memories m ON m.rowid = memories_fts.rowid
+      WHERE memories_fts MATCH ? ORDER BY bm25(memories_fts, ${BM25_WEIGHTS}) LIMIT ?`).all(match, limit) as any[]).map((r) => r.id)
+  }
+
+  /** Ricordi per id, nell'ordine richiesto. */
+  getMany (ids: string[]): RecallHit[] {
+    const stmt = this.db.prepare('SELECT m.*, u.name AS authorName FROM memories m LEFT JOIN members u ON u.key = m.author WHERE m.id = ?')
+    return ids.map((id) => stmt.get(id) as any).filter(Boolean).map((r) => ({ ...rowToHit(r), score: 0 }))
   }
 
   /** Tutti i ricordi (per la costellazione). Con migliaia di ricordi resta una query rapida. */

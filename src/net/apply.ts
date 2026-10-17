@@ -32,7 +32,12 @@ export const KEYS = {
   member: (k: string) => `member/${k}`,
   memory: (id: string) => `memory/${id}`,
   invite: (id: string) => `invite/${id}`,
-  config: (k: string) => `config/${k}`
+  config: (k: string) => `config/${k}`,
+  /** Voto di un nodo su un ricordo (uno per nodo: l'ultimo nell'ordine linearizzato vince). */
+  vote: (id: string, node: string) => `vote/${id}/${node}`,
+  pin: (id: string) => `pin/${id}`,
+  /** Uso di un ricordo da parte di un nodo: contatore cumulativo e ultimo uso. */
+  usage: (id: string, node: string) => `usage/${id}/${node}`
 } as const
 
 /**
@@ -42,7 +47,10 @@ export const KEYS = {
 export const RANGES = {
   members: { gt: 'member/', lt: 'member0' },
   memories: { gt: 'memory/', lt: 'memory0' },
-  invites: { gt: 'invite/', lt: 'invite0' }
+  invites: { gt: 'invite/', lt: 'invite0' },
+  votes: { gt: 'vote/', lt: 'vote0' },
+  pins: { gt: 'pin/', lt: 'pin0' },
+  usage: { gt: 'usage/', lt: 'usage0' }
 } as const
 
 /**
@@ -195,6 +203,42 @@ async function applyEvent (ev: TeamEvent, author: string, view: any, host: any):
       if (!target || target.removed || target.role === 'admin') return
       await host.addWriter(buf(ev.key), { indexer: true })
       await view.put(KEYS.member(ev.key), { ...target, role: 'admin' })
+      return
+    }
+
+    // ── memory.vote ──────────────────────────────────────────────────────────────────
+    // Qualunque membro vota; un voto per nodo e per ricordo (0 = voto ritirato).
+    case 'memory.vote': {
+      if (!(await get(view, KEYS.memory(ev.id)))) return
+      if (ev.delta === 0) await view.del(KEYS.vote(ev.id, author))
+      else await view.put(KEYS.vote(ev.id, author), { delta: ev.delta, ts: ev.ts })
+      return
+    }
+
+    // ── memory.pin / memory.unpin ────────────────────────────────────────────────────
+    // Qualunque membro può fissare un ricordo importante; lo sblocca chi l'ha fissato o un admin.
+    case 'memory.pin': {
+      if (!(await get(view, KEYS.memory(ev.id)))) return
+      if (!(await get(view, KEYS.pin(ev.id)))) await view.put(KEYS.pin(ev.id), { by: author, ts: ev.ts })
+      return
+    }
+    case 'memory.unpin': {
+      const pin = await get<{ by: string }>(view, KEYS.pin(ev.id))
+      if (pin && (pin.by === author || isAdmin)) await view.del(KEYS.pin(ev.id))
+      return
+    }
+
+    // ── usage.report ─────────────────────────────────────────────────────────────────
+    // G-Counter: per ogni (ricordo, nodo autore del report) si tiene il MASSIMO dei contatori
+    // cumulativi ricevuti. Report ripetuti o fuori ordine non alterano il totale.
+    case 'usage.report': {
+      for (const [id, u] of Object.entries(ev.counts)) {
+        const key = KEYS.usage(id, author)
+        const prev = await get<{ count: number, last: number }>(view, key)
+        if (!prev || u.count > prev.count || u.last > prev.last) {
+          await view.put(key, { count: Math.max(u.count, prev?.count ?? 0), last: Math.max(u.last, prev?.last ?? 0) })
+        }
+      }
       return
     }
 

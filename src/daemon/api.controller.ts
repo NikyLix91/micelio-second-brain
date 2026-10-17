@@ -39,6 +39,7 @@ const LlmSettingsBody = z.object({
   distillModel: z.string().min(1).max(100).optional(),
   dailyBudget: z.number().int().min(0).max(100_000).optional()
 })
+const VoteBody = z.object({ delta: z.union([z.literal(-1), z.literal(0), z.literal(1)]) })
 const SetupBody = z.object({ hook: z.boolean().default(true) }).default({ hook: true })
 
 @Controller('api')
@@ -149,10 +150,32 @@ export class ApiController {
     return this.node.recent(Math.min(Math.max(Number(limit) || 20, 1), 200))
   }
 
+  /** Ricerca ibrida (parole chiave + significato + attivazione, Fase 5). */
   @Get('memories/search')
   recall (@Query('q') q = '', @Query('limit') limit = '5') {
     // Il limite arriva come stringa dalla query: lo riportiamo fra 1 e 50.
-    return this.node.recall(q, Math.min(Math.max(Number(limit) || 5, 1), 50))
+    return this.node.recallHybrid(q, Math.min(Math.max(Number(limit) || 5, 1), 50))
+  }
+
+  /** Voto di utilità: { delta: 1 | -1 | 0 } (0 ritira il voto). */
+  @Post('memories/:id/vote')
+  @HttpCode(200)
+  async vote (@Param('id') id: string, @Body() body: unknown) {
+    await this.node.vote(id, VoteBody.parse(body).delta)
+    return this.node.detail(id)
+  }
+
+  @Post('memories/:id/pin')
+  @HttpCode(200)
+  async pin (@Param('id') id: string) {
+    await this.node.pin(id, true)
+    return this.node.detail(id)
+  }
+
+  @Delete('memories/:id/pin')
+  async unpin (@Param('id') id: string) {
+    await this.node.pin(id, false)
+    return this.node.detail(id)
   }
 
   /**
@@ -167,7 +190,7 @@ export class ApiController {
 
   @Get('memories/:id')
   get (@Param('id') id: string) {
-    return this.node.get(id) ?? { error: 'non trovato' }
+    return this.node.detail(id) ?? { error: 'non trovato' }
   }
 
   // ═══════════════════════════════ Ingestione ═══════════════════════════════

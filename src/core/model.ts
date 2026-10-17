@@ -79,6 +79,14 @@ export interface RecallHit {
   score: number
   /** Origine del ricordo (assente nei risultati che non la includono). */
   source?: MemorySource
+  /** Attivazione 0..1 (Fase 5): quanto il ricordo è "vivo" per il team. */
+  activation?: number
+  /** Somma dei voti di utilità del team. */
+  votes?: number
+  /** Usi totali nel team. */
+  uses?: number
+  /** Fissato: non decade e non viene archiviato. */
+  pinned?: boolean
 }
 
 /** Stato sintetico del nodo, mostrato da `micelio status` e dalla futura UI. */

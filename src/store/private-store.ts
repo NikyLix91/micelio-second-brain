@@ -60,6 +60,8 @@ CREATE TABLE IF NOT EXISTS documents (
   updated INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS documents_hash ON documents(hash);
+-- Fase 5: uso locale dei ricordi (contatori cumulativi) e quanto è già stato pubblicato al team.
+CREATE TABLE IF NOT EXISTS usage_local (id TEXT PRIMARY KEY, count INTEGER NOT NULL, last INTEGER NOT NULL, reported INTEGER NOT NULL DEFAULT 0);
 `
 
 /** Dopo quanto un elemento non deciso esce dall'inbox (D9). */
@@ -228,6 +230,26 @@ export class PrivateStore {
   documentStats (): Record<string, number> {
     const rows = this.db.prepare('SELECT status, COUNT(*) AS n FROM documents GROUP BY status').all() as any[]
     return Object.fromEntries(rows.map((r) => [r.status, r.n]))
+  }
+
+  // ---------- Uso locale (Fase 5) ----------
+
+  /** Conta un uso dei ricordi indicati (es. restituiti da una ricerca). */
+  countUsage (ids: string[], now = Date.now()): void {
+    const up = this.db.prepare('INSERT INTO usage_local (id, count, last) VALUES (?, 1, ?) ON CONFLICT(id) DO UPDATE SET count = count + 1, last = excluded.last')
+    for (const id of ids) up.run(id, now)
+  }
+
+  /** Contatori cumulativi non ancora pubblicati (count > reported). */
+  unreportedUsage (): Record<string, { count: number, last: number }> {
+    const rows = this.db.prepare('SELECT id, count, last FROM usage_local WHERE count > reported').all() as any[]
+    return Object.fromEntries(rows.map((r) => [r.id, { count: r.count, last: r.last }]))
+  }
+
+  /** Segna come pubblicati i contatori inviati. */
+  markUsageReported (counts: Record<string, { count: number }>): void {
+    const up = this.db.prepare('UPDATE usage_local SET reported = ? WHERE id = ?')
+    for (const [id, c] of Object.entries(counts)) up.run(c.count, id)
   }
 
   // ---------- Avanzamento sessioni ----------

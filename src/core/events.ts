@@ -83,6 +83,17 @@ export const TeamEvent = z.discriminatedUnion('type', [
   z.object({ ...base, type: z.literal('member.remove'), key: hexKey }),
   /** Promozione ad admin e indexer (solo admin). */
   z.object({ ...base, type: z.literal('member.promote'), key: hexKey }),
+  /** Voto di utilità su un ricordo (Fase 5): +1 utile, -1 non utile, 0 ritira il voto. Uno per nodo. */
+  z.object({ ...base, type: z.literal('memory.vote'), id: z.string().regex(/^[0-9a-f]{64}$/), delta: z.union([z.literal(-1), z.literal(0), z.literal(1)]) }),
+  /** Ricordo fissato: non decade e non viene archiviato dal dreaming (Fase 5–6). */
+  z.object({ ...base, type: z.literal('memory.pin'), id: z.string().regex(/^[0-9a-f]{64}$/) }),
+  z.object({ ...base, type: z.literal('memory.unpin'), id: z.string().regex(/^[0-9a-f]{64}$/) }),
+  /**
+   * Uso dei ricordi da parte di un nodo (DESIGN §8.3). Contatori CUMULATIVI per ricordo: in apply
+   * si tiene il massimo per (ricordo, nodo), quindi rinvii e duplicati non gonfiano i conteggi
+   * (è un G-Counter: ogni nodo ha il suo contatore, il totale è la somma).
+   */
+  z.object({ ...base, type: z.literal('usage.report'), counts: z.record(z.string().regex(/^[0-9a-f]{64}$/), z.object({ count: z.number().int().nonnegative(), last: z.number().int().nonnegative() })) }),
   /** Configurazione condivisa del team, es. `memory.language` (solo admin). */
   z.object({ ...base, type: z.literal('team.config'), key: z.string().min(1).max(100), value: z.unknown() })
 ])

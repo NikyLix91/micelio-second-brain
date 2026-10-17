@@ -188,6 +188,29 @@ micelio fetch 8ea1102f047d      # id del ricordo
 
 Dall'app c'è il pulsante **Scarica l'originale** nel dettaglio del ricordo. Da Claude Code: *"scarica il documento originale di questo ricordo"* (tool `fetch_source`).
 
+## 7-ter. Priorità: quali ricordi contano di più
+
+Ogni ricordo ha un'**attivazione** da 0 a 100%, che dice quanto è "vivo" per il team. Cresce con:
+- **uso recente:** ogni ricordo restituito da una ricerca conta come uso; i conteggi di tutti i colleghi si sommano;
+- **voti di utilità;**
+- **collegamenti con altri ricordi.**
+
+Decade lentamente se nessuno lo usa. Una decisione decade più lentamente di uno snippet. Un ricordo **fissato** resta sempre al 100%.
+
+```bash
+micelio vote c297bc9dc2d1 up      # utile        (down = fuorviante o obsoleto, clear = ritira il voto)
+micelio pin c297bc9dc2d1          # fissa: non decade e il dreaming non lo archivierà
+micelio unpin c297bc9dc2d1
+```
+
+La ricerca (`recall`, app, Claude) è **ibrida**:
+- trova i ricordi sia per parole sia per significato. Per esempio *"la build va in memoria esaurita"* trova *"out of memory nella pipeline"*, anche fra lingue diverse;
+- a parità di pertinenza mette prima quelli con attivazione più alta.
+
+Il calcolo dei significati (embedding) avviene sul tuo PC, senza servizi esterni. Al primo uso scarica un modello di circa 130 MB in `~/.cache/micelio-models`, condiviso da tutti i nodi della macchina. Per disattivarlo: `"embeddings": { "adapter": "none" }` in `config.json`.
+
+Nell'app: attivazione, usi, 👍 👎 e 📌 nel dettaglio di ogni ricordo. Nel Nucleo i ricordi più vivi sono le stelle più grandi e dorate.
+
 ## 8. Inbox: i casi dubbi
 
 L'inbox contiene **solo** ciò su cui il filtro non ha potuto decidere da solo. I contenuti puliti vanno al team senza chiederti nulla, quelli chiaramente personali restano privati. L'inbox è locale: nessun collega la vede.

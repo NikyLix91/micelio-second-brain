@@ -110,7 +110,7 @@ async function main () {
     // La porta va salvata in config.json: così anche CLI e app desktop la trovano.
     const cfgFile = path.join(n.home, 'config.json')
     const cfg = fs.existsSync(cfgFile) ? JSON.parse(fs.readFileSync(cfgFile, 'utf8')) : {}
-    fs.writeFileSync(cfgFile, JSON.stringify({ ...cfg, port: n.port, token: cfg.token ?? require('node:crypto').randomBytes(24).toString('hex'), llm: { ...(cfg.llm ?? {}), adapter: 'fake' } }, null, 2))
+    fs.writeFileSync(cfgFile, JSON.stringify({ ...cfg, port: n.port, token: cfg.token ?? require('node:crypto').randomBytes(24).toString('hex'), llm: { ...(cfg.llm ?? {}), adapter: 'fake' }, embeddings: { adapter: process.env.MICELIO_DEMO_EMBEDDER ?? 'hash' } }, null, 2))
     const child = spawn(process.execPath, [CLI, 'daemon'], {
       env: { ...process.env, MICELIO_HOME: n.home, MICELIO_DHT_BOOTSTRAP: bootstrap, NO_COLOR: '1' },
       stdio: ['ignore', 'ignore', 'inherit']

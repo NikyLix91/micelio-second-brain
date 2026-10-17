@@ -62,7 +62,8 @@ function printStatus (s: NodeStatus): void {
 
 function printHit (h: RecallHit): void {
   console.log(`\n■ ${h.title}`)
-  console.log(`  [${h.kind}] id:${h.id.slice(0, 12)} · ${h.authorName ?? short(h.author)} · ${date(h.ts)}${h.tags.length ? ' · #' + h.tags.join(' #') : ''}`)
+  const prio = h.activation !== undefined ? ` · attivazione ${Math.round(h.activation * 100)}%${h.votes ? ` · voti ${h.votes > 0 ? '+' : ''}${h.votes}` : ''}${h.pinned ? ' · 📌' : ''}` : ''
+  console.log(`  [${h.kind}] id:${h.id.slice(0, 12)} · ${h.authorName ?? short(h.author)} · ${date(h.ts)}${h.tags.length ? ' · #' + h.tags.join(' #') : ''}${prio}`)
   console.log(indent(h.body))
 }
 
@@ -248,6 +249,21 @@ program.command('recall')
     if (!hits.length) return console.log('Nessun ricordo trovato')
     hits.forEach(printHit)
   })
+
+program.command('vote')
+  .description('vota un ricordo: up (utile), down (fuorviante/obsoleto), clear (ritira il voto)')
+  .argument('<id>').argument('<voto>', 'up | down | clear')
+  .action(async (id: string, v: string) => {
+    const delta = v === 'up' ? 1 : v === 'down' ? -1 : v === 'clear' ? 0 : null
+    if (delta === null) throw new DaemonError('Voto non valido: usa up, down o clear')
+    const h = await client().call<RecallHit>('POST', `/api/memories/${encodeURIComponent(id)}/vote`, { delta })
+    console.log(`Voto registrato. Totale voti: ${h.votes ?? 0}`)
+  })
+
+program.command('pin').description('fissa un ricordo importante: non decade e non viene archiviato').argument('<id>')
+  .action(async (id: string) => { await client().call('POST', `/api/memories/${encodeURIComponent(id)}/pin`); console.log('Ricordo fissato') })
+program.command('unpin').description('sblocca un ricordo fissato').argument('<id>')
+  .action(async (id: string) => { await client().call('DELETE', `/api/memories/${encodeURIComponent(id)}/pin`); console.log('Ricordo sbloccato') })
 
 program.command('get')
   .description('mostra un ricordo dato l\'id (anche abbreviato)')

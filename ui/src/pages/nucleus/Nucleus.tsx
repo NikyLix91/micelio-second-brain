@@ -201,16 +201,18 @@ export default function Nucleus () {
   const colorOf = useCallback((n: GraphNode): string => {
     if (mode === 'author') return authorColor(n.author)
     if (mode === 'kind') return KIND_COLOR[n.kind] ?? HOLO.amber
-    // Olografico: i più collegati tendono al bianco-oro, gli isolati all'ambra profonda.
-    const d = degree.get(n.id) ?? 0
-    return d >= 5 ? HOLO.gold : d >= 2 ? HOLO.amber : HOLO.deep
+    // Olografico: i ricordi più "vivi" (attivazione alta, Fase 5) tendono al bianco-oro,
+    // quelli poco usati e vecchi all'ambra profonda.
+    const a = n.activation ?? 0.5
+    return a >= 0.6 ? HOLO.gold : a >= 0.35 ? HOLO.amber : HOLO.deep
   }, [mode, degree])
 
   // Ricreato quando cambiano colori, accensioni o selezione: la libreria rigenera gli sprite.
   const nodeObject = useCallback((n: any) => {
     const on = !lit || lit.has(n.id)
     // Stelle piccole: il fascino è nei dettagli fini, il bloom fa il resto.
-    const base = 3.2 + Math.min(6, (degree.get(n.id) ?? 0) * 0.7)
+    // Dimensione: collegamenti e attivazione (un ricordo vivo e centrale è una stella più grande).
+    const base = 3.2 + Math.min(5, (degree.get(n.id) ?? 0) * 0.6) + (n.activation ?? 0.5) * 3
     const size = n.id === selected?.id ? base * 2.2 : on && lit ? base * 1.5 : base
     // I ricordi esclusi da tour/ricerca restano visibili ma tenui: danno il contesto.
     return starSprite(on ? colorOf(n) : '#8a6a3a', size, on ? 1 : 0.4)

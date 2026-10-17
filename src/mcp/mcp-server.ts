@@ -58,7 +58,7 @@ export function createMcpServer (node: MicelioNode): McpServer {
     },
     annotations: { readOnlyHint: true }
   }, async ({ query, limit }) => {
-    const hits = node.recall(query, limit ?? 5)
+    const hits = await node.recallHybrid(query, limit ?? 5)
     if (hits.length === 0) return text(`Nessun ricordo del team trovato per "${query}".`)
     return text(hits.map(formatHit).join('\n\n---\n\n'))
   })
@@ -91,6 +91,22 @@ export function createMcpServer (node: MicelioNode): McpServer {
       }
     } catch (err) {
       return error(`Impossibile salvare: ${(err as Error).message}`)
+    }
+  })
+
+  // ── vote ────────────────────────────────────────────────────────────────────────────
+  // Segnale di utilità (Fase 5): i ricordi votati utili salgono nelle ricerche di tutti.
+  server.registerTool('vote', {
+    title: 'Vota un ricordo',
+    description: 'Segnala se un ricordo del team è stato utile (useful: true) o fuorviante/obsoleto (useful: false). ' +
+      'Usalo quando l\'utente conferma che un ricordo lo ha aiutato o che è sbagliato: migliora le ricerche di tutto il team.',
+    inputSchema: { id: z.string().min(6).describe('Id del ricordo'), useful: z.boolean() }
+  }, async ({ id, useful }) => {
+    try {
+      await node.vote(id, useful ? 1 : -1)
+      return text(useful ? 'Grazie: il ricordo è stato segnato come utile.' : 'Segnalato come poco utile o obsoleto.')
+    } catch (err) {
+      return error((err as Error).message)
     }
   })
 

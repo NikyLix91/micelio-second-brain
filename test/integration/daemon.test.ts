@@ -29,6 +29,7 @@ describe('daemon', () => {
   const start = async () => {
     process.env.MICELIO_PORT = '0' // porta libera scelta dal sistema
     process.env.MICELIO_LLM_ADAPTER = 'fake' // niente chiamate reali a Claude nei test
+    process.env.MICELIO_EMBEDDER = 'hash' // niente download del modello di embedding
     process.env.MICELIO_DHT_BOOTSTRAP = dht.bootstrap.map((b) => `${b.host}:${b.port}`).join(',')
     app = await startDaemon(paths)
     const addr = app.getHttpServer().address() as import('node:net').AddressInfo
@@ -47,6 +48,7 @@ describe('daemon', () => {
     delete process.env.MICELIO_PORT
     delete process.env.MICELIO_DHT_BOOTSTRAP
     delete process.env.MICELIO_LLM_ADAPTER
+    delete process.env.MICELIO_EMBEDDER
   })
 
   it('health è pubblico, il resto richiede il token', async () => {
@@ -79,7 +81,7 @@ describe('daemon', () => {
       requestInit: { headers: { authorization: `Bearer ${token}` } }
     }))
     const { tools } = await client.listTools()
-    expect(tools.map((t) => t.name).sort()).toEqual(['fetch_source', 'get', 'inbox_decide', 'inbox_review', 'recall', 'remember'])
+    expect(tools.map((t) => t.name).sort()).toEqual(['fetch_source', 'get', 'inbox_decide', 'inbox_review', 'recall', 'remember', 'vote'])
     expect(client.getInstructions()).toMatch(/memoria condivisa/)
 
     const saved = await client.callTool({ name: 'remember', arguments: { title: 'Drizzle come ORM standard', body: 'Niente motore binario.', kind: 'decision', tags: ['orm'] } })

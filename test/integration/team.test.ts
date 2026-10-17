@@ -92,6 +92,26 @@ describe('team multi-nodo', () => {
     await eventually(async () => (await carol.status()).indexer, [carol, alice])
   })
 
+  it('Fase 5: voti, pin e uso arrivano a tutto il team e cambiano l\'attivazione', async () => {
+    const id = alice.recall('drizzle')[0].id
+    const before = carol.detail(id)!.activation!
+    // carol usa il ricordo (ricerca ibrida), pubblica l'uso, lo vota e alice lo fissa.
+    const hits = await carol.recallHybrid('orm nuovi servizi')
+    expect(hits.map((h) => h.id)).toContain(id)
+    await carol.flushUsage()
+    await carol.vote(id, 1)
+    await eventually(() => (alice.detail(id)?.votes ?? 0) === 1 && (alice.detail(id)?.uses ?? 0) >= 1, [alice])
+    await alice.pin(id, true)
+    await eventually(() => carol.detail(id)?.pinned === true, [carol])
+    expect(carol.detail(id)!.activation).toBe(1) // fissato = attivazione massima
+    expect(carol.detail(id)!.activation!).toBeGreaterThan(before)
+  })
+
+  it('Fase 5: la costellazione include collegamenti semantici quando ci sono i vettori', async () => {
+    await alice.remember({ kind: 'gotcha', title: 'Memoria esaurita durante la build Angular', body: 'Su Azure DevOps la build Angular esaurisce la memoria: alzare NODE_OPTIONS.', tags: ['frontend'] })
+    await eventually(() => alice.graph().links.some((l) => l.kind === 'semantic'), [alice])
+  })
+
   it('un membro espulso non può più scrivere ricordi visibili al team', async () => {
     await alice.removeMember('bob')
     const bobRec = (await alice.members()).find((m) => m.name === 'bob')

@@ -27,7 +27,11 @@ import { MemoryInput, memoryId, type MemoryData } from '../core/events'
 import type { InviteRecord, MemberRecord, NodeStatus, RecallHit } from '../core/model'
 import type { NodePaths } from '../core/paths'
 import { writeExport } from '../export/markdown'
-import { buildGraph, type Graph } from '../graph/constellation'
+import { buildGraph, type Graph, type GraphLink } from '../graph/constellation'
+import { type Embedder, HashEmbedder, LocalEmbedder } from '../embed/embedder'
+import { activation } from '../rank/activation'
+import { hybridRank, nearest } from '../rank/hybrid'
+import os from 'node:os'
 import { type ExplicitOutcome, IngestPipeline, InboxNotFoundError } from '../ingest/pipeline'
 import { ClaudeCliAdapter } from '../llm/claude-cli'
 import { FakeAdapter } from '../llm/fake'
@@ -54,6 +58,8 @@ export interface MicelioNodeOptions {
    * Se omesso si usa `llm.adapter` di config.json.
    */
   llm?: LlmAdapter | null
+  /** Embedder da usare al posto di quello configurato (test). `null` = nessuna ricerca semantica. */
+  embedder?: Embedder | null
 }
 
 /** Errore causato dall'utente o dallo stato del nodo: messaggio pensato per essere mostrato. */
@@ -87,6 +93,18 @@ export interface SourceFile {
   local: boolean
 }
 
+/** Ogni quanto si pubblica al team l'uso locale dei ricordi (usage.report, DESIGN §8.3). */
+const USAGE_FLUSH_MS = 30 * 60 * 1000
+
+/**
+ * Soglia di similarità sotto la quale un risultato semantico non è considerato pertinente.
+ * Dipende dal modello: i punteggi di e5 sono "compressi" fra 0,8 e 0,9 (spike C), quelli
+ * dell'embedder finto sono più bassi e sparsi.
+ */
+function semanticThreshold (model: string): number {
+  return model.includes('e5') ? 0.83 : 0.3
+}
+
 /** Dopo quanti giorni le copie scaricate escono dalla cache (decisione D11). */
 const SOURCE_CACHE_DAYS = 30
 
@@ -107,6 +125,13 @@ export class MicelioNode extends EventEmitter {
   private readonly documents: DocumentWatcher
   private readonly files: FileShare
   private readonly llm: LlmRunner | null
+  /** Calcolo degli embedding (null = solo ricerca per parole chiave). */
+  private readonly embedder: Embedder | null
+  /** Collegamenti per ricordo nell'ultima costellazione calcolata (per l'attivazione). */
+  private degrees = new Map<string, number>()
+  /** Catena dei calcoli di embedding: mai due in parallelo. */
+  private embedding: Promise<void> = Promise.resolve()
+  private usageTimer: NodeJS.Timeout | null = null
   private config: Config
   /** Timer di accorpamento degli aggiornamenti della vista (vedi scheduleMaterialize). */
   private timer: NodeJS.Timeout | null = null
@@ -140,6 +165,7 @@ export class MicelioNode extends EventEmitter {
       notify: (topic) => this.changed(topic)
     })
     this.documents = new DocumentWatcher(this.pipeline, this.privateStore, this.log)
+    this.embedder = opts.embedder !== undefined ? opts.embedder : createEmbedder(this.config)
     this.files = new FileShare({
       isMember: async (key, signer) => {
         const active = !!(await this.team?.members())?.some((m) => m.key === key && !m.removed)
@@ -157,6 +183,9 @@ export class MicelioNode extends EventEmitter {
   async start (): Promise<void> {
     this.pipeline.start()
     this.sweepSourceCache()
+    // Pubblicazione periodica dell'uso locale dei ricordi (Fase 5).
+    this.usageTimer = setInterval(() => { this.flushUsage().catch(() => {}) }, USAGE_FLUSH_MS)
+    this.usageTimer.unref()
     const state = loadState(this.paths)
     if (!state) {
       this.log('nodo non ancora configurato: usa `micelio init` o `micelio join`')
@@ -172,6 +201,10 @@ export class MicelioNode extends EventEmitter {
 
   /** Ferma tutto in ordine: worker, indicizzazione in corso, rete, database. */
   async stop (): Promise<void> {
+    if (this.usageTimer) clearInterval(this.usageTimer)
+    await this.flushUsage().catch(() => {})
+    await this.embedding.catch(() => {})
+    await this.embedder?.close()
     await this.documents.stop()
     await this.pipeline.stop()
     if (this.timer) clearTimeout(this.timer)
@@ -297,7 +330,130 @@ export class MicelioNode extends EventEmitter {
 
   /** Costellazione del sapere: ricordi come nodi, correlazioni come collegamenti (src/graph). */
   graph (): Graph {
-    return buildGraph(this.index.all())
+    const g = buildGraph(this.index.all(), this.semanticLinks())
+    const signals = this.index.signals()
+    return { ...g, nodes: g.nodes.map((n) => ({ ...n, activation: this.activationOf(n.id, signals) })) }
+  }
+
+  /** Un ricordo completo con i segnali di priorità (attivazione, voti, usi, pin). */
+  detail (id: string): RecallHit | null {
+    const rec = this.index.get(id)
+    return rec ? this.enrich([rec])[0] : null
+  }
+
+  // ═══════════════════════════ Priorità (Fase 5) ═══════════════════════════
+
+  /**
+   * Ricerca IBRIDA (DESIGN §8.1): parole chiave + significato + attivazione. È quella usata da
+   * API, MCP e UI. Conta anche l'uso dei ricordi restituiti (segnale per l'attivazione).
+   * @param track false per non contare l'uso (es. ricerche interne)
+   */
+  async recallHybrid (query: string, limit = 5, track = true): Promise<RecallHit[]> {
+    const keyword = this.index.keywordIds(query, 50)
+    let semantic: string[] = []
+    if (this.embedder && query.trim().length >= 2) {
+      try {
+        const [q] = await this.embedder.embed([query], 'query')
+        semantic = nearest(q, this.index.vectors(this.embedder.model), 50, semanticThreshold(this.embedder.model)).map((r) => r.id)
+      } catch (err) {
+        // Modello non disponibile (es. primo download fallito): si ripiega sulle parole chiave.
+        this.log(`ricerca semantica non disponibile: ${(err as Error).message}`)
+      }
+    }
+    const signals = this.index.signals()
+    const act = (id: string) => this.activationOf(id, signals)
+    const ranked = hybridRank(keyword, semantic, act).slice(0, limit)
+    const hits = this.enrich(this.index.getMany(ranked.map((r) => r.id)), signals)
+    ranked.forEach((r, i) => { if (hits[i]) hits[i].score = r.score })
+    if (track && hits.length) this.privateStore.countUsage(hits.map((h) => h.id))
+    return hits
+  }
+
+  /** Voto di utilità su un ricordo: +1, -1, 0 per ritirarlo. Un voto per nodo. */
+  async vote (id: string, delta: -1 | 0 | 1): Promise<void> {
+    const rec = this.requireMemory(id)
+    await this.requireTeam().append({ type: 'memory.vote', id: rec.id, delta })
+    await this.sync()
+  }
+
+  /** Fissa (o sblocca) un ricordo importante: non decade e il dreaming non lo archivia. */
+  async pin (id: string, pinned: boolean): Promise<void> {
+    const rec = this.requireMemory(id)
+    await this.requireTeam().append({ type: pinned ? 'memory.pin' : 'memory.unpin', id: rec.id })
+    await this.sync()
+  }
+
+  /** Pubblica al team i contatori d'uso locali non ancora inviati (usage.report). */
+  async flushUsage (): Promise<void> {
+    if (!this.team?.writable) return
+    const counts = this.privateStore.unreportedUsage()
+    if (Object.keys(counts).length === 0) return
+    await this.team.append({ type: 'usage.report', counts })
+    this.privateStore.markUsageReported(counts)
+  }
+
+  /** Attivazione 0..1 di un ricordo (vedi src/rank/activation.ts). */
+  private activationOf (id: string, signals = this.index.signals()): number {
+    const s = signals.get(id)
+    const rec = this.index.get(id)
+    if (!rec) return 0
+    return activation({ kind: rec.kind, createdAt: rec.ts, lastUsed: s?.lastUsed ?? undefined, uses: s?.uses ?? 0, votes: s?.votes ?? 0, degree: this.degrees.get(id) ?? 0, pinned: !!s?.pinned })
+  }
+
+  /** Aggiunge ai risultati attivazione, voti, usi e pin. */
+  private enrich (hits: RecallHit[], signals = this.index.signals()): RecallHit[] {
+    return hits.map((h) => {
+      const s = signals.get(h.id)
+      return { ...h, activation: this.activationOf(h.id, signals), votes: s?.votes ?? 0, uses: s?.uses ?? 0, pinned: !!s?.pinned }
+    })
+  }
+
+  private requireMemory (id: string): RecallHit {
+    const rec = this.index.get(id)
+    if (!rec) throw new UserError(`Nessun ricordo con id ${id}`)
+    return rec
+  }
+
+  /**
+   * Calcola in background i vettori dei ricordi che non ce l'hanno (nuovi, o di un altro
+   * modello), a blocchi di 32. Alla fine notifica "memories": la costellazione si aggiorna con
+   * i collegamenti semantici.
+   */
+  private scheduleEmbedding (): void {
+    const embedder = this.embedder
+    if (!embedder) return
+    this.embedding = this.embedding.catch(() => {}).then(async () => {
+      let done = 0
+      for (;;) {
+        const batch = this.index.missingVectors(embedder.model, 32)
+        if (batch.length === 0) break
+        const vecs = await embedder.embed(batch.map((b) => b.text), 'passage')
+        this.index.setVectors(embedder.model, batch.map((b, i) => ({ id: b.id, vec: vecs[i] })))
+        done += batch.length
+      }
+      if (done > 0) {
+        this.log(`embedding calcolati per ${done} ricordi`)
+        this.changed('memories')
+      }
+    }).catch((err) => this.log(`embedding non calcolati: ${err.message}`))
+  }
+
+  /**
+   * Collegamenti per affinità di significato, per la costellazione: per ogni ricordo i 2 più
+   * simili sopra la soglia del modello. Peso: quanto la similarità supera la soglia.
+   */
+  private semanticLinks (): GraphLink[] {
+    if (!this.embedder) return []
+    const vectors = this.index.vectors(this.embedder.model)
+    const min = semanticThreshold(this.embedder.model)
+    const links: GraphLink[] = []
+    for (const [id, v] of vectors) {
+      for (const n of nearest(v, vectors, 3, min)) {
+        if (n.id === id || id > n.id) continue // una sola volta per coppia
+        links.push({ source: id, target: n.id, weight: Math.min(1, (n.score - min) / (1 - min) * 2), kind: 'semantic' })
+      }
+    }
+    return links
   }
 
   /** Ultimi ricordi arrivati nel team, dal più recente. */
@@ -611,9 +767,14 @@ export class MicelioNode extends EventEmitter {
     this.materializing = this.materializing.catch(() => {}).then(async () => {
       const team = this.team
       if (!team) return
-      const [memories, members] = await Promise.all([team.memories(), team.members()])
-      this.index.rebuild(memories, members)
+      const [memories, members, votes, pins, usage] = await Promise.all([team.memories(), team.members(), team.votes(), team.pins(), team.usage()])
+      this.index.rebuild(memories, members, { votes, pins, usage })
       writeExport(this.paths.export, memories, members)
+      // Collegamenti per ricordo (servono all'attivazione)
+      const degrees = new Map<string, number>()
+      for (const l of buildGraph(this.index.all(), this.semanticLinks()).links) for (const k of [l.source, l.target]) degrees.set(k, (degrees.get(k) ?? 0) + 1)
+      this.degrees = degrees
+      this.scheduleEmbedding()
       this.changed('memories', 'members', 'status')
     })
     return this.materializing
@@ -651,6 +812,15 @@ export class MicelioNode extends EventEmitter {
     if (found.length === 0) throw new UserError(`Nessun membro attivo corrisponde a "${ref}"`)
     if (found.length > 1) throw new UserError(`"${ref}" è ambiguo: usa una parte più lunga della chiave`)
     return found[0]
+  }
+}
+
+/** Crea l'embedder indicato in configurazione; null se "none". Il modello è condiviso da tutti i nodi della macchina. */
+function createEmbedder (config: Config): Embedder | null {
+  switch (config.embeddings.adapter) {
+    case 'local': return new LocalEmbedder(config.embeddings.model, path.join(os.homedir(), '.cache', 'micelio-models'))
+    case 'hash': return new HashEmbedder()
+    default: return null
   }
 }
 
