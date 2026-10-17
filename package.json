@@ -1,0 +1,49 @@
+{
+  "name": "micelio",
+  "version": "0.1.0",
+  "description": "Secondo cervello distribuito peer-to-peer per gli strumenti AI di un team di sviluppo",
+  "private": true,
+  "type": "commonjs",
+  "license": "UNLICENSED",
+  "bin": {
+    "micelio": "dist/cli/main.js"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "e2e:docker": "bash test/e2e/docker/scenario.sh"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "@nestjs/common": "^11.2.7",
+    "@nestjs/core": "^11.2.7",
+    "@nestjs/platform-express": "^11.2.7",
+    "autobase": "^7.28.2",
+    "b4a": "^1.9.0",
+    "blind-pairing": "^2.3.1",
+    "commander": "^15.0.0",
+    "corestore": "^7.15.0",
+    "hyperbee": "^2.27.3",
+    "hypercore-crypto": "^3.7.0",
+    "hyperswarm": "^4.17.2",
+    "protomux-wakeup": "^2.9.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "z32": "^1.1.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@swc/core": "^1.16.18",
+    "@types/node": "^22.20.5",
+    "hyperdht": "^6.34.1",
+    "typescript": "5.9",
+    "unplugin-swc": "^2.0.0",
+    "vitest": "^5.0.5"
+  }
+}

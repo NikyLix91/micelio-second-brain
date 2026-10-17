@@ -1,0 +1,37 @@
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import createTestnet from 'hyperdht/testnet'
+import { nodePaths } from '../src/core/paths'
+import { MicelioNode } from '../src/node/micelio-node'
+
+export function tmpHome (label: string): string {
+  return fs.mkdtempSync(path.join(os.tmpdir(), `micelio-${label}-`))
+}
+
+/** DHT locale in-process: i test non dipendono dalla rete pubblica. */
+export async function localDht (size = 3): Promise<{ bootstrap: { host: string, port: number }[], destroy: () => Promise<void> }> {
+  const testnet = await createTestnet(size)
+  return { bootstrap: testnet.bootstrap, destroy: () => testnet.destroy() }
+}
+
+export function makeNode (label: string, bootstrap: { host: string, port: number }[], home = tmpHome(label)): { node: MicelioNode, home: string } {
+  const verbose = !!process.env.MICELIO_TEST_LOG
+  const node = new MicelioNode(nodePaths(home), {
+    bootstrap,
+    materializeDelayMs: 50,
+    log: verbose ? (m) => console.log(`[${label}] ${m}`) : undefined
+  })
+  return { node, home }
+}
+
+/** Attende che `fn` restituisca true, sincronizzando i nodi a ogni giro. */
+export async function eventually (fn: () => Promise<boolean> | boolean, nodes: MicelioNode[] = [], timeoutMs = 30_000): Promise<void> {
+  const t0 = Date.now()
+  while (Date.now() - t0 < timeoutMs) {
+    for (const n of nodes) await n.sync().catch(() => {})
+    if (await fn()) return
+    await new Promise((r) => setTimeout(r, 200))
+  }
+  throw new Error('condizione non raggiunta entro il timeout')
+}
