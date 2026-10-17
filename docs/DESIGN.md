@@ -169,6 +169,11 @@ Indici derivati: `memories_fts` (FTS5) e `memories_vec` (sqlite-vec). La vista s
 
 Riferimento implementativo utile: **Autopass** (password manager P2P di Holepunch costruito su Autobase con inviti via blind-pairing). Ha esattamente la nostra forma: pochi writer, replica completa, inviti.
 
+**Lezioni dallo spike A** (vedi [spikes/a-p2p](../spikes/a-p2p)):
+
+- La replica va agganciata con `base.replicate(conn)` e **non** con `store.replicate(conn)`, come mostra il README di Autobase. Solo la prima attiva il protocollo *wakeup*, che segnala agli altri peer i core dei writer attivi. Senza, i nuovi membri non vengono mai scoperti.
+- **Indexer:** sono i writer i cui ack fissano punti di ordinamento definitivi (`signedLength`). Se gli indexer sono tutti i nodi, serve la maggioranza online per avanzare. Se è uno solo (il founder) e sparisce, l'ordinamento non si consolida più. Politica proposta: **3–5 indexer** (gli admin e i nodi più spesso accesi), tutti gli altri writer non-indexer. Da validare in Fase 1.
+
 ### 5.2 Comportamento
 
 - All'avvio il nodo entra nel topic del team e replica i feed di tutti i membri da qualunque peer disponibile.
@@ -176,6 +181,8 @@ Riferimento implementativo utile: **Autopass** (password manager P2P di Holepunc
 - Con 10–30 nodi ogni nodo può mantenere connessioni con tutti i peer online.
 - Volume stimato: 10.000 ricordi × ~2 KB ≈ 20 MB. La replica completa è banale anche per un nuovo ingresso.
 - I blocchi del feed `team` sono **cifrati con la chiave di team**, così anche un peer non autorizzato che li ottenesse non li potrebbe leggere.
+- Hyperswarm rifà la ricerca dei peer sul topic raramente. Se cade un nodo "ponte", gli altri possono restare isolati a lungo anche se sono tutti online. Il nodo rinfresca quindi la discovery ogni 5 s quando è isolato e ogni 60 s negli altri casi (verificato nello spike A).
+- Misure dello spike A (3–4 nodi Docker, DHT pubblica): convergenza in 1–2 s dopo scritture concorrenti, dopo una partizione e dopo il rientro di un nodo offline; circa 40 MB di RAM per nodo.
 
 ### 5.3 Ambiti
 
@@ -286,12 +293,18 @@ interface LlmAdapter {
 }
 ```
 
-- **claude**: `claude -p` in modalità headless con output JSON, input passato via stdin.
-- **codex**: `codex exec` in modalità non interattiva.
+- **claude** (verificato nello spike B con Claude Code 2.1.300):
+  `claude -p --output-format json --json-schema <schema> --model <m> --system-prompt <p> --tools "" --strict-mcp-config --setting-sources "" --no-session-persistence`, con l'input su stdin. Il risultato validato si trova in `structured_output`.
+  - `--tools ""` toglie ogni strumento all'agente, che può solo rispondere. `--strict-mcp-config` esclude i server MCP, compreso Micelio stesso. `--setting-sources ""` esclude hook e impostazioni dell'utente. `--no-session-persistence` non lascia sessioni nella cronologia.
+  - Lo schema va generato in **JSON Schema draft-07** (`z.toJSONSchema(s, { target: 'draft-7' })`): il CLI rifiuta il draft 2020-12, che è il default di zod 4.
+  - Su Windows il processo va lanciato **senza shell** (`claude.exe` dell'installer nativo). Con `shell: true` gli argomenti vengono concatenati senza escape e lo schema JSON si rompe.
+  - `--bare` non è utilizzabile, perché richiede una API key e non accetta il login OAuth dell'abbonamento.
+- **Modelli:** il default del CLI è il modello più potente, troppo costoso per i compiti ripetitivi. Si usa `--model haiku` per la classificazione (5/5 casi corretti nello spike, circa 5 s per chiamata) e `--model sonnet` per distillazione e dreaming (circa 5–6 s per chiamata, buona qualità).
+- **codex**: `codex exec` in modalità non interattiva. Da verificare quando ci sarà un abbonamento disponibile.
 - Le invocazioni avvengono in una **cartella di lavoro vuota e isolata**, con tool e azioni disabilitati o in sandbox di sola lettura: l'agente deve solo rispondere, non agire sul filesystem.
 - L'output viene validato con lo schema `zod`. Se non è valido si fa un retry con l'errore nel prompt (max 2), poi il lavoro viene scartato e registrato nei log.
 - Una **coda unica** con concorrenza 1 e backoff rispetta i limiti degli abbonamenti. Ingestione e dreaming condividono la coda, con priorità all'ingestione.
-- I flag esatti delle due CLI vanno verificati nello spike (Fase 0) e isolati nell'adapter, perché possono cambiare tra una versione e l'altra.
+- Il prompt di distillazione deve imporre la **fedeltà alla fonte**: nello spike il modello ha aggiunto un dettaglio plausibile ma assente nel testo d'origine.
 
 Un nodo senza CLI disponibile resta un nodo completo per replica e recall, ma non distilla e non sogna. Le sue sorgenti restano in coda finché una CLI non torna disponibile.
 
@@ -311,6 +324,13 @@ Ricerca ibrida:
 I ricordi `archived`, `superseded` e `redacted` sono esclusi di default (`include_archived` per includerli).
 
 **Embedding locali** con `@huggingface/transformers` (transformers.js) e un modello multilingue piccolo (es. `multilingual-e5-small`). Restano locali, quindi coerenti con il vincolo "niente API". Il modello è fissato in `team.config`, così tutti i nodi calcolano vettori confrontabili. Se il modello cambia, ogni nodo reindicizza localmente.
+
+Misure dello spike C (`Xenova/multilingual-e5-small`, quantizzato q8, Windows):
+
+- download di 130 MB, 6 s di caricamento, 384 dimensioni, **3,3 ms per passaggio**;
+- primo risultato corretto in 4 query su 4, **anche tra lingue diverse** (query in inglese, ricordi in italiano);
+- i punteggi coseno di e5 sono compressi (tutti intorno a 0,80–0,90), quindi le soglie per deduplica e clustering vanno tarate su dati reali e non fissate a valori "classici" come 0,92;
+- con il modello caricato il processo occupa **circa 620 MB di RAM**. Il modello va quindi caricato in un worker solo quando serve e scaricato dopo un periodo di inattività. Gli e5 richiedono i prefissi `query: ` e `passage: `.
 
 ### 8.2 Attivazione
 
@@ -341,7 +361,10 @@ Ogni `recall` che restituisce un ricordo incrementa un contatore locale. Ogni N 
 
 - **Identità:** ogni nodo (dispositivo) ha una coppia di chiavi. Un utente con due PC ha due nodi.
 - **Creazione del team:** il nodo fondatore crea l'Autobase, la chiave di cifratura e il segreto del topic, e diventa `admin`.
-- **Invito:** **qualunque membro** può eseguire `micelio invite`, che genera un codice monouso con scadenza (default 24 h, blind-pairing). Il nuovo nodo lo usa con `micelio join <codice>`. Il nodo che ha creato l'invito completa il pairing, pubblica `member.add` con `invited_by` e consegna chiave e segreto sul canale cifrato. Non serve che un admin sia online.
+- **Invito:** **qualunque membro** può eseguire `micelio invite`. Il comando crea una coppia di chiavi d'invito, pubblica `invite.create` con la sola chiave pubblica e restituisce un codice monouso (segreto dell'invito + chiave dell'Autobase).
+- **Ingresso (verificato nello spike A):** il nuovo nodo scrive un blocco **optimistic** di Autobase `member.join`, con la propria chiave di writer firmata con il segreto dell'invito. Ogni nodo, eseguendo `apply`, verifica in modo deterministico che l'invito esista, non sia già stato usato e che la firma sia valida. Se tutto torna, chiama `host.ackWriter` + `host.addWriter`. Risultato: **chi ha invitato può essere offline**, basta un peer qualsiasi. Nello spike un nuovo nodo è entrato con il founder spento e si è allineato in 2 s.
+- **Consegna della chiave di cifratura (da decidere in Fase 1):** nello spike il codice d'invito contiene anche la chiave di team. È una semplificazione: chi intercetta il codice, anche già usato, può leggere i dati. Proposta: il codice contiene solo il segreto dell'invito, e la chiave di team viene consegnata via blind-pairing da **un membro online qualsiasi** dopo la verifica dell'invito. Il prezzo è che serve almeno un membro online, ma non per forza chi ha invitato.
+- **Scadenza degli inviti:** `apply` non può usare l'orologio locale perché non è deterministico. La scadenza si verifica quindi al momento del pairing, e l'invito scaduto viene annullato con un evento `invite.revoke`.
 - **Ruoli:** `admin` (rimuove membri, gestisce la config di team e le redazioni, promuove altri admin) e `member` (invita, scrive ricordi, vota, sogna).
 - **Tracciabilità:** `micelio members` mostra l'albero degli inviti (chi ha portato dentro chi), così un admin può risalire all'origine di un ingresso sospetto.
 - **Offboarding:** solo un admin può pubblicare `member.remove`. `apply` ignora le rimozioni pubblicate da chi non è admin. Dopo la rimozione i nuovi eventi del nodo rimosso vengono ignorati. **Limite intrinseco:** ciò che il nodo ha già replicato resta in suo possesso. Per proteggere il sapere futuro serve la rotazione della chiave di team (Fase 6).
@@ -487,7 +510,8 @@ src/
 
 | Rischio | Mitigazione |
 |---|---|
-| Le API di Autobase evolvono rapidamente | Versioni fissate, accesso solo tramite il modulo `net/`, spike in Fase 0 |
+| Le API di Autobase evolvono rapidamente | Versioni fissate, accesso solo tramite il modulo `net/`, spike in Fase 0 (superato con autobase 7.28.2) |
+| RAM del modello di embedding (~620 MB) | Worker caricato su richiesta e scaricato dopo inattività |
 | Flag e comportamento delle CLI cambiano | Adapter isolato, validazione con zod, test di contratto sull'adapter |
 | Limiti di utilizzo degli abbonamenti | Coda con budget, dreaming in finestre configurabili, priorità all'ingestione |
 | Qualità della distillazione (rumore o banalità) | Set di valutazione con sessioni reali anonimizzate; preferire 0 ricordi a ricordi deboli |
