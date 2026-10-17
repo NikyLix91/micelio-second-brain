@@ -1,7 +1,7 @@
 # Micelio — Piano di lavoro
 
 > Documento vivo: viene aggiornato a ogni avanzamento. Design di riferimento: [DESIGN.md](DESIGN.md). Indice della documentazione: [README.md](README.md).
-> Ultimo aggiornamento: **2026-10-17**. Fase 1 completata, decisioni della Fase 2 confermate: in attesa del via.
+> Ultimo aggiornamento: **2026-10-17**. Fase 2 in corso.
 
 ## Stato
 
@@ -9,11 +9,12 @@
 |---|---|---|
 | 0 — Spike | Ridurre i rischi tecnici | ✅ Completata |
 | 1 — MVP | Brain condiviso minimo, usabile da Claude Code | ✅ Completata |
-| 2 — Ingestione AI | Raccolta automatica con filtro privacy | ⏸️ In attesa di approvazione |
-| 3 — Documenti | Cartelle sorvegliate (PDF, DOCX, XLSX…) | ⬜ Da fare |
-| 4 — Priorità | Vettori, ricerca ibrida, attivazione | ⬜ Da fare |
-| 5 — Dreaming | Consolidamento coordinato | ⬜ Da fare |
-| 6 — Hardening | Offboarding, redazione, servizio di sistema, altri client | ⬜ Da fare |
+| 2 — Ingestione AI | Raccolta automatica con filtro privacy | 🔄 In corso |
+| 3 — UI base | App desktop di monitoraggio, controllo e decisioni (Electron) | ⬜ Da fare |
+| 4 — Documenti | Cartelle sorvegliate + documento originale su richiesta | ⬜ Da fare |
+| 5 — Priorità | Vettori, ricerca ibrida, attivazione | ⬜ Da fare |
+| 6 — Dreaming | Consolidamento coordinato | ⬜ Da fare |
+| 7 — Hardening | Offboarding, redazione, installer, altri client | ⬜ Da fare |
 
 ---
 
@@ -26,6 +27,10 @@
 | D3 | Indexer | Gli admin sono gli indexer. Consigliati 2–3 admin |
 | D4 | Cosa entra nell'MVP | Solo i salvataggi espliciti. "Come gestire l'esplicito" si definisce in Fase 2 (vedi D6) |
 | D5 | Sistemi operativi | Tutti. Sviluppo su Windows, Linux verificato in Docker, macOS non ancora provato |
+| D6–D9 | Ingestione AI | Vedi Fase 2 |
+| D10 | Consenso al download dell'originale di un documento | Automatico per cartella: "scaricabili su richiesta sì/no" scelto quando si aggiunge la cartella (DESIGN §12-bis) |
+| D11 | Chi serve l'originale | Solo il nodo proprietario. Le copie scaricate restano in cache locale per 30 giorni e non vengono ri-servite |
+| D12 | UI | Web app Angular servita dal daemon + guscio Electron (notifiche, icona nell'area di notifica, avvio automatico del daemon). Fase dedicata subito dopo la Fase 2 (DESIGN §12-ter) |
 
 ---
 
@@ -67,7 +72,7 @@ Resoconto completo: [spike-fase-0.md](spike-fase-0.md). In sintesi: P2P 6/6 scen
 
 ---
 
-## Fase 2 — Ingestione AI ⏸️ (proposta, da approvare)
+## Fase 2 — Ingestione AI 🔄
 
 **Obiettivo:** il sapere entra anche senza `remember` esplicito, dalle sessioni di Claude Code, e **niente di personale o sensibile arriva al team**. Riferimenti: DESIGN §6–7.
 
@@ -78,37 +83,38 @@ Resoconto completo: [spike-fase-0.md](spike-fase-0.md). In sintesi: P2P 6/6 scen
 | D6 | Come trattare i salvataggi espliciti (`remember`) | ✅ Passano **anche loro** dal filtro deterministico e dalla classificazione. Se sono puliti vanno al team, altrimenti in inbox. Il tool risponde mostrando il testo salvato, così l'utente vede subito cosa è stato scritto a suo nome |
 | D7 | Raccolta automatica dalle sessioni di Claude Code | ✅ **Opt-in per progetto:** si attiva solo nelle cartelle elencate dall'utente (`micelio watch add <cartella>`) |
 | D8 | Budget di chiamate LLM per nodo | ✅ Configurabile, default **300 chiamate al giorno**. Quando il budget finisce il lavoro resta in coda per il giorno dopo. Classificazione con Haiku, distillazione con Sonnet |
-| D9 | Inbox | ✅ Raccoglie **solo i casi dubbi in ingresso** (contenuto misto, dati sensibili segnalati insieme a contenuto utile, classificatore poco sicuro). I contenuti puliti vanno al team senza approvazione, quelli chiaramente personali o HR restano privati. Revisione da CLI (`micelio inbox`) e da MCP; gli elementi scadono dopo 14 giorni. **Non** riguarda i ricordi diventati inutili: quelli li archivia il dreaming (Fase 5), in modo reversibile |
+| D9 | Inbox | ✅ Raccoglie **solo i casi dubbi in ingresso** (contenuto misto, dati sensibili segnalati insieme a contenuto utile, classificatore poco sicuro). I contenuti puliti vanno al team senza approvazione, quelli chiaramente personali o HR restano privati. Revisione da CLI (`micelio inbox`) e da MCP; gli elementi scadono dopo 14 giorni. **Non** riguarda i ricordi diventati inutili: quelli li archivia il dreaming (Fase 6), in modo reversibile |
 
 ### Attività
 
-| # | Attività |
-|---|---|
-| 2.1 | `llm/`: adapter Claude CLI (dallo spike B) dietro un'interfaccia comune, coda con concorrenza 1, budget giornaliero, retry su output non valido, anti-loop `MICELIO_INTERNAL` |
-| 2.2 | Archivio privato `private.db` (mai replicato) + inbox: CLI `micelio inbox [approve\|reject\|edit]` e tool MCP `inbox_review` / `inbox_decide` |
-| 2.3 | Filtro deterministico: percorsi, parole chiave (HR, valutazioni, retribuzioni…), pattern di dati personali (codice fiscale, IBAN, telefono, email), **redazione dei segreti** (chiavi API, token, password, stringhe di connessione). Regole di default + regole del team via `team.config` |
-| 2.4 | Classificazione con Haiku (schema e prompt dello spike B, set di casi di prova ampliato) |
-| 2.5 | Distillazione con Sonnet: 0..N ricordi atomici, **regola di fedeltà alla fonte**, lingua del team (`memory.language`) |
-| 2.6 | Hook `SessionEnd` di Claude Code installato da `micelio setup claude-code`: invia al daemon il percorso della trascrizione, solo per le cartelle opt-in (D7) |
-| 2.7 | `remember` esplicito attraverso filtro + classificazione (D6) |
-| 2.8 | Set di valutazione: 20–30 sessioni realistiche anonimizzate (tecniche, HR, miste, banali) con l'esito atteso, eseguibile con `npm run eval:ingest` |
-| 2.9 | Test e documentazione (guida utente: privacy e inbox; sviluppo: pipeline) |
+| # | Attività | Stato |
+|---|---|---|
+| 2.1 | `llm/`: adapter Claude CLI (dallo spike B) dietro un'interfaccia comune, coda con concorrenza 1, budget giornaliero, retry su output non valido, anti-loop `MICELIO_INTERNAL` | ⬜ |
+| 2.2 | Archivio privato `private.db` (mai replicato) + inbox: CLI `micelio inbox [approve\|reject\|edit]` e tool MCP `inbox_review` / `inbox_decide` | ⬜ |
+| 2.3 | Filtro deterministico: percorsi, parole chiave (HR, valutazioni, retribuzioni…), pattern di dati personali (codice fiscale, IBAN, telefono, email), **redazione dei segreti** (chiavi API, token, password, stringhe di connessione). Regole di default + regole del team via `team.config` | ⬜ |
+| 2.4 | Classificazione con Haiku (schema e prompt dello spike B, set di casi di prova ampliato) | ⬜ |
+| 2.5 | Distillazione con Sonnet: 0..N ricordi atomici, **regola di fedeltà alla fonte**, lingua del team (`memory.language`) | ⬜ |
+| 2.6 | Hook `SessionEnd` di Claude Code installato da `micelio setup claude-code`: invia al daemon il percorso della trascrizione, solo per le cartelle opt-in (D7) | ⬜ |
+| 2.7 | `remember` esplicito attraverso filtro + classificazione (D6) | ⬜ |
+| 2.8 | Set di valutazione: 20–30 sessioni realistiche anonimizzate (tecniche, HR, miste, banali) con l'esito atteso, eseguibile con `npm run eval:ingest` | ⬜ |
+| 2.9 | Test e documentazione (guida utente: privacy e inbox; sviluppo: pipeline) | ⬜ |
 
 **Criterio di completamento:**
 - Una sessione tecnica in una cartella opt-in produce ricordi nel team senza intervento.
 - Una sessione su una mail di valutazione, o con credenziali, **non** produce nulla nel team (resta in privato o in inbox).
 - Il set di valutazione passa almeno il 90% dei casi, e il 100% dei casi sensibili.
 
-**Non coperto in Fase 2:** Codex CLI (serve un abbonamento per provarlo), cartelle di documenti (Fase 3).
+**Non coperto in Fase 2:** Codex CLI (serve un abbonamento per provarlo), cartelle di documenti (Fase 4).
 
 ---
 
 ## Fasi successive
 
-- **Fase 3 — Documenti:** watcher sulle cartelle, estrazione PDF/DOCX/XLSX/PPTX, elaborazione incrementale per hash, stessa pipeline di filtro della Fase 2.
-- **Fase 4 — Priorità:** embedding in un worker su richiesta, sqlite-vec, ricerca ibrida RRF, `usage.report`, attivazione, voti e pin, indicizzazione incrementale.
-- **Fase 5 — Dreaming:** elezione per epoca, consolidamento, contraddizioni, collegamenti, decadimento, diario dei sogni, budget.
-- **Fase 6 — Hardening:** rotazione della chiave all'offboarding, redazione, `micelio setup` per Codex, VS Code e WebStorm, shim MCP stdio, avvio come servizio di sistema, test su macOS, osservabilità.
+- **Fase 3 — UI base:** web app Angular servita dal daemon + guscio Electron. Canale SSE di eventi. Schermate Dashboard (nodo, peer, sincronizzazione, coda e budget LLM), Memoria, Inbox, Team, Privato, Impostazioni. Notifiche, icona nell'area di notifica, avvio automatico del daemon. Comando `micelio ui`.
+- **Fase 4 — Documenti:** watcher sulle cartelle (con il flag "scaricabili su richiesta"), estrazione PDF/DOCX/XLSX/PPTX, elaborazione incrementale per hash, stessa pipeline di filtro della Fase 2. **Documento originale su richiesta:** canale P2P dedicato, tool MCP `fetch_source`, `micelio fetch`, cache con scadenza, schermata Richieste.
+- **Fase 5 — Priorità:** embedding in un worker su richiesta, sqlite-vec, ricerca ibrida RRF, `usage.report`, attivazione, voti e pin (anche dalla UI), indicizzazione incrementale.
+- **Fase 6 — Dreaming:** elezione per epoca, consolidamento, contraddizioni, collegamenti, decadimento, diario dei sogni (schermata UI), budget.
+- **Fase 7 — Hardening:** rotazione della chiave all'offboarding, redazione, `micelio setup` per Codex, VS Code e WebStorm, shim MCP stdio, installer dell'app desktop per Windows/macOS/Linux, test su macOS, osservabilità.
 
 ---
 
@@ -121,3 +127,4 @@ Resoconto completo: [spike-fase-0.md](spike-fase-0.md). In sintesi: P2P 6/6 scen
 | 2026-10-17 | Decisioni D1–D5 confermate. Fase 1 avviata |
 | 2026-10-17 | Fase 1 completata: 25 test + e2e Docker 11/11 + prova reale Windows ↔ container con Claude Code. Documentazione in `docs/`. Fase 2 proposta (decisioni D6–D9) |
 | 2026-10-17 | Decisioni D6–D9 confermate (budget LLM di default portato a 300 chiamate al giorno; inbox solo per i casi dubbi) |
+| 2026-10-17 | Nuove funzioni: documento originale su richiesta (D10–D11, Fase 4) e UI desktop Electron (D12, nuova Fase 3). Fasi successive rinumerate. Fase 2 avviata |

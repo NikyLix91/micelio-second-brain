@@ -16,7 +16,7 @@ Il server invia agli agenti delle **istruzioni**: cercare con `recall` prima dei
 | `remember` | `title`, `body` (Markdown), `kind?`, `tags?` | Salva un ricordo nel team. Se identico a uno esistente risponde "Già presente". Errore leggibile se i dati non sono validi |
 | `get` | `id` (anche abbreviato, min 6 caratteri) | Ricordo completo. Sola lettura |
 
-Nella Fase 4 `recall` diventerà ibrido (full-text + semantico) e terrà conto della priorità (attivazione).
+Nella Fase 5 `recall` diventerà ibrido (full-text + semantico) e terrà conto della priorità (attivazione).
 
 ## Configurazione dei client
 
@@ -42,7 +42,7 @@ claude --mcp-config '{"mcpServers":{"micelio":{"type":"http","url":"http://127.0
 
 ### Altri client (Codex CLI, VS Code, WebStorm)
 
-`micelio setup` per questi client è previsto in Fase 6. Nel frattempo, ogni client che supporta MCP su HTTP si configura a mano con lo stesso URL e lo stesso header.
+`micelio setup` per questi client è previsto in Fase 7. Nel frattempo, ogni client che supporta MCP su HTTP si configura a mano con lo stesso URL e lo stesso header.
 
 ## Sicurezza
 

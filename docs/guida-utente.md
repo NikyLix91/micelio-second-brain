@@ -23,7 +23,7 @@ micelio status      # stato del nodo
 micelio stop        # ferma il daemon
 ```
 
-Il daemon deve restare attivo perché il nodo sincronizzi e perché gli assistenti AI possano usarlo. Per ora va avviato a mano dopo ogni riavvio del PC; l'avvio automatico come servizio di sistema è previsto in Fase 6.
+Il daemon deve restare attivo perché il nodo sincronizzi e perché gli assistenti AI possano usarlo. Per ora va avviato a mano dopo ogni riavvio del PC; l'avvio automatico arriverà con l'app desktop (Fase 3).
 
 I dati del nodo stanno in `~/.micelio`:
 
@@ -121,7 +121,7 @@ micelio members                 # albero degli inviti: chi ha invitato chi
 micelio members remove pc-x     # solo admin
 ```
 
-Un membro espulso non può più scrivere nel team. **Limite intrinseco:** ciò che aveva già ricevuto resta sulla sua macchina. La rotazione della chiave per proteggere il sapere futuro è prevista in Fase 6.
+Un membro espulso non può più scrivere nel team. **Limite intrinseco:** ciò che aveva già ricevuto resta sulla sua macchina. La rotazione della chiave per proteggere il sapere futuro è prevista in Fase 7.
 
 ## 8. Risoluzione problemi
 

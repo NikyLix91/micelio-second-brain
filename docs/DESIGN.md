@@ -370,7 +370,7 @@ Ogni `recall` che restituisce un ricordo incrementa un contatore locale. Ogni N 
 - **Ruoli:** `admin` (rimuove membri, gestisce la config di team e le redazioni, promuove altri admin) e `member` (invita, scrive ricordi, vota, sogna).
 - **Tracciabilità:** `micelio members` mostra l'albero degli inviti (chi ha portato dentro chi), così un admin può risalire all'origine di un ingresso sospetto.
 - **Permessi ed eventi concorrenti (emerso nei test della Fase 1):** `apply` valuta i permessi nell'ordine linearizzato. Se un membro emette un'azione da admin *concorrentemente* alla propria promozione, l'ordinamento può mettere la promozione prima e rendere valida l'azione, in modo coerente su tutti i nodi. Mitigazione: il nodo rifiuta già in partenza le azioni da admin se localmente non è admin, quindi un client normale non le emette mai. Resta il rischio teorico di un client manomesso che sfrutti quella finestra di concorrenza. È accettato per un team di colleghi.
-- **Offboarding:** solo un admin può pubblicare `member.remove`. `apply` ignora le rimozioni pubblicate da chi non è admin. Dopo la rimozione i nuovi eventi del nodo rimosso vengono ignorati. **Limite intrinseco:** ciò che il nodo ha già replicato resta in suo possesso. Per proteggere il sapere futuro serve la rotazione della chiave di team (Fase 6).
+- **Offboarding:** solo un admin può pubblicare `member.remove`. `apply` ignora le rimozioni pubblicate da chi non è admin. Dopo la rimozione i nuovi eventi del nodo rimosso vengono ignorati. **Limite intrinseco:** ciò che il nodo ha già replicato resta in suo possesso. Per proteggere il sapere futuro serve la rotazione della chiave di team (Fase 7).
 
 ---
 
@@ -409,7 +409,7 @@ Fase futura: **astrazione**, cioè ricavare principi generali da più ricordi sp
 
 ## 11. Server MCP
 
-Il daemon (NestJS) espone MCP su **Streamable HTTP locale** (`127.0.0.1`, con token Bearer), in modalità **stateless**: ogni richiesta crea server e trasporto nuovi. La **shim stdio** per i client che supportano solo stdio è rinviata alla Fase 6, perché tutti i client previsti supportano HTTP. Nella Fase 1 sono implementati `recall`, `remember` e `get` (riferimento: [mcp.md](mcp.md)).
+Il daemon (NestJS) espone MCP su **Streamable HTTP locale** (`127.0.0.1`, con token Bearer), in modalità **stateless**: ogni richiesta crea server e trasporto nuovi. La **shim stdio** per i client che supportano solo stdio è rinviata alla Fase 7, perché tutti i client previsti supportano HTTP. Nella Fase 1 sono implementati `recall`, `remember` e `get` (riferimento: [mcp.md](mcp.md)).
 
 | Tool | Descrizione |
 |---|---|
@@ -430,6 +430,24 @@ Ogni IDE o CLI si configura una volta con `micelio setup <client>`, che scrive l
 `~/.micelio/export/team/<kind>/<slug>.md`, con frontmatter (id, tag, attivazione, fonte), rigenerato a ogni cambiamento della vista. È **in sola lettura**: le modifiche manuali vengono sovrascritte. Si può aprire con Obsidian o qualsiasi editor e serve anche come strumento di debug.
 
 ---
+
+## 12-bis. Documento originale su richiesta
+
+Nel brain viaggia solo la conoscenza distillata (principio 3). Per approfondire si può però **chiedere l'originale** di un documento da cui è stato distillato un ricordo.
+
+- **Riferimento alla fonte:** un ricordo distillato da un documento porta con sé `source = { type: 'document', node, hash, name, size, mime }`. Il percorso sul disco non viene mai replicato.
+- **Consenso (decisione D10):** automatico per cartella. Quando l'utente aggiunge una cartella sorvegliata sceglie "documenti scaricabili su richiesta: sì/no". Se sì, il nodo serve i file di quella cartella a qualunque membro attivo senza chiedere; se no, mai.
+- **Chi serve il file (decisione D11):** **solo il nodo proprietario**. Se è offline il documento non è disponibile. Le copie scaricate restano in una cache locale (`~/.micelio/sources/`), scadono dopo 30 giorni e **non** vengono ri-servite: se il proprietario rende una cartella non scaricabile, nessuna copia continua a circolare.
+- **Protocollo:** canale `protomux` dedicato sulle connessioni Hyperswarm esistenti (già cifrate con Noise). Il nodo proprietario verifica che la chiave del richiedente sia un membro attivo nella vista, che l'hash corrisponda a un file ancora presente e invariato in una cartella scaricabile, e poi trasmette il file a blocchi con verifica dell'hash all'arrivo.
+- **Accesso:** tool MCP `fetch_source(memoryId)`, `micelio fetch <id>`, pulsante nella UI.
+- **Fase:** 4 (documenti), insieme alle cartelle sorvegliate che creano i riferimenti.
+
+## 12-ter. UI di monitoraggio, controllo e decisioni
+
+- **Architettura:** web app **Angular** servita dal daemon (NestJS) e apribile anche nel browser su `localhost`, dentro un guscio **Electron**. Il guscio aggiunge icona nell'area di notifica, notifiche e avvio automatico del daemon, e copre così l'avvio come servizio.
+- **Dati:** la UI usa la stessa API locale della CLI, più un canale **SSE** di eventi in tempo reale (sincronizzazione, nuovi ricordi, inbox, richieste, sogni). Autenticazione con lo stesso token: Electron lo legge da `config.json`, nel browser viene passato una sola volta tramite un link aperto da `micelio ui`.
+- **Schermate:** Dashboard (nodo, peer, sincronizzazione, coda e budget LLM), Memoria (ricerca, dettaglio, fonte), Inbox (decisioni), Team (membri, albero degli inviti, inviti, ruoli), Privato, Impostazioni (cartelle opt-in, regole del filtro, budget, modelli, lingua). Le fasi successive aggiungono Richieste documenti, Voti e pin, Diario dei sogni.
+- **Fase:** 3 (UI base, subito dopo l'ingestione); ogni fase successiva aggiunge la propria schermata.
 
 ## 13. Configurazione e file locali
 
@@ -466,7 +484,7 @@ Ogni IDE o CLI si configura una volta con `micelio setup <client>`, che scrive l
 | Runtime | Node.js ≥ 22.13, TypeScript 5.9 (CommonJS, per compatibilità con NestJS) |
 | HTTP (API locale + MCP) | **NestJS 11** (Express 5) |
 | P2P | `autobase`, `corestore`, `hyperswarm`, `hyperbee`, `blind-pairing`, `protomux-wakeup` |
-| Storage | **`node:sqlite`** (integrato in Node, nessuna dipendenza nativa) + FTS5; `sqlite-vec` in Fase 4 |
+| Storage | **`node:sqlite`** (integrato in Node, nessuna dipendenza nativa) + FTS5; `sqlite-vec` in Fase 5 |
 | Embedding | `@huggingface/transformers` (locale) |
 | Validazione | `zod` |
 | MCP | `@modelcontextprotocol/sdk` |
@@ -505,10 +523,11 @@ src/
 | **0 — Spike** | Ridurre i rischi tecnici | (a) 3 nodi Autobase in container Docker si sincronizzano via Hyperswarm, anche con nodi che entrano tardi o vanno offline; (b) `claude -p` headless restituisce JSON valido su Windows (`codex` da verificare quando sarà disponibile); (c) embedding con transformers.js funzionanti in Node su Windows |
 | **1 — MVP** | Brain condiviso minimo | Creazione del team, invito/join, `memory.add`, vista SQLite + FTS, MCP `remember`/`recall`, export Markdown. Due nodi reali allineati |
 | **2 — Ingestione AI** | Raccolta automatica con filtro | Hook Claude Code, sessioni Codex, filtro deterministico, classificazione, distillazione, ambito privato, inbox |
-| **3 — Documenti** | Cartelle sorvegliate | Watcher, estrazione PDF/DOCX/XLSX, elaborazione incrementale |
-| **4 — Priorità** | Ricerca intelligente | Vettori, ricerca ibrida, `usage.report`, attivazione, voti e pin |
-| **5 — Dreaming** | Consolidamento | Elezione per epoca, fasi 1–7, diario dei sogni |
-| **6 — Hardening** | Pronto per il team | Offboarding e rotazione chiave, redazione, `micelio setup` per tutti i client, avvio come servizio (Windows/macOS/Linux), osservabilità |
+| **3 — UI base** | Monitoraggio, controllo, decisioni | Web app Angular servita dal daemon + guscio Electron, SSE, schermate Dashboard/Memoria/Inbox/Team/Privato/Impostazioni |
+| **4 — Documenti** | Cartelle sorvegliate + originale su richiesta | Watcher, estrazione PDF/DOCX/XLSX, elaborazione incrementale, `fetch_source` P2P (§12-bis) |
+| **5 — Priorità** | Ricerca intelligente | Vettori, ricerca ibrida, `usage.report`, attivazione, voti e pin |
+| **6 — Dreaming** | Consolidamento | Elezione per epoca, fasi 1–7, diario dei sogni |
+| **7 — Hardening** | Pronto per il team | Offboarding e rotazione chiave, redazione, `micelio setup` per tutti i client, pacchetti di installazione, osservabilità |
 
 ---
 
