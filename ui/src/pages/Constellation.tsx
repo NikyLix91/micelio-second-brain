@@ -19,7 +19,7 @@ import { api, type GraphNode } from '../api/client'
 import { MemoryPanel } from '../components/MemoryPanel'
 import { ErrorBox } from '../components/ui'
 import { KIND_LABEL, short } from '../format'
-import { authorColor, DIM, KIND_COLOR } from './colors'
+import { authorColor, DIM, KIND_COLOR, registerAuthors } from './colors'
 
 type ColorMode = 'author' | 'kind'
 
@@ -49,6 +49,9 @@ export function Constellation () {
   const q = query.trim()
   const search = useQuery({ queryKey: ['memories', 'graph-search', q], queryFn: () => api.search(q, 200), enabled: q.length >= 2 })
   const hits = useMemo(() => (q.length >= 2 && search.data ? new Set(search.data.map((h) => h.id)) : null), [q, search.data])
+
+  // Stessi colori degli autori del Nucleo (palette distinta, ordine stabile).
+  useMemo(() => registerAuthors((graph.data?.nodes ?? []).map((n) => n.author)), [graph.data])
 
   // Legenda: autori o tipi presenti, con il loro colore.
   const legend = useMemo(() => {

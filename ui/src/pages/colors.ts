@@ -1,8 +1,11 @@
 /**
- * @file Colori della costellazione. Funzioni pure, testate a parte.
+ * @file Colori delle viste a grafo (Nucleo 3D, Mappa 2D, pannelli). Funzioni pure, testate a parte.
  *
- * Ogni autore ha un colore STABILE: lo ricaviamo da un hash della sua chiave, così lo stesso
- * collega ha lo stesso colore su ogni PC e a ogni avvio, senza doverlo salvare da nessuna parte.
+ * Autori: una PALETTE di colori ben distinti, assegnati in ordine stabile (chiavi ordinate) agli
+ * autori presenti. Prima usavamo una tonalità ricavata dall'hash della chiave, ma due autori
+ * potevano finire con colori quasi uguali (es. due verdi): con pochi colleghi è illeggibile.
+ * Il registro va popolato con `registerAuthors` quando arrivano i dati del grafo; per un autore
+ * non registrato si ripiega sull'hash.
  */
 
 /** Hash numerico semplice e deterministico di una stringa (FNV-1a a 32 bit). */
@@ -15,12 +18,25 @@ export function hash (s: string): number {
   return h >>> 0
 }
 
+/** Colori ben distinguibili fra loro e sullo sfondo nero (ordine scelto per massimo contrasto). */
+export const PALETTE = ['#4cc9f0', '#ff6b6b', '#b8f35d', '#c77dff', '#ffd166', '#06d6a0', '#ff9f1c', '#f15bb5', '#9bf6ff', '#e9ff70']
+
+/** Registro autore → colore, condiviso da tutte le viste. */
+const registry = new Map<string, string>()
+
 /**
- * Colore di un autore: tonalità dall'hash, saturazione e luminosità fisse per restare
- * leggibili sullo sfondo scuro della costellazione.
+ * Assegna i colori della palette agli autori indicati, in ordine di chiave (stabile: lo stesso
+ * insieme di autori produce gli stessi colori su ogni PC). Oltre 10 autori la palette ricomincia.
  */
+export function registerAuthors (keys: Iterable<string>): void {
+  const sorted = [...new Set(keys)].sort()
+  registry.clear()
+  sorted.forEach((k, i) => registry.set(k, PALETTE[i % PALETTE.length]))
+}
+
+/** Colore di un autore: dal registro, o (se sconosciuto) una tonalità ricavata dall'hash. */
 export function authorColor (key: string): string {
-  return `hsl(${hash(key) % 360} 70% 62%)`
+  return registry.get(key) ?? `hsl(${hash(key) % 360} 70% 62%)`
 }
 
 /** Colori fissi per tipo di ricordo. */

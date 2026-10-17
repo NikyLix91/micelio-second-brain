@@ -14,7 +14,9 @@
  *   una didascalia; si può andare avanti, indietro o fermarsi;
  * - RICERCA: accende i ricordi pertinenti, spegne gli altri e vola sul loro baricentro.
  *
- * Colori: "olografico" (ambra, intensità per numero di collegamenti), per autore o per tipo.
+ * Colori: "olografico" (ambra, intensità per attivazione), per autore o per tipo. Nelle modalità
+ * a colori la LEGENDA è cliccabile: un clic isola un autore (o un tipo), un secondo clic mostra di
+ * nuovo tutti. Il filtro si combina con la ricerca. `#/?colori=autore|tipo` apre già in quella modalità.
  *
  * Questa pagina è caricata in modo pigro (React.lazy in App.tsx): three.js pesa, e le altre
  * schermate non devono pagarne il costo.
@@ -29,7 +31,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { api, type GraphNode } from '../../api/client'
 import { MemoryPanel } from '../../components/MemoryPanel'
 import { KIND_LABEL } from '../../format'
-import { authorColor, KIND_COLOR } from '../colors'
+import { authorColor, KIND_COLOR, registerAuthors } from '../colors'
 import { animateHologram, createHologram, HOLO, SPHERE_RADIUS, sphericalForce, starSprite } from './hologram'
 import { cameraFor, caption, centroid, computeTourStops, type TourStop } from './tour'
 
@@ -48,7 +50,13 @@ export default function Nucleus () {
   const fgRef = useRef<any>(null)
   const boxRef = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState({ width: 800, height: 600 })
-  const [mode, setMode] = useState<ColorMode>('holo')
+  const [params] = useSearchParams()
+  const initialMode: ColorMode = params.get('colori') === 'autore' ? 'author' : params.get('colori') === 'tipo' ? 'kind' : 'holo'
+  const [mode, setMode] = useState<ColorMode>(initialMode)
+  /** Voce della legenda isolata (chiave dell'autore o tipo), null = nessun filtro. */
+  const [focus, setFocus] = useState<string | null>(null)
+  /** Riferimento al bloom, per renderlo più tenue nelle modalità a colori. */
+  const bloomRef = useRef<UnrealBloomPass | null>(null)
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<GraphNode | null>(null)
   const [tourIndex, setTourIndex] = useState<number | null>(null)
@@ -73,7 +81,6 @@ export default function Nucleus () {
 
   const stops = useMemo(() => computeTourStops(graph.data?.nodes ?? []), [graph.data])
   // `#/?tour=1` avvia subito l'esplorazione guidata (usato anche per catturare le schermate).
-  const [params] = useSearchParams()
   useEffect(() => {
     if (params.get('tour') !== '1' || stops.length === 0) return
     const t = setTimeout(() => setTourIndex((i) => i ?? 0), 2500)
@@ -84,12 +91,29 @@ export default function Nucleus () {
   const q = query.trim()
   const search = useQuery({ queryKey: ['memories', 'nucleus-search', q], queryFn: () => api.search(q, 200), enabled: q.length >= 2 })
 
-  /** Ricordi "accesi": quelli della tappa del tour o della ricerca; null = tutti accesi. */
+  // Colori degli autori: palette distinta, assegnata in ordine stabile a chi compare nel grafo.
+  useMemo(() => registerAuthors((graph.data?.nodes ?? []).map((n) => n.author)), [graph.data])
+
+  /**
+   * Ricordi "accesi": quelli della tappa del tour o della ricerca, intersecati con la voce della
+   * legenda isolata (autore o tipo). null = tutti accesi.
+   */
   const lit = useMemo<Set<string> | null>(() => {
-    if (stop) return new Set(stop.ids)
-    if (q.length >= 2 && search.data) return new Set(search.data.map((h) => h.id))
-    return null
-  }, [stop, q, search.data])
+    let set: Set<string> | null = null
+    if (stop) set = new Set(stop.ids)
+    else if (q.length >= 2 && search.data) set = new Set(search.data.map((h) => h.id))
+    if (focus && mode !== 'holo') {
+      const match = (graph.data?.nodes ?? []).filter((n) => (mode === 'author' ? n.author : n.kind) === focus).map((n) => n.id)
+      set = set ? new Set(match.filter((id) => set!.has(id))) : new Set(match)
+    }
+    return set
+  }, [stop, q, search.data, focus, mode, graph.data])
+
+  // Nelle modalità a colori il bagliore pieno satura tutto in bianco e la tinta non si vede:
+  // lo attenuiamo; in "olografico" torna pieno.
+  useEffect(() => {
+    if (bloomRef.current) bloomRef.current.strength = mode === 'holo' ? 1.35 : 0.45
+  }, [mode])
 
   // ── Dimensioni ──────────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -109,7 +133,8 @@ export default function Nucleus () {
     // Parametri regolabili da URL per prove visive: #/?bs=forza&br=raggio&bt=soglia
     const hp = new URLSearchParams(window.location.hash.split('?')[1] ?? '')
     const num = (k: string, d: number) => (hp.get(k) !== null ? Number(hp.get(k)) : d)
-    const bloom = new UnrealBloomPass(new THREE.Vector2(size.width, size.height), num('bs', 1.35), num('br', 0.4), num('bt', 0.22))
+    const bloom = new UnrealBloomPass(new THREE.Vector2(size.width, size.height), num('bs', initialMode === 'holo' ? 1.35 : 0.45), num('br', 0.4), num('bt', 0.22))
+    bloomRef.current = bloom
     // Il bloom va inserito PRIMA del passaggio finale di conversione colore (OutputPass).
     // Aggiunto in coda, la conversione sRGB veniva applicata due volte: sfondo grigio-blu
     // invece che nero e colori slavati.
@@ -215,8 +240,10 @@ export default function Nucleus () {
     const base = 3.2 + Math.min(5, (degree.get(n.id) ?? 0) * 0.6) + (n.activation ?? 0.5) * 3
     const size = n.id === selected?.id ? base * 2.2 : on && lit ? base * 1.5 : base
     // I ricordi esclusi da tour/ricerca restano visibili ma tenui: danno il contesto.
-    return starSprite(on ? colorOf(n) : '#8a6a3a', size, on ? 1 : 0.4)
-  }, [lit, degree, selected, colorOf])
+    // Nelle modalità a colori stelle un po' più piccole e non sature: la tinta resta leggibile.
+    const colored = mode !== 'holo'
+    return starSprite(on ? colorOf(n) : '#8a6a3a', colored ? size * 0.85 : size, on ? (colored ? 0.9 : 1) : 0.4)
+  }, [lit, degree, selected, colorOf, mode])
 
   const linkOn = (l: any) => !lit || (lit.has(l.source.id ?? l.source) && lit.has(l.target.id ?? l.target))
 
@@ -267,7 +294,7 @@ export default function Nucleus () {
         <input className='hud-input' placeholder='Accendi un argomento…' value={query} onChange={(e) => { setTourIndex(null); setQuery(e.target.value) }} />
         <div className='row'>
           {(['holo', 'author', 'kind'] as ColorMode[]).map((m) => (
-            <button key={m} className={`hud-btn ${mode === m ? 'on' : ''}`} onClick={() => setMode(m)}>
+            <button key={m} className={`hud-btn ${mode === m ? 'on' : ''}`} onClick={() => { setMode(m); setFocus(null) }}>
               {m === 'holo' ? 'Olografico' : m === 'author' ? 'Per autore' : 'Per tipo'}
             </button>
           ))}
@@ -282,7 +309,7 @@ export default function Nucleus () {
               <button className='hud-btn' onClick={stopTour}>■ Stop</button>
             </div>
             )}
-        {mode !== 'holo' && <Legend nodes={graph.data?.nodes ?? []} mode={mode} />}
+        {mode !== 'holo' && <Legend nodes={graph.data?.nodes ?? []} mode={mode} focus={focus} onFocus={(k) => { setTourIndex(null); setFocus(focus === k ? null : k) }} />}
       </div>
 
       {/* ── HUD: didascalia della tappa del tour ─────────────────────────── */}
@@ -293,7 +320,15 @@ export default function Nucleus () {
           <div>{caption(stop, (k) => KIND_LABEL[k] ?? k)}</div>
         </div>
       )}
-      {!stop && lit && <div className='hud hud-caption'><div className='hud-topic'>{lit.size} ricordi pertinenti</div><div>a «{q}»</div></div>}
+      {!stop && lit && (
+        <div className='hud hud-caption'>
+          <div className='hud-topic'>{lit.size} ricordi {q.length >= 2 ? 'pertinenti' : ''}</div>
+          <div>
+            {q.length >= 2 && <>a «{q}»</>}
+            {focus && <>{q.length >= 2 ? ' · ' : ''}{mode === 'author' ? 'di ' + (graph.data?.nodes.find((n) => n.author === focus)?.authorName ?? focus.slice(0, 8)) : 'di tipo ' + (KIND_LABEL[focus] ?? focus)}</>}
+          </div>
+        </div>
+      )}
 
       {data.nodes.length === 0 && !graph.isLoading && (
         <div className='hud hud-center'>Il nucleo si accenderà con i primi ricordi del team.</div>
@@ -308,14 +343,23 @@ export default function Nucleus () {
   )
 }
 
-/** Legenda dei colori quando la modalità non è "olografico". */
-function Legend ({ nodes, mode }: { nodes: GraphNode[], mode: ColorMode }) {
+/**
+ * Legenda cliccabile delle modalità a colori: un clic isola quella voce (autore o tipo), un
+ * secondo clic sulla stessa voce rimuove il filtro. Mostra anche quanti ricordi ha ogni voce.
+ */
+function Legend ({ nodes, mode, focus, onFocus }: { nodes: GraphNode[], mode: ColorMode, focus: string | null, onFocus: (key: string) => void }) {
+  const count = (pred: (n: GraphNode) => boolean) => nodes.filter(pred).length
   const entries = mode === 'kind'
-    ? [...new Set(nodes.map((n) => n.kind))].map((k) => ({ key: k, label: KIND_LABEL[k] ?? k, color: KIND_COLOR[k] ?? HOLO.amber }))
-    : [...new Map(nodes.map((n) => [n.author, n.authorName ?? n.author.slice(0, 8)]))].map(([k, label]) => ({ key: k, label, color: authorColor(k) }))
+    ? [...new Set(nodes.map((n) => n.kind))].map((k) => ({ key: k, label: KIND_LABEL[k] ?? k, color: KIND_COLOR[k] ?? HOLO.amber, n: count((x) => x.kind === k) }))
+    : [...new Map(nodes.map((n) => [n.author, n.authorName ?? n.author.slice(0, 8)]))].map(([k, label]) => ({ key: k, label, color: authorColor(k), n: count((x) => x.author === k) }))
   return (
     <div className='hud-legend'>
-      {entries.map((e) => <div key={e.key}><span className='dot' style={{ background: e.color, boxShadow: `0 0 6px ${e.color}` }} /> {e.label}</div>)}
+      {entries.map((e) => (
+        <button key={e.key} className={`hud-legend-item ${focus === e.key ? 'on' : ''} ${focus && focus !== e.key ? 'off' : ''}`} onClick={() => onFocus(e.key)} title={focus === e.key ? 'Mostra tutti' : 'Isola'}>
+          <span className='dot' style={{ background: e.color, boxShadow: `0 0 6px ${e.color}` }} /> {e.label} <span className='hud-legend-count'>{e.n}</span>
+        </button>
+      ))}
+      {focus && <button className='hud-legend-item' onClick={() => onFocus(focus)}>✕ mostra tutti</button>}
     </div>
   )
 }

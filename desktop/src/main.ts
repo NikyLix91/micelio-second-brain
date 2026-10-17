@@ -85,6 +85,14 @@ function showWindow (route = ''): void {
   })
   // Messaggi della console della UI nel log dell'app (utile per la diagnostica).
   win.webContents.on('console-message', (e: any) => { if (String(e.message ?? '').startsWith('[nucleus]')) log(e.message) })
+  // F5 / Ctrl+R ricaricano la UI (senza menu applicativo le scorciatoie standard non esistono):
+  // utile dopo un aggiornamento di Micelio, quando il daemon serve una UI nuova.
+  win.webContents.on('before-input-event', (e, input) => {
+    if (input.type === 'keyDown' && (input.key === 'F5' || (input.control && input.key.toLowerCase() === 'r'))) {
+      e.preventDefault()
+      win?.webContents.reload()
+    }
+  })
   win.on('closed', () => { win = null })
   void win.loadURL(`${uiUrl}${route ? '#' + route : ''}`)
 }
@@ -112,7 +120,7 @@ function createTray (info: DaemonInfo): void {
 async function takeScreenshots (dir: string): Promise<void> {
   fs.mkdirSync(dir, { recursive: true })
   const routes: [string, string, number][] = [
-    ['nucleo', '/', 9000], ['nucleo-tour', '/?tour=1', 11000], ['mappa-2d', '/mappa', 6000], ['memoria', '/memoria', 2000], ['inbox', '/inbox', 2000],
+    ['nucleo', '/', 9000], ['nucleo-tour', '/?tour=1', 11000], ['nucleo-autori', '/?colori=autore', 9000], ['mappa-2d', '/mappa', 6000], ['memoria', '/memoria', 2000], ['inbox', '/inbox', 2000],
     ['team', '/team', 2000], ['sogni', '/sogni', 2000], ['stato', '/stato', 2000], ['privato', '/privato', 2000], ['impostazioni', '/impostazioni', 2000]
   ]
   // MICELIO_SCREENSHOT_ONLY=nucleo,team limita le catture ad alcune schermate (diagnostica).
