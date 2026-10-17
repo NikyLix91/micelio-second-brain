@@ -13,7 +13,7 @@ Ogni macchina del team esegue un nodo Micelio. I nodi si trovano da soli su inte
   Claude Code          Claude Code
 ```
 
-> Stato: **Fase 1 (MVP) completata**: team, inviti, ricordi espliciti, ricerca, MCP per Claude Code. Il piano è in [docs/PLAN.md](docs/PLAN.md).
+> Stato: **Fase 2 completata**: team P2P, inviti, ricerca, MCP per Claude Code, raccolta automatica dalle sessioni con filtro privacy e inbox. Il piano è in [docs/PLAN.md](docs/PLAN.md).
 
 ## Avvio rapido
 

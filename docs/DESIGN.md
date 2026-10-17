@@ -259,11 +259,18 @@ Prompt dedicato. Output JSON validato con `zod`:
 }
 ```
 
-Regola di instradamento:
+Regola di instradamento (implementata in `route()`, Fase 2):
 
 - `team` **solo se** `destination = team`, `sensitivity` è vuoto e `confidence ≥ 0.8`;
-- `discard` se il contenuto non contiene nulla di riutilizzabile;
-- in tutti gli altri casi → **inbox**, che l'utente rivede con `micelio inbox` o con il tool MCP `inbox_review`. Gli elementi dell'inbox scadono dopo N giorni (default 14).
+- `private` se `destination = private`, `confidence ≥ 0.8` e **niente** di riutilizzabile (`reusable = false`): il contenuto è chiaramente personale;
+- `discard` se `destination = discard` con `confidence ≥ 0.8`;
+- in tutti gli altri casi → **inbox** (casi dubbi: contenuto misto, sensibile ma utile, classificatore poco sicuro). L'utente lo rivede con `micelio inbox` o con i tool MCP `inbox_review` / `inbox_decide`. Gli elementi scadono dopo 14 giorni (decisione D9).
+
+**Salvataggi espliciti (D6):** passano dallo stesso filtro e dalla stessa classificazione, ma senza distillazione (il ricordo è già atomico). Un salvataggio esplicito giudicato "discard" va in inbox: non viene mai scartato in silenzio. Se il LLM non è disponibile o il budget è finito, va in inbox: nel dubbio non si pubblica.
+
+**Sessioni (D7):** l'hook `SessionEnd` di Claude Code avvisa il daemon, che accoda la sessione solo se la cartella di lavoro è opt-in (`micelio watch add`). Una sessione ripresa viene elaborata solo per la parte nuova (`session_progress`). Le sessioni con meno di 400 caratteri utili non vengono elaborate.
+
+**Esiti verificati in Fase 2** (set di valutazione con Claude reale, `npm run eval:ingest`): 22 casi su 22 corretti, 8 sensibili su 8 fuori dal team. Tutti i casi sensibili del set sono stati riconosciuti dal classificatore; il filtro a parole chiave resta la prima linea di difesa, quella che impedisce l'invio al cloud.
 
 L'esempio della mail di valutazione si ferma già al filtro deterministico (parole chiave) oppure qui (`category: hr`, `sensitivity: evaluation`).
 

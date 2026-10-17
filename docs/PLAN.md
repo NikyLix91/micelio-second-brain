@@ -1,7 +1,7 @@
 # Micelio — Piano di lavoro
 
 > Documento vivo: viene aggiornato a ogni avanzamento. Design di riferimento: [DESIGN.md](DESIGN.md). Indice della documentazione: [README.md](README.md).
-> Ultimo aggiornamento: **2026-10-17**. Fase 2 in corso.
+> Ultimo aggiornamento: **2026-10-17**. Fase 2 completata, Fase 3 in attesa di approvazione.
 
 ## Stato
 
@@ -9,8 +9,8 @@
 |---|---|---|
 | 0 — Spike | Ridurre i rischi tecnici | ✅ Completata |
 | 1 — MVP | Brain condiviso minimo, usabile da Claude Code | ✅ Completata |
-| 2 — Ingestione AI | Raccolta automatica con filtro privacy | 🔄 In corso |
-| 3 — UI base | App desktop di monitoraggio, controllo e decisioni (Electron) | ⬜ Da fare |
+| 2 — Ingestione AI | Raccolta automatica con filtro privacy | ✅ Completata |
+| 3 — UI base | App desktop di monitoraggio, controllo e decisioni (Electron) | ⏸️ In attesa di approvazione |
 | 4 — Documenti | Cartelle sorvegliate + documento originale su richiesta | ⬜ Da fare |
 | 5 — Priorità | Vettori, ricerca ibrida, attivazione | ⬜ Da fare |
 | 6 — Dreaming | Consolidamento coordinato | ⬜ Da fare |
@@ -72,7 +72,7 @@ Resoconto completo: [spike-fase-0.md](spike-fase-0.md). In sintesi: P2P 6/6 scen
 
 ---
 
-## Fase 2 — Ingestione AI 🔄
+## Fase 2 — Ingestione AI ✅
 
 **Obiettivo:** il sapere entra anche senza `remember` esplicito, dalle sessioni di Claude Code, e **niente di personale o sensibile arriva al team**. Riferimenti: DESIGN §6–7.
 
@@ -89,22 +89,78 @@ Resoconto completo: [spike-fase-0.md](spike-fase-0.md). In sintesi: P2P 6/6 scen
 
 | # | Attività | Stato |
 |---|---|---|
-| 2.1 | `llm/`: adapter Claude CLI (dallo spike B) dietro un'interfaccia comune, coda con concorrenza 1, budget giornaliero, retry su output non valido, anti-loop `MICELIO_INTERNAL` | ⬜ |
-| 2.2 | Archivio privato `private.db` (mai replicato) + inbox: CLI `micelio inbox [approve\|reject\|edit]` e tool MCP `inbox_review` / `inbox_decide` | ⬜ |
-| 2.3 | Filtro deterministico: percorsi, parole chiave (HR, valutazioni, retribuzioni…), pattern di dati personali (codice fiscale, IBAN, telefono, email), **redazione dei segreti** (chiavi API, token, password, stringhe di connessione). Regole di default + regole del team via `team.config` | ⬜ |
-| 2.4 | Classificazione con Haiku (schema e prompt dello spike B, set di casi di prova ampliato) | ⬜ |
-| 2.5 | Distillazione con Sonnet: 0..N ricordi atomici, **regola di fedeltà alla fonte**, lingua del team (`memory.language`) | ⬜ |
-| 2.6 | Hook `SessionEnd` di Claude Code installato da `micelio setup claude-code`: invia al daemon il percorso della trascrizione, solo per le cartelle opt-in (D7) | ⬜ |
-| 2.7 | `remember` esplicito attraverso filtro + classificazione (D6) | ⬜ |
-| 2.8 | Set di valutazione: 20–30 sessioni realistiche anonimizzate (tecniche, HR, miste, banali) con l'esito atteso, eseguibile con `npm run eval:ingest` | ⬜ |
-| 2.9 | Test e documentazione (guida utente: privacy e inbox; sviluppo: pipeline) | ⬜ |
+| 2.1 | `llm/`: adapter Claude CLI (dallo spike B) dietro un'interfaccia comune, coda con concorrenza 1, budget giornaliero, retry su output non valido, anti-loop `MICELIO_INTERNAL` | ✅ |
+| 2.2 | Archivio privato `private.db` (mai replicato) + inbox: CLI `micelio inbox [approve\|reject\|edit]` e tool MCP `inbox_review` / `inbox_decide` | ✅ |
+| 2.3 | Filtro deterministico: percorsi, parole chiave (HR, valutazioni, retribuzioni…), pattern di dati personali (codice fiscale, IBAN, telefono, email), **redazione dei segreti** (chiavi API, token, password, stringhe di connessione). Regole di default + regole del team via `team.config` | ✅ (regole sui percorsi rinviate alla Fase 4, dove servono per le cartelle di documenti) |
+| 2.4 | Classificazione con Haiku (schema e prompt dello spike B, set di casi di prova ampliato) | ✅ |
+| 2.5 | Distillazione con Sonnet: 0..N ricordi atomici, **regola di fedeltà alla fonte**, lingua del team (`memory.language`) | ✅ |
+| 2.6 | Hook `SessionEnd` di Claude Code installato da `micelio setup claude-code`: invia al daemon il percorso della trascrizione, solo per le cartelle opt-in (D7) | ✅ |
+| 2.7 | `remember` esplicito attraverso filtro + classificazione (D6) | ✅ |
+| 2.8 | Set di valutazione: 20–30 sessioni realistiche anonimizzate (tecniche, HR, miste, banali) con l'esito atteso, eseguibile con `npm run eval:ingest` | ✅ |
+| 2.9 | Test e documentazione (guida utente: privacy e inbox; sviluppo: pipeline) | ✅ |
 
 **Criterio di completamento:**
 - Una sessione tecnica in una cartella opt-in produce ricordi nel team senza intervento.
 - Una sessione su una mail di valutazione, o con credenziali, **non** produce nulla nel team (resta in privato o in inbox).
 - Il set di valutazione passa almeno il 90% dei casi, e il 100% dei casi sensibili.
 
+**Criterio di completamento: raggiunto**, con strumenti reali:
+- una **sessione reale di Claude Code** in una cartella opt-in ha fatto scattare l'hook, è stata classificata (Haiku, 4,9 s) e distillata (Sonnet, 6,1 s), e ha prodotto un ricordo fedele, ritrovabile con `recall`;
+- una **sessione reale** in cui si chiedeva la mail di valutazione di fine anno di un collega è stata bloccata dal filtro locale **senza alcuna chiamata a Claude**: il team è rimasto invariato e il registro privato riporta il motivo;
+- **set di valutazione** con Claude reale: 22 casi su 22 corretti, 8 casi sensibili su 8 fuori dal team (`test/eval/report.md`);
+- 66 test automatici e scenario Docker end-to-end (11/11) verdi.
+
+**Problemi emersi e risolti durante la fase:**
+1. **Windows, nomi corti 8.3:** Claude Code riporta la cartella di lavoro con il nome lungo, mentre la cartella abilitata poteva essere salvata con quello corto (`MARIOR~1.ROS`). Le sessioni venivano ignorate in silenzio. Ora i percorsi sono normalizzati.
+2. **Hook silenzioso:** un errore dell'hook non lasciava traccia. Ora finisce in `logs/hook.log`, e le sessioni ignorate sono segnalate nel log del daemon.
+3. **Schema degli eventi:** `source.type` era un enum rigido, quindi i nodi vecchi avrebbero ignorato i ricordi con sorgenti nuove. Ora è una stringa libera (compatibilità in avanti).
+4. **Commenti nel codice:** su tua segnalazione, tutto il codice è stato riscritto con intestazioni, JSDoc e commenti sul perché. La regola è nelle convenzioni ([sviluppo.md](sviluppo.md)).
+5. **Disco:** i rebuild Docker lasciavano immagini orfane (circa 480 MB ciascuna). Sono state rimosse, e ora lo scenario e2e ripulisce da solo le immagini di Micelio.
+
 **Non coperto in Fase 2:** Codex CLI (serve un abbonamento per provarlo), cartelle di documenti (Fase 4).
+
+---
+
+## Fase 3 — UI base ⏸️ (proposta, da approvare)
+
+**Obiettivo:** un'app desktop per monitorare il nodo, cercare nel sapere del team, prendere le decisioni (inbox, membri) e configurare la raccolta, senza usare il terminale. Riferimento: DESIGN §12-ter.
+
+### Decisioni da confermare
+
+| # | Domanda | Proposta |
+|---|---|---|
+| D13 | Dove vive il codice | Stesso repository: `ui/` (workspace Angular, ultima versione stabile) e `desktop/` (Electron). Il daemon serve la UI compilata su `http://127.0.0.1:7337/ui` |
+| D14 | Accesso dal browser | `micelio ui` apre il browser con un link monouso che consegna il token alla pagina (nessun token nell'URL dopo il primo caricamento). L'app Electron legge il token direttamente da `config.json` |
+| D15 | Notifiche | Nuovi elementi in inbox, nodo isolato da più di 10 minuti, budget LLM quasi esaurito. Configurabili |
+| D16 | Pacchetti di installazione | In Fase 3 solo la build eseguibile per sviluppo e un pacchetto Windows non firmato per provarla. Installer firmati per tutti i sistemi in Fase 7 |
+
+### Attività
+
+| # | Attività | Stato |
+|---|---|---|
+| 3.1 | Daemon: canale di eventi in tempo reale (SSE `/api/events`): sincronizzazione, nuovi ricordi, inbox, coda, peer | ⬜ |
+| 3.2 | Daemon: pubblicazione della UI compilata e comando `micelio ui` con link monouso | ⬜ |
+| 3.3 | Angular: scheletro, navigazione, tema chiaro/scuro, client API tipizzato e servizio eventi | ⬜ |
+| 3.4 | Schermata Dashboard: nodo, team, peer, sincronizzazione, LLM e budget, coda | ⬜ |
+| 3.5 | Schermata Memoria: ricerca, dettaglio, autore, fonte | ⬜ |
+| 3.6 | Schermata Inbox: anteprima, approva (con modifica), rifiuta | ⬜ |
+| 3.7 | Schermata Team: albero degli inviti, crea e copia un invito, promuovi ed espelli (solo admin), impostazioni di team | ⬜ |
+| 3.8 | Schermata Privato: registro delle decisioni | ⬜ |
+| 3.9 | Schermata Impostazioni: cartelle abilitate, budget e modelli LLM, configurazione di Claude Code | ⬜ |
+| 3.10 | Electron: avvio automatico del daemon, finestra, icona nell'area di notifica, notifiche (D15), avvio all'accesso al PC | ⬜ |
+| 3.11 | Test: SSE e API (integrazione), componenti Angular principali (unità) | ⬜ |
+| 3.12 | Documentazione: guida all'app, sviluppo della UI | ⬜ |
+
+**Criterio di completamento:** sul PC Windows, l'app desktop avvia da sola il daemon e permette, senza terminale, di:
+- vedere lo stato del nodo;
+- cercare un ricordo;
+- approvare o rifiutare un elemento dell'inbox, ricevendone la notifica;
+- creare un invito;
+- abilitare una cartella per la raccolta.
+
+La stessa UI funziona anche dal browser con `micelio ui`.
+
+**Nota sul disco:** Angular ed Electron aggiungono circa 600–800 MB di dipendenze di sviluppo in `node_modules` (nessuna immagine Docker in più). Per i test della UI non userò Playwright, che scaricherebbe altri browser: bastano i test dei componenti e la verifica manuale nell'app.
 
 ---
 
@@ -128,3 +184,5 @@ Resoconto completo: [spike-fase-0.md](spike-fase-0.md). In sintesi: P2P 6/6 scen
 | 2026-10-17 | Fase 1 completata: 25 test + e2e Docker 11/11 + prova reale Windows ↔ container con Claude Code. Documentazione in `docs/`. Fase 2 proposta (decisioni D6–D9) |
 | 2026-10-17 | Decisioni D6–D9 confermate (budget LLM di default portato a 300 chiamate al giorno; inbox solo per i casi dubbi) |
 | 2026-10-17 | Nuove funzioni: documento originale su richiesta (D10–D11, Fase 4) e UI desktop Electron (D12, nuova Fase 3). Fasi successive rinumerate. Fase 2 avviata |
+| 2026-10-17 | Su richiesta: codice riscritto con commenti abbondanti (regola nelle convenzioni). Igiene di Docker: immagini orfane rimosse e pulizia automatica |
+| 2026-10-17 | Fase 2 completata: 66 test + e2e 11/11 + valutazione con Claude reale 22/22 (sensibili 8/8) + prova reale dell'hook di Claude Code (sessione tecnica → ricordo; mail di valutazione → bloccata localmente). Fase 3 proposta (decisioni D13–D16) |
