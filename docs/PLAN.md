@@ -1,7 +1,7 @@
 # Micelio — Piano di lavoro
 
 > Documento vivo: viene aggiornato a ogni avanzamento. Design di riferimento: [DESIGN.md](DESIGN.md). Indice della documentazione: [README.md](README.md).
-> Ultimo aggiornamento: **2026-10-17**. Fase 1 completata, Fase 2 in attesa di approvazione.
+> Ultimo aggiornamento: **2026-10-17**. Fase 1 completata, decisioni della Fase 2 confermate: in attesa del via.
 
 ## Stato
 
@@ -71,14 +71,14 @@ Resoconto completo: [spike-fase-0.md](spike-fase-0.md). In sintesi: P2P 6/6 scen
 
 **Obiettivo:** il sapere entra anche senza `remember` esplicito, dalle sessioni di Claude Code, e **niente di personale o sensibile arriva al team**. Riferimenti: DESIGN §6–7.
 
-### Decisioni da prendere
+### Decisioni
 
-| # | Domanda | Proposta |
+| # | Domanda | Esito |
 |---|---|---|
-| D6 | Come trattare i salvataggi espliciti (`remember`) | Passano **anche loro** dal filtro deterministico e dalla classificazione. Se sono puliti vanno al team, altrimenti in inbox. Il tool risponde mostrando il testo salvato, così l'utente vede subito cosa è stato scritto a suo nome |
-| D7 | Raccolta automatica dalle sessioni di Claude Code | **Opt-in per progetto:** si attiva solo nelle cartelle elencate dall'utente (`micelio watch add <cartella>`), non su tutto ciò che fa con Claude |
-| D8 | Budget di chiamate LLM per nodo | Default **40 chiamate al giorno**, configurabile. Classificazione con Haiku, distillazione con Sonnet |
-| D9 | Revisione dell'inbox | Da CLI (`micelio inbox`) e da MCP (Claude può proporre "ho 3 ricordi in attesa, li rivediamo?"). Gli elementi scadono dopo 14 giorni |
+| D6 | Come trattare i salvataggi espliciti (`remember`) | ✅ Passano **anche loro** dal filtro deterministico e dalla classificazione. Se sono puliti vanno al team, altrimenti in inbox. Il tool risponde mostrando il testo salvato, così l'utente vede subito cosa è stato scritto a suo nome |
+| D7 | Raccolta automatica dalle sessioni di Claude Code | ✅ **Opt-in per progetto:** si attiva solo nelle cartelle elencate dall'utente (`micelio watch add <cartella>`) |
+| D8 | Budget di chiamate LLM per nodo | ✅ Configurabile, default **300 chiamate al giorno**. Quando il budget finisce il lavoro resta in coda per il giorno dopo. Classificazione con Haiku, distillazione con Sonnet |
+| D9 | Inbox | ✅ Raccoglie **solo i casi dubbi in ingresso** (contenuto misto, dati sensibili segnalati insieme a contenuto utile, classificatore poco sicuro). I contenuti puliti vanno al team senza approvazione, quelli chiaramente personali o HR restano privati. Revisione da CLI (`micelio inbox`) e da MCP; gli elementi scadono dopo 14 giorni. **Non** riguarda i ricordi diventati inutili: quelli li archivia il dreaming (Fase 5), in modo reversibile |
 
 ### Attività
 
@@ -120,3 +120,4 @@ Resoconto completo: [spike-fase-0.md](spike-fase-0.md). In sintesi: P2P 6/6 scen
 | 2026-10-17 | Fase 0 completata (spike A, B, C) |
 | 2026-10-17 | Decisioni D1–D5 confermate. Fase 1 avviata |
 | 2026-10-17 | Fase 1 completata: 25 test + e2e Docker 11/11 + prova reale Windows ↔ container con Claude Code. Documentazione in `docs/`. Fase 2 proposta (decisioni D6–D9) |
+| 2026-10-17 | Decisioni D6–D9 confermate (budget LLM di default portato a 300 chiamate al giorno; inbox solo per i casi dubbi) |
