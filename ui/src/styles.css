@@ -1,0 +1,189 @@
+/*
+ * Stile della UI di Micelio. Niente librerie di componenti: variabili CSS per i colori (tema
+ * chiaro e scuro automatico secondo il sistema operativo) e poche classi riusabili.
+ */
+:root {
+  --bg: #f6f7f5;
+  --surface: #ffffff;
+  --surface-2: #f0f2ee;
+  --border: #dfe3dc;
+  --text: #1d231c;
+  --muted: #5f6b5c;
+  --accent: #3f7a4a;        /* verde "micelio" */
+  --accent-text: #ffffff;
+  --accent-soft: #e3efe4;
+  --warn: #9a6a00;
+  --warn-soft: #fbf1d9;
+  --danger: #b3382c;
+  --danger-soft: #f8e1de;
+  --radius: 10px;
+  --shadow: 0 1px 2px rgb(0 0 0 / 6%), 0 2px 8px rgb(0 0 0 / 4%);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #141713;
+    --surface: #1c201b;
+    --surface-2: #232822;
+    --border: #2f362d;
+    --text: #e6ebe4;
+    --muted: #9aa696;
+    --accent: #6fb27b;
+    --accent-text: #0e130d;
+    --accent-soft: #24352a;
+    --warn: #e2b04a;
+    --warn-soft: #3a3020;
+    --danger: #ec7b6e;
+    --danger-soft: #3d2420;
+    --shadow: none;
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+a { color: var(--accent); }
+code, pre { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 12.5px; }
+pre { background: var(--surface-2); padding: 10px 12px; border-radius: 8px; overflow-x: auto; }
+h1 { font-size: 20px; margin: 0 0 4px; }
+h2 { font-size: 15px; margin: 0 0 10px; }
+
+/* ── Struttura: barra laterale + contenuto ─────────────────────────────── */
+.app { display: grid; grid-template-columns: 220px 1fr; height: 100%; }
+.sidebar {
+  background: var(--surface); border-right: 1px solid var(--border);
+  padding: 18px 12px; display: flex; flex-direction: column; gap: 4px;
+}
+.brand { font-weight: 700; font-size: 17px; padding: 0 10px 14px; display: flex; gap: 8px; align-items: center; }
+.brand small { font-weight: 400; color: var(--muted); font-size: 12px; display: block; }
+.nav-link {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 10px; border-radius: 8px; color: var(--text); text-decoration: none;
+}
+.nav-link:hover { background: var(--surface-2); }
+.nav-link.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.sidebar-footer { margin-top: auto; padding: 10px; font-size: 12px; color: var(--muted); }
+.main { overflow-y: auto; padding: 24px 28px 40px; }
+.page-header { margin-bottom: 18px; }
+.page-header p { margin: 0; color: var(--muted); }
+
+/* ── Elementi riusabili ────────────────────────────────────────────────── */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow); }
+.grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.stack { display: flex; flex-direction: column; gap: 12px; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.spacer { flex: 1; }
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+.mono { font-family: ui-monospace, Consolas, monospace; }
+.stat { font-size: 26px; font-weight: 700; }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; overflow-wrap: anywhere; }
+
+.btn {
+  border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  padding: 7px 13px; border-radius: 8px; cursor: pointer; font: inherit;
+}
+.btn:hover:not(:disabled) { background: var(--surface-2); }
+.btn:disabled { opacity: .55; cursor: default; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+.btn.primary:hover:not(:disabled) { filter: brightness(1.07); background: var(--accent); }
+.btn.danger { color: var(--danger); border-color: var(--danger); }
+.btn.small { padding: 3px 9px; font-size: 12px; }
+
+input, textarea, select {
+  font: inherit; color: var(--text); background: var(--surface);
+  border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; width: 100%;
+}
+textarea { min-height: 110px; resize: vertical; }
+label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+
+.badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11.5px; background: var(--surface-2); color: var(--muted); }
+.badge.accent { background: var(--accent-soft); color: var(--accent); }
+.badge.warn { background: var(--warn-soft); color: var(--warn); }
+.badge.danger { background: var(--danger-soft); color: var(--danger); }
+.count { background: var(--accent); color: var(--accent-text); border-radius: 999px; font-size: 11px; padding: 0 7px; font-weight: 700; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; background: var(--muted); }
+.dot.on { background: var(--accent); }
+
+.notice { padding: 10px 12px; border-radius: 8px; background: var(--surface-2); }
+.notice.warn { background: var(--warn-soft); color: var(--warn); }
+.notice.error { background: var(--danger-soft); color: var(--danger); }
+.notice.ok { background: var(--accent-soft); color: var(--accent); }
+
+.meter { height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.meter > div { height: 100%; background: var(--accent); }
+.meter.warn > div { background: var(--warn); }
+
+.list { display: flex; flex-direction: column; }
+.list-item { padding: 12px 4px; border-bottom: 1px solid var(--border); }
+.list-item:last-child { border-bottom: 0; }
+.list-item.clickable { cursor: pointer; border-radius: 8px; padding: 12px 10px; }
+.list-item.clickable:hover, .list-item.selected { background: var(--surface-2); }
+
+.split { display: grid; grid-template-columns: minmax(280px, 2fr) 3fr; gap: 16px; align-items: start; }
+.markdown > :first-child { margin-top: 0; }
+.markdown > :last-child { margin-bottom: 0; }
+
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { color: var(--muted); font-weight: 500; font-size: 12px; }
+
+.tree { list-style: none; padding-left: 18px; margin: 0; }
+.tree.root { padding-left: 0; }
+.tree li { padding: 4px 0; }
+
+.centered { max-width: 520px; margin: 8vh auto; }
+
+/* ── Nucleo 3D (home): scena a tutto schermo con HUD olografico ─────────────
+ * Il contenitore riempie l'area principale ignorandone il padding (vedi .main.full).
+ * HUD = "head-up display": testi e comandi sovrapposti alla scena, in stile ologramma ambra. */
+.main.full { padding: 0; position: relative; overflow: hidden; }
+.nucleus { position: absolute; inset: 0; background: #000; }
+.hud {
+  position: absolute; color: #ffcf8a; font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  text-shadow: 0 0 8px rgb(255 160 50 / 55%); letter-spacing: .04em; pointer-events: none;
+}
+.hud button, .hud input, .hud-legend { pointer-events: auto; }
+.hud-top-left { top: 18px; left: 22px; }
+.hud-top-right { top: 18px; right: 22px; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+.hud-caption {
+  left: 22px; bottom: 26px; max-width: 520px; padding: 12px 16px;
+  border-left: 2px solid #ffb347; background: linear-gradient(90deg, rgb(40 24 6 / 70%), transparent);
+}
+.hud-center { inset: 0; display: grid; place-items: center; }
+.hud-title { font-size: 18px; font-weight: 700; letter-spacing: .18em; }
+.hud-sub { font-size: 11px; opacity: .75; letter-spacing: .14em; }
+.hud-topic { font-size: 22px; font-weight: 700; margin: 2px 0; }
+.hud-btn {
+  font: inherit; font-size: 12px; color: #ffcf8a; background: rgb(255 170 60 / 8%);
+  border: 1px solid rgb(255 170 60 / 45%); border-radius: 4px; padding: 5px 10px; cursor: pointer;
+  text-shadow: inherit; letter-spacing: .06em;
+}
+.hud-btn:hover { background: rgb(255 170 60 / 20%); }
+.hud-btn.on, .hud-btn.primary { background: rgb(255 170 60 / 28%); border-color: #ffb347; }
+.hud-btn:disabled { opacity: .4; cursor: default; }
+.hud-input {
+  width: 280px; background: rgb(255 170 60 / 6%); color: #ffe2b8; border: 1px solid rgb(255 170 60 / 45%);
+  border-radius: 4px; font: inherit; font-size: 12px;
+}
+.hud-input::placeholder { color: rgb(255 207 138 / 55%); }
+.hud-legend { display: flex; flex-direction: column; gap: 3px; font-size: 12px; background: rgb(0 0 0 / 35%); padding: 8px 10px; border-radius: 4px; }
+.hud-tip { font: 12px ui-monospace, Consolas, monospace; color: #ffe2b8; background: rgb(20 12 2 / 85%); border: 1px solid #ffb347; padding: 4px 8px; border-radius: 3px; }
+.nucleus-panel { position: absolute; top: 120px; right: 22px; width: 380px; max-height: calc(100% - 150px); overflow-y: auto; }
+
+/* Tema "olografico" dell'intera app quando si è nel Nucleo: barra laterale scura e ambra. */
+.app.holo .sidebar { background: #05090c; border-right-color: #2a1d0b; }
+.app.holo .brand, .app.holo .nav-link { color: #ffcf8a; }
+.app.holo .brand small, .app.holo .sidebar-footer { color: rgb(255 207 138 / 60%); }
+.app.holo .nav-link:hover { background: rgb(255 170 60 / 10%); }
+.app.holo .nav-link.active { background: rgb(255 170 60 / 18%); color: #ffd27a; }
+.app.holo .dot.on { background: #ffb347; box-shadow: 0 0 6px #ffb347; }

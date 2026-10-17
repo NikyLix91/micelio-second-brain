@@ -2,7 +2,8 @@
 
 ## Usare Micelio
 - [Guida utente](guida-utente.md): installazione, creazione del team, inviti, ricordi, integrazione con Claude Code, risoluzione problemi.
-- [Server MCP](mcp.md): i tool `recall`, `remember` e `get`, e come configurare i client AI.
+- [App desktop e interfaccia](app.md): il Nucleo 3D, le viste, le notifiche, il team demo per provarla.
+- [Server MCP](mcp.md): i tool per gli agenti AI e come configurare i client.
 
 ## Sviluppare Micelio
 - [Guida per sviluppatori](sviluppo.md): struttura del codice, build, test (unità, integrazione, Docker), convenzioni e regole d'oro.

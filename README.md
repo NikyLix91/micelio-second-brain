@@ -13,12 +13,16 @@ Ogni macchina del team esegue un nodo Micelio. I nodi si trovano da soli su inte
   Claude Code          Claude Code
 ```
 
-> Stato: **Fase 2 completata**: team P2P, inviti, ricerca, MCP per Claude Code, raccolta automatica dalle sessioni con filtro privacy e inbox. Il piano è in [docs/PLAN.md](docs/PLAN.md).
+> Stato: **Fase 3 completata**: team P2P, ricerca, MCP per Claude Code, raccolta automatica con filtro privacy e inbox, **app desktop** con il Nucleo 3D. Il piano è in [docs/PLAN.md](docs/PLAN.md).
+
+![Il Nucleo: il sapere del team come ologramma 3D](docs/img/nucleo.png)
 
 ## Avvio rapido
 
 ```bash
 npm ci && npm run build && npm link     # rende disponibile il comando `micelio`
+npm run desktop                         # app desktop (avvia anche il daemon)
+npm run demo                            # oppure: team dimostrativo con 3 nodi e ~50 ricordi
 
 micelio start                           # avvia il daemon locale
 micelio init "Team Dev" --name mio-pc   # crea un team (solo il primo nodo)
@@ -41,6 +45,7 @@ Da quel momento, in Claude Code: *"cerca nella memoria del team come risolviamo 
 | Documento | Per chi |
 |---|---|
 | [Guida utente](docs/guida-utente.md) | Chi usa Micelio: installazione, team, inviti, ricordi, Claude Code |
+| [App desktop e interfaccia](docs/app.md) | Il Nucleo 3D, le viste, le notifiche, il team demo |
 | [Server MCP](docs/mcp.md) | Tool esposti agli agenti AI e configurazione dei client |
 | [Guida per sviluppatori](docs/sviluppo.md) | Chi lavora sul codice: struttura, build, test, convenzioni |
 | [Design](docs/DESIGN.md) | Architettura e decisioni |

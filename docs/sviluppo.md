@@ -9,12 +9,17 @@
 
 ```bash
 npm ci
-npm run build        # tsc → dist/
+npm run build        # daemon (tsc → dist/) + UI (vite → dist/ui)
 npm run typecheck    # tipi su src + test
 npm test             # unità + integrazione, con LLM finto (circa 1 minuto)
 npm run e2e:docker   # scenario a 4 container sulla DHT pubblica (circa 2 minuti)
 npm run eval:ingest  # valutazione con Claude REALE: consuma circa 25 chiamate dell'abbonamento
+npm run test:ui      # test dei componenti React (jsdom, nessun browser)
+npm run desktop      # app desktop
+npm run demo         # team dimostrativo locale (3 nodi, DHT privata, LLM finto)
 ```
+
+Il repository è un **workspace npm**: radice = daemon e CLI; `ui/` = interfaccia React; `desktop/` = app Electron.
 
 ## Struttura
 
@@ -35,6 +40,15 @@ src/
 ├─ mcp/        server MCP (recall, remember, get, inbox_review, inbox_decide)
 ├─ daemon/     app NestJS: API REST locale, endpoint MCP, guard del token
 └─ cli/        comando `micelio` (commander), client HTTP verso il daemon, hook di Claude Code
+src/graph/     costellazione: ricordi come nodi, correlazioni come collegamenti pesati
+
+ui/src/          interfaccia React (Vite), servita dal daemon su /ui
+├─ api/          client tipizzato (tipi importati dal daemon), autenticazione, eventi SSE
+├─ pages/        schermate; nucleus/ = Nucleo 3D (three.js, caricato in modo pigro)
+└─ components/   componenti di base (niente librerie di componenti)
+
+desktop/src/     app Electron: avvio del daemon, finestra, area di notifica, notifiche
+scripts/         team dimostrativo (demo-team.js)
 ```
 
 ### Flusso di una scrittura
@@ -121,6 +135,17 @@ I prompt ([src/ingest/prompts.ts](../src/ingest/prompts.ts)) e le regole del fil
 
 - `MICELIO_TEST_LOG=1 npm test` mostra i log dei nodi.
 - L'adapter finto ([src/llm/fake.ts](../src/llm/fake.ts)) ha regole semplici e documentate: per esempio "LEZIONE: titolo | corpo" nel testo produce un ricordo.
+
+## UI e app desktop
+
+- La UI importa i **tipi** dal daemon (`import type … from '../../../src/…'`): una forma che cambia da una parte viene segnalata da TypeScript anche dall'altra, senza duplicare definizioni.
+- Gli aggiornamenti in tempo reale passano da `GET /api/events` (SSE). Ogni argomento invalida precise query di TanStack Query (`ui/src/api/live.ts`, `TOPIC_QUERIES`). Una nuova schermata deve usare chiavi coerenti con quella mappa.
+- **Verifica visiva senza tester:** `npm run screenshots -w desktop -- <cartella>` apre l'app nascosta, cattura ogni schermata in PNG ed esce.
+  - `MICELIO_SCREENSHOT_ONLY=nucleo,team` limita le catture ad alcune schermate.
+  - `MICELIO_SCREENSHOT_EXTRA="/?bloom=0|/?tour=1"` aggiunge rotte da catturare.
+  - Le immagini in `docs/img/` sono state prodotte così, sul team demo.
+- **Nucleo 3D e colori:** con la catena di post-processing (bloom) ogni colore di fondo diverso dal nero viene schiarito (grigio-blu). Lo sfondo resta quindi nero puro, e il bloom va inserito prima dell'eventuale `OutputPass` (vedi commenti in `Nucleus.tsx`).
+- **Electron dal terminale di VS Code:** la variabile `ELECTRON_RUN_AS_NODE` ereditata fa partire Electron senza finestre. `desktop/launch.js` la rimuove: usare sempre `npm run desktop`.
 
 ## Variabili d'ambiente
 

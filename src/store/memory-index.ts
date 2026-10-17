@@ -119,6 +119,20 @@ export class MemoryIndex {
     return r ? { ...rowToHit(r), score: 0 } : null
   }
 
+  /** Tutti i ricordi (per la costellazione). Con migliaia di ricordi resta una query rapida. */
+  all (): RecallHit[] {
+    const rows = this.db.prepare('SELECT m.*, u.name AS authorName FROM memories m LEFT JOIN members u ON u.key = m.author').all() as any[]
+    return rows.map((r) => ({ ...rowToHit(r), score: 0 }))
+  }
+
+  /** I ricordi più recenti (per la UI, quando non c'è una ricerca in corso). */
+  recent (limit = 20): RecallHit[] {
+    const rows = this.db.prepare(`
+      SELECT m.*, u.name AS authorName FROM memories m LEFT JOIN members u ON u.key = m.author
+      ORDER BY m.ts DESC LIMIT ?`).all(limit) as any[]
+    return rows.map((r) => ({ ...rowToHit(r), score: 0 }))
+  }
+
   /** Numero di ricordi indicizzati. */
   count (): number {
     return (this.db.prepare('SELECT COUNT(*) AS n FROM memories').get() as any).n

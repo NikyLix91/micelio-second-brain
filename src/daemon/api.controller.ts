@@ -135,6 +135,18 @@ export class ApiController {
     return this.node.remember({ ...body, source: { type: 'cli' } } as any)
   }
 
+  /** Costellazione del sapere per la schermata principale della UI. */
+  @Get('graph')
+  graph () {
+    return this.node.graph()
+  }
+
+  /** Ultimi ricordi (dal più recente). Dichiarata prima di memories/:id per non esserne "catturata". */
+  @Get('memories')
+  recent (@Query('limit') limit = '20') {
+    return this.node.recent(Math.min(Math.max(Number(limit) || 20, 1), 200))
+  }
+
   @Get('memories/search')
   recall (@Query('q') q = '', @Query('limit') limit = '5') {
     // Il limite arriva come stringa dalla query: lo riportiamo fra 1 e 50.

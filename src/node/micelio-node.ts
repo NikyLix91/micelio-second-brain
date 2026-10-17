@@ -25,6 +25,7 @@ import { MemoryInput, memoryId, type MemoryData } from '../core/events'
 import type { InviteRecord, MemberRecord, NodeStatus, RecallHit } from '../core/model'
 import type { NodePaths } from '../core/paths'
 import { writeExport } from '../export/markdown'
+import { buildGraph, type Graph } from '../graph/constellation'
 import { type ExplicitOutcome, IngestPipeline, InboxNotFoundError } from '../ingest/pipeline'
 import { ClaudeCliAdapter } from '../llm/claude-cli'
 import { FakeAdapter } from '../llm/fake'
@@ -253,6 +254,16 @@ export class MicelioNode extends EventEmitter {
   /** Ricerca full-text nella memoria del team (indice locale). */
   recall (query: string, limit = 5): RecallHit[] {
     return this.index.search(query, limit)
+  }
+
+  /** Costellazione del sapere: ricordi come nodi, correlazioni come collegamenti (src/graph). */
+  graph (): Graph {
+    return buildGraph(this.index.all())
+  }
+
+  /** Ultimi ricordi arrivati nel team, dal più recente. */
+  recent (limit = 20): RecallHit[] {
+    return this.index.recent(limit)
   }
 
   /** Un ricordo per id (anche abbreviato). */

@@ -1,0 +1,15 @@
+{
+  "name": "@micelio/desktop",
+  "version": "0.3.0",
+  "private": true,
+  "description": "App desktop di Micelio (Electron): avvia il daemon, mostra la UI, notifiche e icona nell'area di notifica",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "tsc -p tsconfig.json && node launch.js",
+    "screenshots": "tsc -p tsconfig.json && node launch.js --screenshots"
+  },
+  "devDependencies": {
+    "electron": "^38.8.6"
+  }
+}

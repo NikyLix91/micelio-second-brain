@@ -1,0 +1,82 @@
+/**
+ * @file Inbox: i ricordi su cui il filtro privacy non ha potuto decidere da solo (D9, attività 3.6).
+ *
+ * Per ogni elemento: motivo, scadenza, anteprima. Si può approvare così com'è, correggere
+ * titolo e corpo prima di approvare (es. per togliere un dettaglio sensibile), o rifiutare.
+ * Approvare significa pubblicare a TUTTO il team: il pulsante lo dice esplicitamente.
+ */
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
+import { api, type InboxItem } from '../api/client'
+import { Card, Empty, ErrorBox, Markdown, PageHeader } from '../components/ui'
+import { dateTime } from '../format'
+
+export function Inbox () {
+  const inbox = useQuery({ queryKey: ['inbox'], queryFn: api.inbox })
+  return (
+    <>
+      <PageHeader
+        title='Inbox'
+        subtitle='Ricordi in attesa di una tua decisione: solo i casi dubbi. Restano sul tuo PC e scadono dopo 14 giorni.'
+      />
+      <ErrorBox error={inbox.error} />
+      {inbox.data?.length === 0 && <Card><Empty>Nessun ricordo in attesa. 🎉</Empty></Card>}
+      <div className='stack'>
+        {inbox.data?.map((item) => <InboxCard key={item.id} item={item} />)}
+      </div>
+    </>
+  )
+}
+
+/** Un elemento dell'inbox, con modalità di modifica. */
+export function InboxCard ({ item }: { item: InboxItem }) {
+  const client = useQueryClient()
+  const [editing, setEditing] = useState(false)
+  const [title, setTitle] = useState(item.memory.title)
+  const [body, setBody] = useState(item.memory.body)
+
+  // Dopo una decisione ricarichiamo inbox e memoria (gli eventi SSE lo farebbero comunque,
+  // ma così la UI reagisce subito anche se lo stream è momentaneamente disconnesso).
+  const refresh = () => {
+    void client.invalidateQueries({ queryKey: ['inbox'] })
+    void client.invalidateQueries({ queryKey: ['memories'] })
+  }
+  const approve = useMutation({
+    mutationFn: () => api.approve(item.id, editing ? { title, body } : {}),
+    onSuccess: refresh
+  })
+  const reject = useMutation({ mutationFn: () => api.reject(item.id), onSuccess: refresh })
+  const busy = approve.isPending || reject.isPending
+
+  return (
+    <Card>
+      <div className='row' style={{ marginBottom: 8 }}>
+        <span className='badge warn'>{item.reason}</span>
+        <span className='spacer' />
+        <span className='muted small'>fonte: {item.source.type} · scade il {dateTime(item.expires)}</span>
+      </div>
+      {editing
+        ? (
+          <div className='stack'>
+            <div><label>Titolo</label><input value={title} onChange={(e) => setTitle(e.target.value)} /></div>
+            <div><label>Contenuto</label><textarea value={body} onChange={(e) => setBody(e.target.value)} /></div>
+          </div>
+          )
+        : (
+          <>
+            <h2>{item.memory.title}</h2>
+            <Markdown text={item.memory.body} />
+          </>
+          )}
+      <ErrorBox error={approve.error ?? reject.error} />
+      <div className='row' style={{ marginTop: 12 }}>
+        <button className='btn primary' disabled={busy} onClick={() => approve.mutate()}>
+          {editing ? 'Pubblica la versione corretta' : 'Pubblica nel team'}
+        </button>
+        <button className='btn' disabled={busy} onClick={() => setEditing(!editing)}>{editing ? 'Annulla modifiche' : 'Correggi'}</button>
+        <span className='spacer' />
+        <button className='btn danger' disabled={busy} onClick={() => reject.mutate()}>Scarta</button>
+      </div>
+    </Card>
+  )
+}

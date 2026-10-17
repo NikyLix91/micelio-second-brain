@@ -1,7 +1,7 @@
 # Micelio — Piano di lavoro
 
 > Documento vivo: viene aggiornato a ogni avanzamento. Design di riferimento: [DESIGN.md](DESIGN.md). Indice della documentazione: [README.md](README.md).
-> Ultimo aggiornamento: **2026-10-17**. Fase 3 in corso.
+> Ultimo aggiornamento: **2026-10-17**. Fase 3 completata, Fase 4 in corso (lavoro in autonomia).
 
 ## Stato
 
@@ -10,8 +10,8 @@
 | 0 — Spike | Ridurre i rischi tecnici | ✅ Completata |
 | 1 — MVP | Brain condiviso minimo, usabile da Claude Code | ✅ Completata |
 | 2 — Ingestione AI | Raccolta automatica con filtro privacy | ✅ Completata |
-| 3 — UI base | App desktop di monitoraggio, controllo e decisioni (React + Electron) | 🔄 In corso |
-| 4 — Documenti | Cartelle sorvegliate + documento originale su richiesta | ⬜ Da fare |
+| 3 — UI base | App desktop di monitoraggio, controllo e decisioni (React + Electron) | ✅ Completata |
+| 4 — Documenti | Cartelle sorvegliate + documento originale su richiesta | 🔄 In corso |
 | 5 — Priorità | Vettori, ricerca ibrida, attivazione | ⬜ Da fare |
 | 6 — Dreaming | Consolidamento coordinato | ⬜ Da fare |
 | 7 — Hardening | Offboarding, redazione, installer, altri client | ⬜ Da fare |
@@ -121,7 +121,7 @@ Resoconto completo: [spike-fase-0.md](spike-fase-0.md). In sintesi: P2P 6/6 scen
 
 ---
 
-## Fase 3 — UI base 🔄
+## Fase 3 — UI base ✅
 
 **Obiettivo:** un'app desktop per monitorare il nodo, cercare nel sapere del team, prendere le decisioni (inbox, membri) e configurare la raccolta, senza usare il terminale. Riferimento: DESIGN §12-ter.
 
@@ -138,18 +138,20 @@ Resoconto completo: [spike-fase-0.md](spike-fase-0.md). In sintesi: P2P 6/6 scen
 
 | # | Attività | Stato |
 |---|---|---|
-| 3.1 | Daemon: canale di eventi in tempo reale (SSE `/api/events`): sincronizzazione, nuovi ricordi, inbox, coda, peer | ⬜ |
-| 3.2 | Daemon: pubblicazione della UI compilata e comando `micelio ui` con link monouso | ⬜ |
-| 3.3 | React: scheletro, navigazione, tema chiaro/scuro, client API tipizzato, aggiornamenti in tempo reale | ⬜ |
-| 3.4 | Schermata Dashboard: nodo, team, peer, sincronizzazione, LLM e budget, coda | ⬜ |
-| 3.5 | Schermata Memoria: ricerca, dettaglio, autore, fonte | ⬜ |
-| 3.6 | Schermata Inbox: anteprima, approva (con modifica), rifiuta | ⬜ |
-| 3.7 | Schermata Team: albero degli inviti, crea e copia un invito, promuovi ed espelli (solo admin), impostazioni di team | ⬜ |
-| 3.8 | Schermata Privato: registro delle decisioni | ⬜ |
-| 3.9 | Schermata Impostazioni: cartelle abilitate, budget e modelli LLM, configurazione di Claude Code | ⬜ |
-| 3.10 | Electron: avvio automatico del daemon, finestra, icona nell'area di notifica, notifiche (D15), avvio da console | ⬜ |
-| 3.11 | Test: SSE e API (integrazione), componenti React principali (unità), screenshot delle schermate dall'app reale | ⬜ |
-| 3.12 | Documentazione: guida all'app, sviluppo della UI | ⬜ |
+| 3.1 | Daemon: canale di eventi in tempo reale (SSE `/api/events`): sincronizzazione, nuovi ricordi, inbox, coda, peer | ✅ |
+| 3.2 | Daemon: pubblicazione della UI compilata e comando `micelio ui` con link monouso | ✅ |
+| 3.3 | React: scheletro, navigazione, tema chiaro/scuro, client API tipizzato, aggiornamenti in tempo reale | ✅ |
+| 3.4 | Schermata Dashboard: nodo, team, peer, sincronizzazione, LLM e budget, coda | ✅ |
+| 3.5 | Schermata Memoria: ricerca, dettaglio, autore, fonte | ✅ |
+| 3.6 | Schermata Inbox: anteprima, approva (con modifica), rifiuta | ✅ |
+| 3.7 | Schermata Team: albero degli inviti, crea e copia un invito, promuovi ed espelli (solo admin), impostazioni di team | ✅ |
+| 3.8 | Schermata Privato: registro delle decisioni | ✅ |
+| 3.9 | Schermata Impostazioni: cartelle abilitate, budget e modelli LLM, configurazione di Claude Code | ✅ |
+| 3.10 | Electron: avvio automatico del daemon, finestra, icona nell'area di notifica, notifiche (D15), avvio da console | ✅ |
+| 3.11 | Test: SSE e API (integrazione), componenti React principali (unità), screenshot delle schermate dall'app reale | ✅ |
+| 3.12 | Documentazione: guida all'app, sviluppo della UI | ✅ |
+| 3.13 | **Nucleo 3D** (richiesta in corso d'opera): home olografica navigabile con esplorazione guidata, ricerca che "accende" gli argomenti, colori per autore/tipo. **Mappa 2D** per analisi mirate | ✅ |
+| 3.14 | Team dimostrativo (`npm run demo`): 3 nodi locali, ~50 ricordi, DHT privata, LLM finto | ✅ |
 
 **Criterio di completamento:** sul PC Windows, l'app desktop avvia da sola il daemon e permette, senza terminale, di:
 - vedere lo stato del nodo;
@@ -159,6 +161,18 @@ Resoconto completo: [spike-fase-0.md](spike-fase-0.md). In sintesi: P2P 6/6 scen
 - abilitare una cartella per la raccolta.
 
 La stessa UI funziona anche dal browser con `micelio ui`.
+
+**Esito:**
+- **Criterio raggiunto e verificato con le catture dell'app reale** (`docs/img/`). L'app avvia da sola il daemon e mostra stato, ricerca, inbox con approvazione e correzione, inviti, cartelle abilitate e configurazione di Claude Code.
+- **Notifiche** per inbox, isolamento e budget, con le regole coperte dai test.
+- **Browser** con `micelio ui` (link monouso).
+- **Test:** 72 del daemon + 8 della UI.
+
+**Problemi emersi e risolti:**
+1. Due copie di three.js (0.169 e 0.186) e di React (18 e 19), portate dalle dipendenze: allineato tutto su three 0.186 e React 19.
+2. Electron dal terminale di VS Code partiva senza finestre (`ELECTRON_RUN_AS_NODE` ereditata): aggiunto `desktop/launch.js`.
+3. Nucleo 3D con sfondo grigio-blu invece che nero: con la catena di post-processing il colore di fondo veniva schiarito. Diagnosticato confrontando catture con e senza bloom; risolto con fondo nero puro e bloom inserito prima della conversione colore.
+4. Mappa 2D "rimpicciolita" al centro: aggiunto l'inquadramento automatico.
 
 **Nota sul disco:** React, Vite ed Electron aggiungono circa 600–800 MB di dipendenze di sviluppo in `node_modules` (nessuna immagine Docker in più). Per i test della UI non userò Playwright, che scaricherebbe altri browser: bastano i test dei componenti e la verifica manuale nell'app.
 
@@ -187,3 +201,4 @@ La stessa UI funziona anche dal browser con `micelio ui`.
 | 2026-10-17 | Su richiesta: codice riscritto con commenti abbondanti (regola nelle convenzioni). Igiene di Docker: immagini orfane rimosse e pulizia automatica |
 | 2026-10-17 | Fase 2 completata: 66 test + e2e 11/11 + valutazione con Claude reale 22/22 (sensibili 8/8) + prova reale dell'hook di Claude Code (sessione tecnica → ricordo; mail di valutazione → bloccata localmente). Fase 3 proposta (decisioni D13–D16) |
 | 2026-10-17 | Decisioni D13–D16 confermate: **React** al posto di Angular, stessa repository, app desktop preferita (browser supportato), nessun installer per ora (avvio da console). Fase 3 avviata |
+| 2026-10-17 | Richiesta: home "wow" in 3D con navigazione guidata (stile ologramma) e viste 2D per scopi specifici. Fase 3 completata: UI React + app Electron, Nucleo 3D, Mappa 2D, notifiche, team demo, documentazione con catture reali. Avvio della Fase 4 in autonomia |

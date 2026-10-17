@@ -1,0 +1,49 @@
+/**
+ * Schermata Inbox: approvazione con correzione e rifiuto chiamano le API giuste.
+ * fetch è finto: controlliamo le richieste che la UI invia al daemon.
+ */
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { setTokenForTests } from '../api/auth'
+import type { InboxItem } from '../api/client'
+import { InboxCard } from '../pages/Inbox'
+
+const item: InboxItem = {
+  id: 'abc123',
+  created: 0,
+  expires: Date.now() + 1e9,
+  reason: 'da verificare: contenuto misto',
+  source: { type: 'claude-code', ref: 's1' },
+  memory: { kind: 'gotcha', title: 'Proxy aziendale', body: 'Serve HTTPS_PROXY.', tags: [], source: { type: 'claude-code' } }
+}
+
+function renderCard () {
+  const client = new QueryClient()
+  return render(<QueryClientProvider client={client}><InboxCard item={item} /></QueryClientProvider>)
+}
+
+describe('InboxCard', () => {
+  afterEach(() => { cleanup(); vi.restoreAllMocks() })
+
+  it('approva con il titolo corretto', async () => {
+    setTokenForTests('tok')
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ id: 'x', memory: item.memory })))
+    renderCard()
+    fireEvent.click(screen.getByText('Correggi'))
+    fireEvent.change(screen.getByDisplayValue('Proxy aziendale'), { target: { value: 'Proxy aziendale in pipeline' } })
+    fireEvent.click(screen.getByText('Pubblica la versione corretta'))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('/api/inbox/abc123/approve')
+    expect(JSON.parse(init.body as string)).toEqual({ title: 'Proxy aziendale in pipeline', body: 'Serve HTTPS_PROXY.' })
+    expect((init.headers as Record<string, string>).authorization).toBe('Bearer tok')
+  })
+
+  it('scarta', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{"ok":true}'))
+    renderCard()
+    fireEvent.click(screen.getByText('Scarta'))
+    await waitFor(() => expect(fetchMock.mock.calls[0][0]).toBe('/api/inbox/abc123/reject'))
+  })
+})

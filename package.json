@@ -12,13 +12,16 @@
     "node": ">=22.13"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && npm run build -w ui",
     "dev": "tsc -p tsconfig.build.json --watch",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e:docker": "bash test/e2e/docker/scenario.sh",
-    "eval:ingest": "vitest run --config vitest.eval.config.ts"
+    "eval:ingest": "vitest run --config vitest.eval.config.ts",
+    "demo": "node scripts/demo-team.js",
+    "desktop": "npm run start -w desktop",
+    "test:ui": "npm test -w ui"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",
@@ -48,5 +51,9 @@
     "typescript": "5.9",
     "unplugin-swc": "^2.0.0",
     "vitest": "^5.0.5"
-  }
+  },
+  "workspaces": [
+    "ui",
+    "desktop"
+  ]
 }
