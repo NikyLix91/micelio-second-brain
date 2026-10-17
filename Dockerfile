@@ -2,10 +2,13 @@
 FROM node:24-slim AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci
+# Solo le dipendenze della radice (daemon e CLI): UI ed Electron non servono in un nodo headless.
+RUN npm ci --workspaces=false
 COPY tsconfig.json tsconfig.build.json ./
 COPY src ./src
-RUN npm run build && npm prune --omit=dev
+# Senza dipendenze opzionali: transformers.js (embedding locali, ~900 MB con il runtime ONNX) non
+# serve nei container, che usano l'embedder finto o solo le parole chiave.
+RUN npx tsc -p tsconfig.build.json && npm prune --omit=dev --omit=optional --workspaces=false
 
 FROM node:24-slim
 # Etichetta usata per ripulire SOLO le immagini orfane di Micelio dopo i rebuild
