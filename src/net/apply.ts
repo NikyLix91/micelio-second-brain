@@ -90,14 +90,18 @@ async function applyEvent (ev: TeamEvent, author: string, view: any, host: any):
     case 'member.add': {
       // Scritto dal membro che ha gestito il pairing. Se arriva tramite un invito, l'invito
       // deve esistere: così un membro non può aggiungere writer "fuori protocollo" senza traccia.
+      // invitedBy è chi ha CREATO l'invito (tracciabilità), non chi ha accolto la richiesta.
+      let invitedBy = author
       if (ev.inviteId) {
-        if (!(await get(view, KEYS.invite(ev.inviteId)))) return
+        const inv = await get<InviteRecord>(view, KEYS.invite(ev.inviteId))
+        if (!inv) return
+        invitedBy = inv.by
         await view.del(KEYS.invite(ev.inviteId)) // monouso
       }
       const existing = await get<MemberRecord>(view, KEYS.member(ev.key))
       if (existing) return // già membro (o rimosso: non si rientra con un vecchio invito)
       await host.addWriter(buf(ev.key), { indexer: false })
-      const rec: MemberRecord = { key: ev.key, name: ev.name, role: 'member', invitedBy: author, removed: false, joinedAt: ev.ts }
+      const rec: MemberRecord = { key: ev.key, name: ev.name, role: 'member', invitedBy, removed: false, joinedAt: ev.ts }
       await view.put(KEYS.member(ev.key), rec)
       return
     }

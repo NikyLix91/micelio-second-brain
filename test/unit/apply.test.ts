@@ -73,7 +73,7 @@ describe('apply', () => {
       node(A, { type: 'invite.add', id: inv1, publicKey: 'e'.repeat(64), expires: 0 }),
       node(A, { type: 'member.add', key: B, name: 'bob', inviteId: inv1 }),
       node(B, { type: 'invite.add', id: inv2, publicKey: 'e'.repeat(64), expires: 0 }), // i membri possono invitare
-      node(B, { type: 'member.add', key: C, name: 'carol', inviteId: inv2 }),
+      node(A, { type: 'member.add', key: C, name: 'carol', inviteId: inv2 }), // accolta da A, invitata da B
       node(C, { type: 'member.remove', key: A }), // vietato: carol non è admin
       node(B, { type: 'member.promote', key: C }), // vietato
       node(A, { type: 'member.promote', key: B }),

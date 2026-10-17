@@ -76,7 +76,9 @@ describe('team multi-nodo', () => {
     expect(s.writable).toBe(true)
     await eventually(() => carol.recall('drizzle').length === 1, [carol])
     const carolRec = (await carol.members()).find((m) => m.name === 'carol')
-    expect(carolRec?.invitedBy).toBe((await alice.status()).nodeKey) // accolta da alice
+    // accolta da alice, ma l'invito resta attribuito a bob che l'ha creato
+    const bobKey = (await carol.members()).find((m) => m.name === 'bob')?.key
+    expect(carolRec?.invitedBy).toBe(bobKey)
   })
 
   it('solo un admin può espellere; l\'admin può promuovere', async () => {

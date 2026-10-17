@@ -45,7 +45,7 @@ Oltre alla sincronizzazione, il brain ha un ciclo di vita proprio:
 | Ambiti | `private` + `team` | Un progetto con persone diverse è un **team separato**, non un sotto-ambito |
 | Lingua dei ricordi | Configurazione di team (`memory.language`) | Una lingua fissa per tutti i ricordi |
 | Membership | Ogni membro può invitare, solo gli admin rimuovono | Ogni ingresso registra chi ha invitato |
-| Runtime | Node.js (≥ 22 LTS), TypeScript | |
+| Runtime | Node.js (≥ 22.13), TypeScript; NestJS per le parti HTTP | |
 
 ---
 
@@ -361,12 +361,15 @@ Ogni `recall` che restituisce un ricordo incrementa un contatore locale. Ogni N 
 
 - **Identità:** ogni nodo (dispositivo) ha una coppia di chiavi. Un utente con due PC ha due nodi.
 - **Creazione del team:** il nodo fondatore crea l'Autobase, la chiave di cifratura e il segreto del topic, e diventa `admin`.
-- **Invito:** **qualunque membro** può eseguire `micelio invite`. Il comando crea una coppia di chiavi d'invito, pubblica `invite.create` con la sola chiave pubblica e restituisce un codice monouso (segreto dell'invito + chiave dell'Autobase).
-- **Ingresso (verificato nello spike A):** il nuovo nodo scrive un blocco **optimistic** di Autobase `member.join`, con la propria chiave di writer firmata con il segreto dell'invito. Ogni nodo, eseguendo `apply`, verifica in modo deterministico che l'invito esista, non sia già stato usato e che la firma sia valida. Se tutto torna, chiama `host.ackWriter` + `host.addWriter`. Risultato: **chi ha invitato può essere offline**, basta un peer qualsiasi. Nello spike un nuovo nodo è entrato con il founder spento e si è allineato in 2 s.
-- **Consegna della chiave di cifratura (da decidere in Fase 1):** nello spike il codice d'invito contiene anche la chiave di team. È una semplificazione: chi intercetta il codice, anche già usato, può leggere i dati. Proposta: il codice contiene solo il segreto dell'invito, e la chiave di team viene consegnata via blind-pairing da **un membro online qualsiasi** dopo la verifica dell'invito. Il prezzo è che serve almeno un membro online, ma non per forza chi ha invitato.
-- **Scadenza degli inviti:** `apply` non può usare l'orologio locale perché non è deterministico. La scadenza si verifica quindi al momento del pairing, e l'invito scaduto viene annullato con un evento `invite.revoke`.
+- **Invito (implementato, Fase 1):** **qualunque membro** può eseguire `micelio invite`. Il comando crea un invito **blind-pairing** (valido 24 h), pubblica `invite.add` con id e chiave pubblica dell'invito e restituisce il codice monouso. Il codice **non** contiene la chiave di cifratura del team (decisione D2).
+- **Ingresso (implementato, Fase 1):** il nuovo nodo genera la propria chiave di writer e la presenta tramite blind-pairing. **Qualunque membro online** che riceve la richiesta verifica che l'invito esista nella vista e non sia scaduto, pubblica `member.add` e consegna sul canale cifrato la chiave dell'Autobase e la chiave di cifratura. In `apply`, `member.add` con un `inviteId` è valido solo se l'invito esiste, e lo consuma (monouso).
+  - **Chi ha invitato può essere offline**, purché l'evento `invite.add` sia già arrivato ad almeno un altro membro. Per questo `invite` attende fino a 10 s che un peer abbia ricevuto il feed e, se nessuno l'ha ricevuto, avvisa di restare online.
+  - Prima scelta (spike A): blocchi *optimistic* di Autobase, validati in `apply`. Abbandonata perché richiedeva di mettere la chiave di cifratura nel codice d'invito.
+- **Scadenza degli inviti:** `apply` non può usare l'orologio locale perché non è deterministico. La scadenza si verifica quindi al momento del pairing, sul nodo che accoglie la richiesta.
+- **`invitedBy`** registra chi ha **creato** l'invito, non chi ha accolto la richiesta: è l'informazione utile per la tracciabilità.
 - **Ruoli:** `admin` (rimuove membri, gestisce la config di team e le redazioni, promuove altri admin) e `member` (invita, scrive ricordi, vota, sogna).
 - **Tracciabilità:** `micelio members` mostra l'albero degli inviti (chi ha portato dentro chi), così un admin può risalire all'origine di un ingresso sospetto.
+- **Permessi ed eventi concorrenti (emerso nei test della Fase 1):** `apply` valuta i permessi nell'ordine linearizzato. Se un membro emette un'azione da admin *concorrentemente* alla propria promozione, l'ordinamento può mettere la promozione prima e rendere valida l'azione, in modo coerente su tutti i nodi. Mitigazione: il nodo rifiuta già in partenza le azioni da admin se localmente non è admin, quindi un client normale non le emette mai. Resta il rischio teorico di un client manomesso che sfrutti quella finestra di concorrenza. È accettato per un team di colleghi.
 - **Offboarding:** solo un admin può pubblicare `member.remove`. `apply` ignora le rimozioni pubblicate da chi non è admin. Dopo la rimozione i nuovi eventi del nodo rimosso vengono ignorati. **Limite intrinseco:** ciò che il nodo ha già replicato resta in suo possesso. Per proteggere il sapere futuro serve la rotazione della chiave di team (Fase 6).
 
 ---
@@ -406,7 +409,7 @@ Fase futura: **astrazione**, cioè ricavare principi generali da più ricordi sp
 
 ## 11. Server MCP
 
-Il daemon espone MCP su **HTTP locale** (`127.0.0.1`, con token) e una piccola **shim stdio** per i client che la preferiscono. La shim inoltra le chiamate al daemon.
+Il daemon (NestJS) espone MCP su **Streamable HTTP locale** (`127.0.0.1`, con token Bearer), in modalità **stateless**: ogni richiesta crea server e trasporto nuovi. La **shim stdio** per i client che supportano solo stdio è rinviata alla Fase 6, perché tutti i client previsti supportano HTTP. Nella Fase 1 sono implementati `recall`, `remember` e `get` (riferimento: [mcp.md](mcp.md)).
 
 | Tool | Descrizione |
 |---|---|
@@ -460,9 +463,10 @@ Ogni IDE o CLI si configura una volta con `micelio setup <client>`, che scrive l
 
 | Ambito | Scelta |
 |---|---|
-| Runtime | Node.js ≥ 22 LTS, TypeScript, ESM |
-| P2P | `hypercore`, `autobase`, `corestore`, `hyperswarm`, `blind-pairing` |
-| Storage | `better-sqlite3` + FTS5 + `sqlite-vec` |
+| Runtime | Node.js ≥ 22.13, TypeScript 5.9 (CommonJS, per compatibilità con NestJS) |
+| HTTP (API locale + MCP) | **NestJS 11** (Express 5) |
+| P2P | `autobase`, `corestore`, `hyperswarm`, `hyperbee`, `blind-pairing`, `protomux-wakeup` |
+| Storage | **`node:sqlite`** (integrato in Node, nessuna dipendenza nativa) + FTS5; `sqlite-vec` in Fase 4 |
 | Embedding | `@huggingface/transformers` (locale) |
 | Validazione | `zod` |
 | MCP | `@modelcontextprotocol/sdk` |
@@ -471,7 +475,9 @@ Ogni IDE o CLI si configura una volta con `micelio setup <client>`, che scrive l
 | CLI | `commander` |
 | Test | `vitest`; test di integrazione multi-nodo in-process (più corestore su una testnet DHT locale) |
 
-### Struttura del repo (iniziale)
+### Struttura del repo
+
+La struttura effettiva è descritta in [sviluppo.md](sviluppo.md). Quella che segue era la proposta iniziale: rispetto a questa, il daemon NestJS sta in `src/daemon/` e l'orchestratore in `src/node/`.
 
 Un unico package, a moduli. Si divide in un monorepo solo se serve.
 

@@ -1,0 +1,14 @@
+# Scenario end-to-end: 4 nodi Micelio reali (codice di prodotto) sulla DHT pubblica.
+# Memoria limitata per non pesare sulla macchina di sviluppo.
+x-node: &node
+  image: micelio-node
+  build: ../../..
+  mem_limit: 256m
+  restart: "no"
+  stop_grace_period: 10s
+
+services:
+  node1: { <<: *node, hostname: node1 }
+  node2: { <<: *node, hostname: node2 }
+  node3: { <<: *node, hostname: node3 }
+  node4: { <<: *node, hostname: node4 }

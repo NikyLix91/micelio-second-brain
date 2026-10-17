@@ -1,83 +1,114 @@
 # Micelio — Piano di lavoro
 
-> Documento vivo: viene aggiornato a ogni avanzamento. Il design di riferimento è [DESIGN.md](DESIGN.md).
-> Ultimo aggiornamento: **2026-10-17** — Fase 0 completata, Fase 1 in attesa di approvazione.
+> Documento vivo: viene aggiornato a ogni avanzamento. Design di riferimento: [DESIGN.md](DESIGN.md). Indice della documentazione: [README.md](README.md).
+> Ultimo aggiornamento: **2026-10-17**. Fase 1 completata, Fase 2 in attesa di approvazione.
 
 ## Stato
 
 | Fase | Obiettivo | Stato |
 |---|---|---|
 | 0 — Spike | Ridurre i rischi tecnici | ✅ Completata |
-| 1 — MVP | Brain condiviso minimo, usabile da Claude Code | ⏸️ In attesa di approvazione |
-| 2 — Ingestione AI | Raccolta automatica con filtro privacy | ⬜ Da fare |
+| 1 — MVP | Brain condiviso minimo, usabile da Claude Code | ✅ Completata |
+| 2 — Ingestione AI | Raccolta automatica con filtro privacy | ⏸️ In attesa di approvazione |
 | 3 — Documenti | Cartelle sorvegliate (PDF, DOCX, XLSX…) | ⬜ Da fare |
 | 4 — Priorità | Vettori, ricerca ibrida, attivazione | ⬜ Da fare |
 | 5 — Dreaming | Consolidamento coordinato | ⬜ Da fare |
-| 6 — Hardening | Offboarding, redazione, servizio di sistema | ⬜ Da fare |
+| 6 — Hardening | Offboarding, redazione, servizio di sistema, altri client | ⬜ Da fare |
+
+---
+
+## Decisioni prese
+
+| # | Decisione | Esito |
+|---|---|---|
+| D1 | Linguaggio | TypeScript. Le parti web/HTTP usano **NestJS** |
+| D2 | Consegna della chiave al nuovo membro | Blind-pairing con un membro online qualsiasi: il codice d'invito non contiene la chiave |
+| D3 | Indexer | Gli admin sono gli indexer. Consigliati 2–3 admin |
+| D4 | Cosa entra nell'MVP | Solo i salvataggi espliciti. "Come gestire l'esplicito" si definisce in Fase 2 (vedi D6) |
+| D5 | Sistemi operativi | Tutti. Sviluppo su Windows, Linux verificato in Docker, macOS non ancora provato |
 
 ---
 
 ## Fase 0 — Spike ✅
 
-| Spike | Esito | Dettaglio |
-|---|---|---|
-| **A — P2P** ([spikes/a-p2p](../spikes/a-p2p)) | ✅ 6/6 scenari | 3+1 nodi Docker su DHT pubblica: scritture concorrenti, deduplica, founder offline, partizione, rientro di un nodo offline, **ingresso di un nuovo membro con chi l'ha invitato offline**. Convergenza in 1–2 s, circa 40 MB di RAM per nodo |
-| **B — Claude CLI** ([spikes/b-claude-cli](../spikes/b-claude-cli)) | ✅ 5/5 | `claude -p` headless con `--json-schema`. Haiku classifica correttamente 5 casi su 5 (mail HR e credenziali di un cliente → `private`) in circa 5 s per caso. Sonnet distilla ricordi di buona qualità |
-| **C — Embedding** ([spikes/c-embeddings](../spikes/c-embeddings)) | ✅ 4/4 | `multilingual-e5-small` locale: primo risultato corretto in 4 query su 4, anche tra italiano e inglese. 3,3 ms per passaggio, ma circa 620 MB di RAM con il modello caricato |
-
-**Problemi trovati e risolti durante gli spike** (riportati in DESIGN.md):
-
-1. Autobase: serve `base.replicate()` e non `store.replicate()`, altrimenti i nuovi writer non vengono scoperti.
-2. Hyperswarm: senza refresh periodico della discovery i nodi restano isolati quando cade il peer "ponte".
-3. Claude CLI su Windows: lanciarlo senza shell (quoting) e con lo schema in JSON Schema draft-07.
-4. Distillazione: il prompt deve imporre la fedeltà alla fonte (il modello ha aggiunto un dettaglio non presente).
-
-**Non verificato:** `codex exec`, per mancanza di un abbonamento. Lo verificheremo quando sarà disponibile; l'adapter resta pluggable.
+Resoconto completo: [spike-fase-0.md](spike-fase-0.md). In sintesi: P2P 6/6 scenari, Claude CLI 5/5 classificazioni, embedding locali 4/4 query. Codex non è verificato (nessun abbonamento).
 
 ---
 
-## Decisioni da confermare prima della Fase 1
-
-| # | Decisione | Proposta |
-|---|---|---|
-| D1 | Linguaggio | **TypeScript** (ESM, Node ≥ 22). Gli spike sono in JS, il prodotto in TS |
-| D2 | Consegna della chiave di cifratura al nuovo membro | **Blind-pairing con un membro online qualsiasi.** Il codice d'invito non contiene la chiave di team: se trapela, non basta per leggere i dati. Costo: per entrare serve almeno un membro online, anche diverso da chi ha invitato |
-| D3 | Indexer di Autobase | **3–5 indexer** (gli admin e i nodi più spesso accesi). Gli altri sono writer normali |
-| D4 | Filtro privacy nell'MVP | Nell'MVP entra nel brain **solo ciò che si salva esplicitamente** (tool `remember` o comando CLI). Raccolta automatica e filtri arrivano in Fase 2 |
-| D5 | Sistemi operativi | Windows prioritario (sviluppo e test). macOS e Linux supportati, testati via Docker/CI. **Da confermare: che OS usa il team?** |
-
----
-
-## Fase 1 — MVP ⏸️
-
-**Obiettivo:** due persone (o due macchine) condividono un brain. In Claude Code, sulla macchina A si salva un ricordo con `remember`; sulla macchina B Claude lo ritrova con `recall`.
+## Fase 1 — MVP ✅
 
 | # | Attività | Stato |
 |---|---|---|
-| 1.1 | Setup del progetto: TypeScript, struttura `src/` (DESIGN §14), vitest, build | ⬜ |
-| 1.2 | `core/`: schemi zod degli eventi (envelope, `memory.add`, `invite.*`, `member.*`, `team.config`), id content-addressed | ⬜ |
-| 1.3 | `net/`: wrapper Autobase con `apply` deterministico, Hyperswarm con refresh della discovery, cifratura, politica degli indexer (D3) | ⬜ |
-| 1.4 | Membership: `init` del team, `invite`, `join` con blocco optimistic + consegna della chiave (D2), `member.remove` riservato agli admin, albero degli inviti | ⬜ |
-| 1.5 | `store/`: indice SQLite (better-sqlite3 + FTS5) derivato dalla vista Hyperbee, con aggiornamento incrementale tramite diff della vista e ricostruzione da zero | ⬜ |
-| 1.6 | Daemon + CLI: `micelio init / invite / join / start / stop / status / remember / recall / members`, config in `~/.micelio` | ⬜ |
-| 1.7 | `mcp/`: server MCP su HTTP locale (con token) + shim stdio; tool `remember`, `recall`, `get`; `micelio setup claude-code` | ⬜ |
-| 1.8 | `export/`: vista Markdown in sola lettura | ⬜ |
-| 1.9 | Test: unità (determinismo di `apply`), integrazione multi-nodo in-process su testnet DHT locale, scenario end-to-end Docker (riuso dello spike A) | ⬜ |
+| 1.1 | Setup del progetto: TypeScript 5.9, vitest + SWC, build | ✅ |
+| 1.2 | `core/`: schemi zod degli eventi, id content-addressed | ✅ |
+| 1.3 | `net/`: Autobase + Hyperswarm (refresh della discovery, wakeup), cifratura, admin = indexer | ✅ |
+| 1.4 | Membership: init, invito blind-pairing (chi ha invitato può essere offline), espulsione e promozione solo admin, albero degli inviti | ✅ |
+| 1.5 | `store/`: indice FTS5 su `node:sqlite` derivato dalla vista | ✅ |
+| 1.6 | Daemon NestJS + CLI `micelio` | ✅ |
+| 1.7 | MCP Streamable HTTP (`recall`, `remember`, `get`) + `micelio setup claude-code` | ✅ |
+| 1.8 | Export Markdown in sola lettura | ✅ |
+| 1.9 | Test: 25 di unità e integrazione + scenario Docker end-to-end (11 controlli) | ✅ |
+| 1.10 | Documentazione: README, guida utente, guida per sviluppatori, MCP | ✅ |
 
-**Criterio di completamento:**
-- il PC Windows e un nodo in container sono nello stesso team;
-- un ricordo salvato da Claude Code su uno dei due compare nel `recall` dell'altro entro pochi secondi;
-- lo scenario Docker dello spike A passa sul codice di prodotto.
+**Criterio di completamento: raggiunto.**
+- Un nodo sul PC Windows è entrato nel team di un nodo in container via DHT pubblica (14 s).
+- Claude Code reale ha trovato con `recall` un ricordo scritto dal container.
+- Claude Code ha salvato con `remember` una decisione, che il container ha visto subito.
+
+**Problemi emersi e risolti durante la fase:**
+1. Un invito creato da un nodo che va subito offline non è verificabile dagli altri. Ora `invite` attende che almeno un peer l'abbia ricevuto, altrimenti avvisa.
+2. Con eventi concorrenti un'azione da admin emessa da un non-admin poteva diventare valida. Ora il nodo la rifiuta già in partenza (DESIGN §9).
+3. Su Windows `SIGTERM` uccide il processo senza chiusura ordinata. Ora lo shutdown passa da un segnale interno.
+4. L'albero degli inviti attribuiva l'invito a chi aveva accolto la richiesta. Ora lo attribuisce a chi l'ha creato.
+
+**Osservazione importante per la Fase 2:** quando Claude salva un ricordo con `remember`, scrive lui il testo e **aggiunge dettagli non detti dall'utente** (visto anche nello spike B). Va affrontato insieme alla decisione D6.
+
+**Non verificato:** `npm link` su macOS/Linux e il comando `micelio setup claude-code` sulla configurazione reale. Per non modificare la tua configurazione l'ho provato con un `--mcp-config` temporaneo.
 
 ---
 
-## Fasi successive (dettaglio quando ci arriviamo)
+## Fase 2 — Ingestione AI ⏸️ (proposta, da approvare)
 
-- **Fase 2 — Ingestione AI:** hook `SessionEnd` di Claude Code, filtro deterministico (percorsi, parole chiave, dati personali, redazione dei segreti), classificazione Haiku, distillazione Sonnet, archivio privato + inbox, coda LLM con budget, anti-loop `MICELIO_INTERNAL`. Adapter Codex quando disponibile.
-- **Fase 3 — Documenti:** watcher sulle cartelle, estrazione PDF/DOCX/XLSX/PPTX, elaborazione incrementale per hash.
-- **Fase 4 — Priorità:** embedding in un worker caricato su richiesta, sqlite-vec, ricerca ibrida RRF, `usage.report`, attivazione, voti e pin, taratura delle soglie.
-- **Fase 5 — Dreaming:** elezione per epoca, fasi di consolidamento, contraddizioni, collegamenti, decadimento, diario dei sogni, budget di chiamate.
-- **Fase 6 — Hardening:** rotazione della chiave all'offboarding, redazione, `micelio setup` per Codex, VS Code e WebStorm, avvio come servizio di sistema, osservabilità.
+**Obiettivo:** il sapere entra anche senza `remember` esplicito, dalle sessioni di Claude Code, e **niente di personale o sensibile arriva al team**. Riferimenti: DESIGN §6–7.
+
+### Decisioni da prendere
+
+| # | Domanda | Proposta |
+|---|---|---|
+| D6 | Come trattare i salvataggi espliciti (`remember`) | Passano **anche loro** dal filtro deterministico e dalla classificazione. Se sono puliti vanno al team, altrimenti in inbox. Il tool risponde mostrando il testo salvato, così l'utente vede subito cosa è stato scritto a suo nome |
+| D7 | Raccolta automatica dalle sessioni di Claude Code | **Opt-in per progetto:** si attiva solo nelle cartelle elencate dall'utente (`micelio watch add <cartella>`), non su tutto ciò che fa con Claude |
+| D8 | Budget di chiamate LLM per nodo | Default **40 chiamate al giorno**, configurabile. Classificazione con Haiku, distillazione con Sonnet |
+| D9 | Revisione dell'inbox | Da CLI (`micelio inbox`) e da MCP (Claude può proporre "ho 3 ricordi in attesa, li rivediamo?"). Gli elementi scadono dopo 14 giorni |
+
+### Attività
+
+| # | Attività |
+|---|---|
+| 2.1 | `llm/`: adapter Claude CLI (dallo spike B) dietro un'interfaccia comune, coda con concorrenza 1, budget giornaliero, retry su output non valido, anti-loop `MICELIO_INTERNAL` |
+| 2.2 | Archivio privato `private.db` (mai replicato) + inbox: CLI `micelio inbox [approve\|reject\|edit]` e tool MCP `inbox_review` / `inbox_decide` |
+| 2.3 | Filtro deterministico: percorsi, parole chiave (HR, valutazioni, retribuzioni…), pattern di dati personali (codice fiscale, IBAN, telefono, email), **redazione dei segreti** (chiavi API, token, password, stringhe di connessione). Regole di default + regole del team via `team.config` |
+| 2.4 | Classificazione con Haiku (schema e prompt dello spike B, set di casi di prova ampliato) |
+| 2.5 | Distillazione con Sonnet: 0..N ricordi atomici, **regola di fedeltà alla fonte**, lingua del team (`memory.language`) |
+| 2.6 | Hook `SessionEnd` di Claude Code installato da `micelio setup claude-code`: invia al daemon il percorso della trascrizione, solo per le cartelle opt-in (D7) |
+| 2.7 | `remember` esplicito attraverso filtro + classificazione (D6) |
+| 2.8 | Set di valutazione: 20–30 sessioni realistiche anonimizzate (tecniche, HR, miste, banali) con l'esito atteso, eseguibile con `npm run eval:ingest` |
+| 2.9 | Test e documentazione (guida utente: privacy e inbox; sviluppo: pipeline) |
+
+**Criterio di completamento:**
+- Una sessione tecnica in una cartella opt-in produce ricordi nel team senza intervento.
+- Una sessione su una mail di valutazione, o con credenziali, **non** produce nulla nel team (resta in privato o in inbox).
+- Il set di valutazione passa almeno il 90% dei casi, e il 100% dei casi sensibili.
+
+**Non coperto in Fase 2:** Codex CLI (serve un abbonamento per provarlo), cartelle di documenti (Fase 3).
+
+---
+
+## Fasi successive
+
+- **Fase 3 — Documenti:** watcher sulle cartelle, estrazione PDF/DOCX/XLSX/PPTX, elaborazione incrementale per hash, stessa pipeline di filtro della Fase 2.
+- **Fase 4 — Priorità:** embedding in un worker su richiesta, sqlite-vec, ricerca ibrida RRF, `usage.report`, attivazione, voti e pin, indicizzazione incrementale.
+- **Fase 5 — Dreaming:** elezione per epoca, consolidamento, contraddizioni, collegamenti, decadimento, diario dei sogni, budget.
+- **Fase 6 — Hardening:** rotazione della chiave all'offboarding, redazione, `micelio setup` per Codex, VS Code e WebStorm, shim MCP stdio, avvio come servizio di sistema, test su macOS, osservabilità.
 
 ---
 
@@ -85,5 +116,7 @@
 
 | Data | Evento |
 |---|---|
-| 2026-10-17 | Design v0.1 ([DESIGN.md](DESIGN.md)). Decisioni: nodi su internet, 10–30 nodi, LLM via CLI senza API, solo conoscenza distillata, ambiti private + team, lingua configurabile per team, inviti aperti a tutti con rimozione riservata agli admin, un progetto con persone diverse = un team separato |
-| 2026-10-17 | Fase 0 completata: spike A, B e C superati. DESIGN.md aggiornato con le lezioni apprese. Piano della Fase 1 pronto per l'approvazione |
+| 2026-10-17 | Design v0.1. Nodi su internet, 10–30 nodi, LLM via CLI senza API, solo conoscenza distillata, ambiti private + team, lingua configurabile per team, inviti aperti a tutti con espulsione riservata agli admin, un progetto = un team separato |
+| 2026-10-17 | Fase 0 completata (spike A, B, C) |
+| 2026-10-17 | Decisioni D1–D5 confermate. Fase 1 avviata |
+| 2026-10-17 | Fase 1 completata: 25 test + e2e Docker 11/11 + prova reale Windows ↔ container con Claude Code. Documentazione in `docs/`. Fase 2 proposta (decisioni D6–D9) |

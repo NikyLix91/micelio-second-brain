@@ -96,7 +96,12 @@ program.command('stop')
 
 program.command('status')
   .description('stato del nodo e del team')
-  .action(async () => printStatus(await client().call('GET', '/api/status')))
+  .option('--json', 'output JSON (per script)')
+  .action(async (o: { json?: boolean }) => {
+    const s = await client().call<NodeStatus>('GET', '/api/status')
+    if (o.json) console.log(JSON.stringify(s))
+    else printStatus(s)
+  })
 
 // ---------- Team ----------
 
@@ -119,8 +124,10 @@ program.command('join')
 
 program.command('invite')
   .description('crea un codice d\'invito monouso (valido 24 ore)')
-  .action(async () => {
+  .option('--json', 'output JSON (per script)')
+  .action(async (o: { json?: boolean }) => {
     const r = await client().call<{ code: string, expires: number, replicated: boolean }>('POST', '/api/invites')
+    if (o.json) return console.log(JSON.stringify(r))
     console.log('Codice d\'invito (monouso, scade il ' + date(r.expires) + '):\n')
     console.log(r.code + '\n')
     console.log('Il nuovo membro esegue:  micelio join <codice> --name <nome-nodo>')
