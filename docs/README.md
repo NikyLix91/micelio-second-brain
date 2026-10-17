@@ -4,6 +4,7 @@
 - [Guida utente](guida-utente.md): installazione, creazione del team, inviti, ricordi, integrazione con Claude Code, risoluzione problemi.
 - [App desktop e interfaccia](app.md): il Nucleo 3D, le viste, le notifiche, il team demo per provarla.
 - [Server MCP](mcp.md): i tool per gli agenti AI e come configurare i client.
+- [Server del team](../server/README.md): DHT privata su una macchina Linux (installazione separata) e nodo sempre acceso.
 
 ## Sviluppare Micelio
 - [Guida per sviluppatori](sviluppo.md): struttura del codice, build, test (unità, integrazione, Docker), convenzioni e regole d'oro.

@@ -1,0 +1,25 @@
+{
+  "name": "micelio-server",
+  "version": "0.1.0",
+  "description": "Nodo di avvio (bootstrap) della DHT privata di Micelio: punto d'incontro dei nodi del team su internet",
+  "private": true,
+  "type": "commonjs",
+  "license": "UNLICENSED",
+  "bin": {
+    "micelio-server": "dist/main.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "hyperdht": "^6.34.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.0",
+    "typescript": "~5.9.3"
+  }
+}

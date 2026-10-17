@@ -197,6 +197,12 @@ Riferimento implementativo utile: **Autopass** (password manager P2P di Holepunc
 - Volume stimato: 10.000 ricordi × ~2 KB ≈ 20 MB. La replica completa è banale anche per un nuovo ingresso.
 - I blocchi del feed `team` sono **cifrati con la chiave di team**, così anche un peer non autorizzato che li ottenesse non li potrebbe leggere.
 - Hyperswarm rifà la ricerca dei peer sul topic raramente. Se cade un nodo "ponte", gli altri possono restare isolati a lungo anche se sono tutti online. Il nodo rinfresca quindi la discovery ogni 5 s quando è isolato e ogni 60 s negli altri casi (verificato nello spike A).
+- **DHT pubblica o privata.** Di default i nodi entrano nella DHT pubblica di Holepunch, attraverso i suoi nodi di avvio. Un team può avere una **DHT privata** con `micelio-server`, cioè la cartella `server/`. È un pacchetto separato che si installa come servizio systemd su una macchina Linux con una porta UDP pubblica.
+  - Il server fa da nodo di avvio e da intermediario per l'hole punching.
+  - Non ha chiavi né dati: vede solo impronte e IP.
+  - I client lo indicano in `network.bootstrap`, e tutti i membri devono usare lo stesso, altrimenti stanno in DHT separate.
+  - `micelio network check` (`src/net/diagnose.ts`) verifica l'ingresso, l'IP pubblico e il NAT simmetrico. Il NAT simmetrico si rileva solo con almeno 2 nodi DHT, quindi sul server serve `--extra-nodes`.
+  - Accanto al server si consiglia un nodo Micelio sempre acceso: fa da ponte fra chi non riesce a collegarsi direttamente.
 - Misure dello spike A (3–4 nodi Docker, DHT pubblica): convergenza in 1–2 s dopo scritture concorrenti, dopo una partizione e dopo il rientro di un nodo offline; circa 40 MB di RAM per nodo.
 
 ### 5.3 Ambiti

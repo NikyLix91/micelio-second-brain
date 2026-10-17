@@ -85,6 +85,19 @@ const DreamConfig = z.object({
   slotMinutes: z.number().int().min(1).default(30)
 }).prefault({})
 
+/**
+ * Rete P2P: dove i nodi del team si incontrano (vedi server/README.md).
+ * TUTTI i membri del team devono usare gli stessi nodi di avvio, altrimenti stanno in DHT diverse
+ * e non si trovano.
+ */
+const NetworkConfig = z.object({
+  /**
+   * Nodi di avvio della DHT, come "host:porta". Vuota = DHT pubblica di Holepunch.
+   * Con un server Micelio (cartella server/ della repo) il team usa una DHT tutta sua.
+   */
+  bootstrap: z.array(z.string().regex(/^[^\s:]+:\d{1,5}$/, 'formato host:porta')).default([])
+}).prefault({})
+
 const Config = z.object({
   /** Interfaccia di ascolto: 127.0.0.1 (solo questa macchina); 0.0.0.0 nei container. */
   host: z.string().default('127.0.0.1'),
@@ -94,7 +107,8 @@ const Config = z.object({
   llm: LlmConfig,
   watch: WatchConfig,
   embeddings: EmbeddingsConfig,
-  dream: DreamConfig
+  dream: DreamConfig,
+  network: NetworkConfig
 })
 export type Config = z.infer<typeof Config>
 
@@ -170,17 +184,25 @@ export function saveState (paths: NodePaths, state: State): void {
   writePrivate(paths.state, State.parse(state))
 }
 
-/**
- * Nodi bootstrap della DHT da MICELIO_DHT_BOOTSTRAP="host:port,host:port".
- * Serve per i test (DHT locale) o per una rete privata; assente = DHT pubblica.
- */
-export function bootstrapFromEnv (): { host: string, port: number }[] | undefined {
-  const raw = process.env.MICELIO_DHT_BOOTSTRAP
-  if (!raw) return undefined
-  return raw.split(',').map((s) => {
-    const [host, port] = s.trim().split(':')
-    return { host, port: Number(port) }
+/** Converte "host:porta" nella forma che si aspetta HyperDHT. */
+export function parseBootstrap (list: string[]): { host: string, port: number }[] {
+  return list.map((s) => s.trim()).filter(Boolean).map((s) => {
+    const i = s.lastIndexOf(':')
+    return { host: s.slice(0, i), port: Number(s.slice(i + 1)) }
   })
+}
+
+/**
+ * Nodi di avvio della DHT da usare, in ordine di precedenza:
+ * 1. MICELIO_DHT_BOOTSTRAP="host:porta,host:porta" (test, demo, container);
+ * 2. `network.bootstrap` in config.json (server del team, `micelio network set`);
+ * 3. undefined = DHT pubblica di Holepunch.
+ */
+export function dhtBootstrap (config?: Config): { host: string, port: number }[] | undefined {
+  const env = process.env.MICELIO_DHT_BOOTSTRAP
+  if (env) return parseBootstrap(env.split(','))
+  const list = config?.network.bootstrap ?? []
+  return list.length ? parseBootstrap(list) : undefined
 }
 
 /**

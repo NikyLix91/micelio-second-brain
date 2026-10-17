@@ -28,7 +28,8 @@ src/
 ├─ core/       schemi zod degli eventi, modello dei record, percorsi locali
 ├─ net/        UNICO modulo che parla con le librerie Holepunch
 │  ├─ apply.ts        funzione deterministica eventi → vista (Hyperbee), con i permessi
-│  └─ team-node.ts    Autobase + Hyperswarm + blind-pairing
+│  ├─ team-node.ts    Autobase + Hyperswarm + blind-pairing
+│  └─ diagnose.ts     `micelio network check`: ingresso nella DHT, IP pubblico, NAT
 ├─ store/
 │  ├─ memory-index.ts indice di ricerca SQLite FTS5, derivato dalla vista
 │  └─ private-store.ts archivio privato: coda, inbox, decisioni, budget (mai replicato)
@@ -48,6 +49,8 @@ ui/src/          interfaccia React (Vite), servita dal daemon su /ui
 └─ components/   componenti di base (niente librerie di componenti)
 
 desktop/src/     app Electron: avvio del daemon, finestra, area di notifica, notifiche
+server/          micelio-server: DHT privata del team. Pacchetto SEPARATO (proprio package.json,
+                 dipende solo da hyperdht), non è un workspace: si installa su Linux con install.sh
 scripts/         team dimostrativo (demo-team.js)
 ```
 
@@ -154,7 +157,7 @@ I prompt ([src/ingest/prompts.ts](../src/ingest/prompts.ts)) e le regole del fil
 |---|---|
 | `MICELIO_HOME` | Cartella dati del nodo (default `~/.micelio`) |
 | `MICELIO_PORT` / `MICELIO_HOST` | Porta e interfaccia dell'API locale (prevalgono su `config.json`, ma **non** vengono salvate: l'hook di Claude Code non le vede) |
-| `MICELIO_DHT_BOOTSTRAP` | `host:port,...` per una DHT privata o di test (default: DHT pubblica) |
+| `MICELIO_DHT_BOOTSTRAP` | `host:port,...` per una DHT privata o di test. Prevale su `network.bootstrap` di `config.json` (impostato con `micelio network set`); se mancano entrambi, DHT pubblica |
 | `MICELIO_LLM_ADAPTER` | `claude` \| `none` \| `fake` (test ed e2e) |
 | `MICELIO_INTERNAL` | Impostata da Micelio sulle proprie chiamate a Claude: l'hook le ignora (anti-loop) |
 

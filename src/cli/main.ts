@@ -20,7 +20,9 @@ import { MEMORY_KINDS } from '../core/events'
 import type { MemberRecord, NodeStatus, RecallHit } from '../core/model'
 import { nodePaths, type NodePaths } from '../core/paths'
 import type { ExplicitOutcome } from '../ingest/pipeline'
+import { checkNetwork } from '../net/diagnose'
 import { autostartOff, autostartOn, autostartStatus } from '../node/autostart'
+import { dhtBootstrap, loadConfig, updateConfig } from '../node/config'
 import { claudeSettingsFile, hookCommand, IntegrationError, mcpAddArgs, setupClaudeCode } from '../node/integrations'
 import type { IngestStatus } from '../node/micelio-node'
 import type { Decision, InboxItem } from '../store/private-store'
@@ -175,6 +177,61 @@ program.command('status')
     const s = await client().call<NodeStatus>('GET', '/api/status')
     if (o.json) console.log(JSON.stringify(s))
     else printStatus(s)
+  })
+
+// ═══════════════════════════════ Rete ═══════════════════════════════
+
+/**
+ * Dove i nodi del team si incontrano: DHT pubblica di Holepunch (default) o DHT privata del team
+ * (server/ nella repo). Modifica config.json direttamente: il daemon la legge all'avvio, quindi
+ * dopo `set`/`public` va riavviato.
+ */
+const network = program.command('network').description('rete P2P: DHT pubblica o server del team (show | set | public | check)')
+
+network.command('show', { isDefault: true })
+  .description('nodi di avvio in uso')
+  .action(() => {
+    const cfg = loadConfig(paths())
+    const env = process.env.MICELIO_DHT_BOOTSTRAP
+    if (env) console.log(`DHT da MICELIO_DHT_BOOTSTRAP: ${env} (prevale su config.json)`)
+    else if (cfg.network.bootstrap.length) console.log(`DHT privata del team: ${cfg.network.bootstrap.join(', ')}`)
+    else console.log('DHT pubblica di Holepunch (nessun server del team configurato)')
+  })
+
+network.command('set')
+  .description('usa il server del team come nodo di avvio (tutti i membri devono usare lo stesso)')
+  .argument('<nodi...>', 'uno o più host:porta, es. 203.0.113.10:49737')
+  .action((nodi: string[]) => {
+    const cfg = updateConfig(paths(), (c) => { c.network.bootstrap = nodi })
+    console.log(`DHT privata del team: ${cfg.network.bootstrap.join(', ')}`)
+    console.log('Riavvia il daemon per applicarla: micelio stop && micelio start')
+    console.log('Verifica la rete con: micelio network check')
+  })
+
+network.command('public')
+  .description('torna alla DHT pubblica di Holepunch')
+  .action(() => {
+    updateConfig(paths(), (c) => { c.network.bootstrap = [] })
+    console.log('DHT pubblica di Holepunch. Riavvia il daemon per applicarla: micelio stop && micelio start')
+  })
+
+network.command('check')
+  .description('diagnosi: il PC entra nella DHT? con quale IP pubblico? che tipo di NAT?')
+  .action(async () => {
+    const r = await checkNetwork(dhtBootstrap(loadConfig(paths())))
+    console.log(`DHT:            ${r.dht}`)
+    console.log(`Raggiungibile:  ${r.reachable ? `sì (${r.nodes} nodi, ${r.ms} ms)` : 'NO'}`)
+    console.log(`IP pubblico:    ${r.publicHost ?? 'non determinato'}`)
+    console.log(`NAT simmetrico: ${r.randomizedPort === null ? 'non determinabile (servono almeno 2 nodi DHT)' : r.randomizedPort ? 'SÌ' : 'no'}`)
+    if (!r.reachable) {
+      console.log('\nNessun nodo ha risposto. Possibili cause: server spento, porta UDP chiusa sul server, oppure questa rete blocca l\'UDP in uscita.')
+      process.exitCode = 1
+    } else if (r.randomizedPort) {
+      console.log('\nIl router cambia porta per ogni destinazione: la connessione diretta può fallire con colleghi nella stessa situazione.')
+      console.log('Il sapere arriva comunque passando da un nodo sempre acceso raggiungibile da tutti (vedi server/README.md).')
+    } else {
+      console.log('\nOK: questo PC può collegarsi agli altri nodi del team.')
+    }
   })
 
 // ═══════════════════════════════ Team ═══════════════════════════════

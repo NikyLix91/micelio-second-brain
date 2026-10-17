@@ -10,7 +10,7 @@ import { Logger } from '@nestjs/common'
 import type { NestExpressApplication } from '@nestjs/platform-express'
 import { NestFactory } from '@nestjs/core'
 import { nodePaths, type NodePaths } from '../core/paths'
-import { bootstrapFromEnv, loadConfig } from '../node/config'
+import { dhtBootstrap, loadConfig } from '../node/config'
 import { MicelioModule } from './micelio.module'
 import { shutdownSignal } from './shutdown'
 
@@ -22,7 +22,7 @@ import { shutdownSignal } from './shutdown'
 export async function startDaemon (paths: NodePaths = nodePaths()): Promise<NestExpressApplication> {
   const config = loadConfig(paths)
   const app = await NestFactory.create<NestExpressApplication>(
-    MicelioModule.forRoot({ paths, config, bootstrap: bootstrapFromEnv() }),
+    MicelioModule.forRoot({ paths, config, bootstrap: dhtBootstrap(config) }),
     { logger: ['log', 'warn', 'error'], bodyParser: true }
   )
   // Limite più alto del default (100 kB): i ricordi possono arrivare a 20 kB di testo più metadati.

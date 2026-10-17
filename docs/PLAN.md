@@ -258,6 +258,7 @@ La stessa UI funziona anche dal browser con `micelio ui`.
 | 7.7 | **Installer dell'app desktop** (Windows/macOS/Linux) | ⬜ Rinviato per decisione D16. L'avvio automatico del daemon all'accesso c'è già: `micelio autostart on` |
 | 7.8 | **Test su macOS** e prova reale con Codex, VS Code e WebStorm | ⬜ Serve una macchina macOS e i client installati |
 | 7.10 | **Distillazione consapevole delle modifiche**: riassunto git del capitolo di sessione (commit, lavoro non committato, classi/funzioni/endpoint) aggiunto al materiale del distillatore, con riferimenti a file e commit. Opzione `watch.gitChanges`. Ogni ricordo da sessione porta i **riferimenti al codice** (`source.code`: progetto, repository, branch, file, simboli, commit verificati), visibili in app, CLI, MCP ed export | ✅ |
+| 7.11 | **Server del team (DHT privata)**: pacchetto separato `server/` (`micelio-server`, solo `hyperdht`) con `install.sh`/`uninstall.sh` per systemd; lato client `network.bootstrap` e `micelio network show/set/public/check`. Verificati: test automatico (team via solo server), installazione in un container Debian, diagnosi della DHT pubblica da Windows. **Da provare**: servizio systemd e NAT reali su una macchina Linux vera | 🔄 Parziale |
 | 7.9 | **Set di valutazione del dreaming** con Claude reale (come quello della Fase 2) | ⬜ Da fare prima di attivare il dreaming su un team vero |
 
 ---
@@ -283,3 +284,4 @@ La stessa UI funziona anche dal browser con `micelio ui`.
 | 2026-10-17 | Raccolta affidabile: sessioni di Claude Code in corso distillate a capitoli e recupero di quelle perse (session-scanner); l'hook accende il daemon se è spento; `micelio autostart on/off` (Windows, macOS, Linux). Verificati dal vero hook e script di avvio su Windows |
 | 2026-10-17 | Distillazione consapevole delle modifiche (7.10): il distillatore riceve il riassunto git del capitolo di sessione. Test con un repository git temporaneo (commit datati dentro e fuori dal capitolo, lavoro non committato) |
 | 2026-10-17 | Riferimenti al codice nei ricordi (`source.code`), su richiesta: servono a decidere se approfondire un ricordo. Commit verificati su git, percorsi relativi, remote senza credenziali |
+| 2026-10-17 | Server del team (7.11) su richiesta: installazione separata per Linux, comandi `micelio network`. Dal PC di sviluppo: DHT pubblica raggiungibile, NAT non simmetrico |

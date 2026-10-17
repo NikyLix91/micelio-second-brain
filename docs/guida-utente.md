@@ -79,6 +79,33 @@ micelio join <codice> --name pc-lucia
 
 `micelio invites` mostra gli inviti non ancora usati.
 
+## 4-bis. Rete: come si trovano i nodi
+
+I PC del team si trovano su internet senza un server centrale:
+1. ogni daemon annuncia l'impronta del team, cioè un hash da cui non si risale alla chiave, in una DHT (tabella distribuita);
+2. cerca nella DHT gli altri nodi con la stessa impronta;
+3. si collega a loro **direttamente**. I router vengono attraversati con l'hole punching: i due PC si contattano nello stesso istante.
+
+Le connessioni sono cifrate e i dati del team lo sono di nuovo con la chiave del team.
+
+| | Quando |
+|---|---|
+| **DHT pubblica** di Holepunch (default) | Per provare, o se al team va bene che l'impronta del team e gli IP dei membri siano visibili nella DHT pubblica (i contenuti mai) |
+| **Server del team** (DHT privata) | Consigliato per un team aziendale: nessuna dipendenza da terzi, all'IT basta aprire una porta UDP su una macchina. Si installa a parte: vedi [server/README.md](../server/README.md) |
+
+```bash
+micelio network                          # quale DHT usa questo PC
+micelio network set 203.0.113.10:49737   # server del team (tutti i membri devono usare lo stesso)
+micelio network public                   # torna alla DHT pubblica
+micelio network check                    # diagnosi: entra nella DHT? IP pubblico? NAT simmetrico?
+```
+
+Dopo `set` o `public` riavvia il daemon (`micelio stop && micelio start`). Il valore sta in `config.json`, in `network.bootstrap`.
+
+`micelio network check` è la prima cosa da provare se un collega non si collega:
+- **"Raggiungibile: NO"**: la rete blocca l'UDP oppure il server è spento o ha la porta chiusa;
+- **"NAT simmetrico: SÌ"**: la connessione diretta può fallire con un collega nella stessa situazione. Il sapere arriva comunque se c'è un **nodo sempre acceso** raggiungibile da tutti, che si consiglia di mettere sulla stessa macchina del server.
+
 ## 5. Il filtro privacy: cosa arriva al team
 
 Ogni contenuto, sia salvato a mano sia raccolto da una sessione, segue lo stesso percorso:
@@ -349,7 +376,7 @@ Un membro espulso non può più scrivere nel team. **Limite intrinseco:** ciò c
 |---|---|
 | `Il daemon Micelio non risponde` | Il daemon non è avviato: `micelio start`. Se non parte, guarda `~/.micelio/logs/daemon.log` |
 | `join` va in timeout | Nessun membro del team è online, oppure l'invito non è ancora arrivato a nessun membro online. Riprova quando qualcuno è acceso |
-| `Peer: 0 connessi` a lungo | Nessun altro membro online, oppure la rete blocca UDP. Il nodo riprova da solo ogni pochi secondi |
+| `Peer: 0 connessi` a lungo | Nessun altro membro online, oppure la rete blocca UDP, oppure i PC usano DHT diverse. Controlla con `micelio network` (stessa DHT su tutti?) e `micelio network check` (§4-bis) |
 | Le sessioni di Claude Code non vengono raccolte | La cartella è abilitata (`micelio watch`)? Il daemon è attivo? Errori dell'hook in `~/.micelio/logs/hook.log`; sessioni ignorate segnalate in `daemon.log` |
 | `ingest status` dice LLM "NON disponibile" | Claude Code non è nel PATH o non è autenticato. Imposta `llm.command` in `config.json` con il percorso completo di `claude` |
 | Tutto finisce in inbox | Budget esaurito o LLM non disponibile (nel dubbio non si pubblica): controlla `micelio ingest status` |
