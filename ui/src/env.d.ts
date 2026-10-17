@@ -7,6 +7,8 @@ interface MicelioDesktopBridge {
   token: string
   /** Apre il selettore di cartelle del sistema operativo; null se annullato. */
   pickFolder?: () => Promise<string | null>
+  /** Mostra un file nella cartella che lo contiene (Esplora file / Finder). */
+  showInFolder?: (path: string) => Promise<void>
 }
 
 interface Window {

@@ -149,6 +149,10 @@ app.whenReady().then(async () => {
     return r.canceled ? null : r.filePaths[0]
   })
 
+  // Mostra un file nella sua cartella. Solo "mostra", mai "esegui": un documento arrivato da un
+  // collega non viene aperto automaticamente.
+  ipcMain.handle('micelio:show-in-folder', (_e, file: string) => { if (typeof file === 'string' && fs.existsSync(file)) shell.showItemInFolder(file) })
+
   if (screenshotDir) {
     showWindow()
     await takeScreenshots(screenshotDir)

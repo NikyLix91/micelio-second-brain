@@ -24,13 +24,16 @@ const INSTRUCTIONS = `Micelio è la memoria condivisa del team di sviluppo: ogni
 - Quando salvi, scrivi SOLO ciò che l'utente ha detto o che è stato dimostrato nella sessione: non aggiungere
   dettagli, cause o raccomandazioni tue. Dopo il salvataggio mostra all'utente il testo salvato.
 - NON salvare mai dati personali, valutazioni di persone, questioni HR, credenziali, segreti o dati di clienti.
-- Alcuni ricordi finiscono nell'inbox dell'utente per una verifica: puoi proporgli di rivederli con "inbox_review".`
+- Alcuni ricordi finiscono nell'inbox dell'utente per una verifica: puoi proporgli di rivederli con "inbox_review".
+- Se un ricordo viene da un documento e serve approfondire, "fetch_source" scarica l'originale dal collega che lo possiede.`
 
 /** Formatta un risultato di ricerca come Markdown compatto (titolo, metadati, corpo). */
 function formatHit (h: RecallHit): string {
   const who = h.authorName ?? h.author.slice(0, 8)
   const tags = h.tags.length ? `  #${h.tags.join(' #')}` : ''
-  return `### ${h.title}\n[${h.kind}] id:${h.id.slice(0, 12)} · ${who} · ${new Date(h.ts).toISOString().slice(0, 10)}${tags}\n\n${h.body}`
+  // Ricordi distillati da un documento: l'agente sa che può chiedere l'originale con fetch_source.
+  const doc = h.source?.type === 'document' ? `\nFonte: documento «${h.source.name ?? '?'}» (originale disponibile con fetch_source)` : ''
+  return `### ${h.title}\n[${h.kind}] id:${h.id.slice(0, 12)} · ${who} · ${new Date(h.ts).toISOString().slice(0, 10)}${tags}${doc}\n\n${h.body}`
 }
 
 /** Risposta testuale di un tool. */
@@ -100,6 +103,27 @@ export function createMcpServer (node: MicelioNode): McpServer {
   }, async ({ id }) => {
     const hit = node.get(id)
     return hit ? text(formatHit(hit)) : error(`Nessun ricordo con id ${id}`)
+  })
+
+  // ── fetch_source ────────────────────────────────────────────────────────────────────
+  // Documento originale su richiesta (§12-bis): il file arriva dal nodo del collega che lo
+  // possiede (che deve essere online) e viene salvato in locale. Restituiamo il percorso (Claude
+  // Code può aprirlo direttamente) e il testo estratto, per gli agenti che non leggono file.
+  server.registerTool('fetch_source', {
+    title: 'Scarica il documento originale',
+    description: 'Per un ricordo distillato da un documento, scarica il documento ORIGINALE completo dal collega che lo possiede ' +
+      '(deve essere online e condividere quella cartella) e ne restituisce il percorso locale e il testo. Usalo quando il ricordo ' +
+      'non basta e serve approfondire.',
+    inputSchema: { id: z.string().min(6).describe('Id del ricordo (come mostrato da recall)') }
+  }, async ({ id }) => {
+    try {
+      const f = await node.fetchSource(id)
+      const textContent = await node.sourceText(f.path)
+      return text(`Documento: ${f.name} (${Math.round(f.size / 1024)} KB)\nPercorso locale: ${f.path}\n\n` +
+        (textContent ? `--- Testo (primi 20.000 caratteri) ---\n${textContent}` : '(testo non estraibile: apri il file dal percorso indicato)'))
+    } catch (err) {
+      return error((err as Error).message)
+    }
   })
 
   // ── inbox_review ────────────────────────────────────────────────────────────────────

@@ -23,6 +23,8 @@ const JoinBody = z.object({ code: z.string().trim().min(10), name: z.string().tr
 /** Payload dell'hook SessionEnd di Claude Code, inoltrato da `micelio hook session-end`. */
 const SessionBody = z.object({ session_id: z.string().min(1), transcript_path: z.string().min(1), cwd: z.string().min(1) })
 const WatchBody = z.object({ path: z.string().min(1) })
+/** Cartella di documenti: percorso e se gli originali sono scaricabili dai colleghi (D10). */
+const DocFolderBody = z.object({ path: z.string().min(1), shareable: z.boolean().default(false) })
 const ConfigBody = z.object({ key: z.string().min(1).max(100), value: z.unknown() })
 /** Modifiche facoltative in approvazione di un elemento dell'inbox. */
 const ApproveBody = z.object({
@@ -153,6 +155,16 @@ export class ApiController {
     return this.node.recall(q, Math.min(Math.max(Number(limit) || 5, 1), 50))
   }
 
+  /**
+   * Scarica (o trova in locale) l'originale del documento da cui viene un ricordo (§12-bis).
+   * Può richiedere fino a un minuto: il file arriva dal nodo del collega che lo possiede.
+   */
+  @Post('memories/:id/source')
+  @HttpCode(200)
+  fetchSource (@Param('id') id: string) {
+    return this.node.fetchSource(id)
+  }
+
   @Get('memories/:id')
   get (@Param('id') id: string) {
     return this.node.get(id) ?? { error: 'non trovato' }
@@ -181,6 +193,24 @@ export class ApiController {
   @HttpCode(200)
   async ingestRun () {
     return { processed: await this.node.processQueue() }
+  }
+
+  /** Cartelle di documenti e conteggi per stato (in coda, elaborati, bloccati…). */
+  @Get('documents')
+  documents () {
+    return { folders: this.node.settings().documents, stats: this.node.documentStats() }
+  }
+
+  @Post('documents/folders')
+  @HttpCode(200)
+  documentsAdd (@Body() body: unknown) {
+    const { path, shareable } = DocFolderBody.parse(body)
+    return this.node.documentsAdd(path, shareable)
+  }
+
+  @Delete('documents/folders')
+  documentsRemove (@Body() body: unknown) {
+    return this.node.documentsRemove(WatchBody.parse(body).path)
   }
 
   @Get('watch')

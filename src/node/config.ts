@@ -41,7 +41,12 @@ const LlmConfig = z.object({
 /** Cartelle in cui la raccolta automatica è attiva (decisione D7, opt-in). */
 const WatchConfig = z.object({
   /** Progetti per cui le sessioni di Claude Code vengono elaborate. */
-  sessions: z.array(z.string()).default([])
+  sessions: z.array(z.string()).default([]),
+  /**
+   * Cartelle di documenti sorvegliate (Fase 4). `shareable`: se true, gli originali dei documenti
+   * possono essere scaricati dai membri del team su richiesta (decisione D10).
+   */
+  documents: z.array(z.object({ path: z.string(), shareable: z.boolean().default(false) })).default([])
 }).prefault({}) // prefault: il default {} passa dal parse, così si applicano i default interni
 
 const Config = z.object({

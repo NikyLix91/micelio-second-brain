@@ -13,6 +13,7 @@ export function Settings () {
       <PageHeader title='Impostazioni' subtitle='Impostazioni di questo PC. Quelle condivise dal team sono nella schermata Team.' />
       <div className='stack'>
         <WatchCard />
+        <DocumentsCard />
         <LlmCard />
         <ClaudeCodeCard />
       </div>
@@ -54,6 +55,56 @@ function WatchCard () {
         {window.micelio?.pickFolder && <button className='btn' onClick={() => void pick()}>Scegli cartella…</button>}
         <input style={{ flex: 1 }} value={path} onChange={(e) => setPath(e.target.value)} placeholder='C:\progetti\ordini' />
         <button className='btn primary' disabled={!path.trim() || add.isPending} onClick={() => add.mutate(path.trim())}>Abilita</button>
+      </div>
+      <ErrorBox error={add.error ?? remove.error} />
+    </Card>
+  )
+}
+
+/** Cartelle di documenti sorvegliate (Fase 4). */
+function DocumentsCard () {
+  const client = useQueryClient()
+  const docs = useQuery({ queryKey: ['documents'], queryFn: api.documents })
+  const [path, setPath] = useState('')
+  const [shareable, setShareable] = useState(false)
+  const refresh = () => void client.invalidateQueries({ queryKey: ['documents'] })
+  const add = useMutation({ mutationFn: (p: string) => api.documentsAdd(p, shareable), onSuccess: () => { setPath(''); refresh() } })
+  const remove = useMutation({ mutationFn: (p: string) => api.documentsRemove(p), onSuccess: refresh })
+  const pick = async () => {
+    const chosen = await window.micelio?.pickFolder?.()
+    if (chosen) add.mutate(chosen)
+  }
+  const stats = docs.data?.stats ?? {}
+
+  return (
+    <Card title='Cartelle di documenti'>
+      <p className='muted' style={{ marginTop: 0 }}>
+        PDF, Word, Excel, PowerPoint, OpenDocument e Markdown vengono distillati in ricordi (filtro privacy incluso; le cartelle come «HR» o «contratti» non vengono nemmeno lette).
+        Al team arriva solo il distillato: l'originale resta qui e, se la cartella è <strong>condivisibile</strong>, i colleghi possono scaricarlo su richiesta.
+      </p>
+      {docs.data?.folders.length === 0 && <Empty>Nessuna cartella di documenti.</Empty>}
+      <div className='list'>
+        {docs.data?.folders.map((f) => (
+          <div key={f.path} className='list-item row'>
+            <span className='mono small' style={{ overflowWrap: 'anywhere' }}>{f.path}</span>
+            <span className={`badge ${f.shareable ? 'accent' : ''}`}>{f.shareable ? 'originali scaricabili' : 'solo distillato'}</span>
+            <span className='spacer' />
+            <button className='btn small' onClick={() => remove.mutate(f.path)}>Rimuovi</button>
+          </div>
+        ))}
+      </div>
+      {Object.keys(stats).length > 0 && (
+        <div className='row small' style={{ marginTop: 8 }}>
+          {Object.entries(stats).map(([k, v]) => <span key={k} className='badge'>{({ done: 'elaborati', queued: 'in coda', blocked: 'bloccati', failed: 'illeggibili', removed: 'rimossi' } as Record<string, string>)[k] ?? k}: {v}</span>)}
+        </div>
+      )}
+      <div className='row' style={{ marginTop: 10 }}>
+        {window.micelio?.pickFolder && <button className='btn' onClick={() => void pick()}>Scegli cartella…</button>}
+        <input style={{ flex: 1 }} value={path} onChange={(e) => setPath(e.target.value)} placeholder='C:\\documenti\\architettura' />
+        <label className='row' style={{ margin: 0, color: 'var(--text)' }}>
+          <input type='checkbox' style={{ width: 'auto' }} checked={shareable} onChange={(e) => setShareable(e.target.checked)} /> originali scaricabili
+        </label>
+        <button className='btn primary' disabled={!path.trim() || add.isPending} onClick={() => add.mutate(path.trim())}>Aggiungi</button>
       </div>
       <ErrorBox error={add.error ?? remove.error} />
     </Card>

@@ -10,3 +10,5 @@ declare module 'protomux-wakeup' { const m: any; export = m }
 declare module 'b4a' { const m: any; export = m }
 declare module 'z32' { const m: any; export = m }
 declare module 'hyperdht/testnet' { const m: any; export = m }
+declare module 'protomux' { const m: any; export = m }
+declare module 'compact-encoding' { const m: any; export = m }

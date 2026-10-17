@@ -65,7 +65,8 @@ const REFRESH_NORMAL_MS = 60_000
  *
  * Eventi emessi:
  * - `update`: la vista è cambiata (nuovi blocchi applicati);
- * - `peers` (n): il numero di connessioni è cambiato.
+ * - `peers` (n): il numero di connessioni è cambiato;
+ * - `connection` (conn): nuova connessione P2P cifrata, per protocolli aggiuntivi.
  */
 export class TeamNode extends EventEmitter {
   private store: any
@@ -192,6 +193,8 @@ export class TeamNode extends EventEmitter {
       // spike A), ma funzionano anche per le connessioni aperte prima che la base esista.
       this.wakeup.addStream(conn)
       this.emit('peers', this.swarm.connections.size)
+      // Altri protocolli (es. il download dei documenti, src/net/file-share.ts) si agganciano qui.
+      this.emit('connection', conn)
       conn.once('close', () => this.emit('peers', this.swarm?.connections.size ?? 0))
     })
     // BlindPairing si aggancia da solo alle connessioni dello swarm.
@@ -341,6 +344,38 @@ export class TeamNode extends EventEmitter {
   /** Chiave del feed locale (hex): è l'identità di questo nodo nel team. */
   get localKey (): string | null { return this.base ? hex(this.base.local.key) : null }
   get peers (): number { return this.swarm?.connections.size ?? 0 }
+
+  /**
+   * Coppia di chiavi del feed locale: la pubblica è l'identità del nodo nel team, la segreta
+   * serve a firmare (es. le richieste di documenti). null se la base non è aperta.
+   */
+  get localKeyPair (): { memberKey: Uint8Array, publicKey: Uint8Array, secretKey: Uint8Array } | null {
+    const kp = this.base?.local?.keyPair
+    // memberKey = chiave del feed (identità nel team); publicKey/secretKey = coppia di firma.
+    return kp?.secretKey ? { memberKey: this.base.local.key, publicKey: kp.publicKey, secretKey: kp.secretKey } : null
+  }
+
+  /**
+   * Chiave pubblica di FIRMA (hex) del feed di un membro, letta dal manifest del suo core.
+   *
+   * In Hypercore 11 la chiave di un feed (quella con cui un membro è registrato nel team) è
+   * l'hash del suo manifest, NON la chiave che firma. Per verificare una firma "a nome di" un
+   * membro bisogna quindi risalire alla chiave di firma dal manifest (che abbiamo, perché
+   * replichiamo i feed di tutti i membri). null se il feed non è (ancora) disponibile.
+   */
+  async signerOf (writerKeyHex: string): Promise<string | null> {
+    const core = this.store.get({ key: buf(writerKeyHex) })
+    try {
+      await core.ready()
+      const pk = core.manifest?.signers?.[0]?.publicKey
+      return pk ? hex(pk) : null
+    } finally {
+      await core.close().catch(() => {})
+    }
+  }
+
+  /** Connessioni P2P aperte in questo momento (per agganciare protocolli a quelle già esistenti). */
+  get connections (): any[] { return this.swarm ? [...this.swarm.connections] : [] }
 
   /** Chiavi del team, da salvare in state.json. */
   secrets (): TeamSecrets {

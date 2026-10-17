@@ -6,6 +6,8 @@
  * - `MemoryIndex`     ricerca locale, derivata dalla vista (src/store/memory-index);
  * - `PrivateStore`    archivio privato: inbox, decisioni, coda, budget (src/store/private-store);
  * - `IngestPipeline`  filtro + classificazione + distillazione (src/ingest);
+ * - `DocumentWatcher` cartelle di documenti sorvegliate (src/ingest/documents, Fase 4);
+ * - `FileShare`       download dell'originale di un documento dai colleghi (src/net/file-share);
  * - export Markdown   (src/export).
  *
  * Non dipende da NestJS né da HTTP: il daemon lo espone via API e MCP, i test lo usano
@@ -33,8 +35,12 @@ import { LlmRunner } from '../llm/runner'
 import type { LlmAdapter } from '../llm/types'
 import { TeamNode } from '../net/team-node'
 import { mergeRules } from '../privacy/filter'
+import { mergeBlockedPaths } from '../privacy/paths'
+import { DocumentWatcher, hashFile } from '../ingest/documents'
+import { extractText } from '../ingest/extract'
+import { FileShare } from '../net/file-share'
 import { MemoryIndex } from '../store/memory-index'
-import { type Decision, type InboxItem, PrivateStore } from '../store/private-store'
+import { type Decision, type DocumentRecord, type InboxItem, PrivateStore } from '../store/private-store'
 import { canonicalPath, type Config, isInsideWatched, loadConfig, loadState, saveState, updateConfig } from './config'
 
 export interface MicelioNodeOptions {
@@ -66,8 +72,23 @@ export type ChangeTopic = 'status' | 'memories' | 'members' | 'inbox' | 'jobs' |
 export interface NodeSettings {
   llm: { adapter: string, command: string, classifyModel: string, distillModel: string, dailyBudget: number }
   watched: string[]
+  /** Cartelle di documenti sorvegliate e se i loro originali sono scaricabili dai colleghi. */
+  documents: { path: string, shareable: boolean }[]
   port: number
 }
+
+/** Esito del download di un documento originale. */
+export interface SourceFile {
+  /** Percorso locale del file (copia in cache, o l'originale se il documento è di questo nodo). */
+  path: string
+  name: string
+  size: number
+  /** true se il file era già in cache o è locale (nessun download). */
+  local: boolean
+}
+
+/** Dopo quanti giorni le copie scaricate escono dalla cache (decisione D11). */
+const SOURCE_CACHE_DAYS = 30
 
 /** Stato dell'ingestione, per `micelio ingest status` e la futura Dashboard. */
 export interface IngestStatus {
@@ -83,6 +104,8 @@ export class MicelioNode extends EventEmitter {
   private readonly index: MemoryIndex
   private readonly privateStore: PrivateStore
   private readonly pipeline: IngestPipeline
+  private readonly documents: DocumentWatcher
+  private readonly files: FileShare
   private readonly llm: LlmRunner | null
   private config: Config
   /** Timer di accorpamento degli aggiornamenti della vista (vedi scheduleMaterialize). */
@@ -111,9 +134,20 @@ export class MicelioNode extends EventEmitter {
       publish: (m) => this.publish(m),
       // Regole e lingua si leggono dalla vista a ogni uso: un admin può cambiarle in qualunque momento.
       rules: async () => mergeRules(await this.team?.config('filter.blockKeywords')),
+      blockedPaths: async () => mergeBlockedPaths(await this.team?.config('filter.blockedPaths')),
       language: async () => (await this.team?.config<string>('memory.language')) ?? 'it',
       log: this.log,
       notify: (topic) => this.changed(topic)
+    })
+    this.documents = new DocumentWatcher(this.pipeline, this.privateStore, this.log)
+    this.files = new FileShare({
+      isMember: async (key, signer) => {
+        const active = !!(await this.team?.members())?.some((m) => m.key === key && !m.removed)
+        return active && (await this.team?.signerOf(key)) === signer
+      },
+      resolve: (hash) => this.resolveSharedFile(hash),
+      localWriter: () => this.team?.localKeyPair ?? null,
+      log: this.log
     })
   }
 
@@ -122,6 +156,7 @@ export class MicelioNode extends EventEmitter {
   /** Avvia il nodo: se il team è già configurato si ricollega alla rete. Avvia il worker di ingestione. */
   async start (): Promise<void> {
     this.pipeline.start()
+    this.sweepSourceCache()
     const state = loadState(this.paths)
     if (!state) {
       this.log('nodo non ancora configurato: usa `micelio init` o `micelio join`')
@@ -132,10 +167,12 @@ export class MicelioNode extends EventEmitter {
     await team.open(state)
     this.attach(team)
     await this.materialize()
+    await this.documents.start(this.config.watch.documents)
   }
 
   /** Ferma tutto in ordine: worker, indicizzazione in corso, rete, database. */
   async stop (): Promise<void> {
+    await this.documents.stop()
     await this.pipeline.stop()
     if (this.timer) clearTimeout(this.timer)
     await this.materializing.catch(() => {})
@@ -161,6 +198,7 @@ export class MicelioNode extends EventEmitter {
     this.nodeName = nodeName
     this.attach(team)
     await this.materialize()
+    await this.documents.start(this.config.watch.documents)
     this.changed('status')
     return this.status()
   }
@@ -179,6 +217,7 @@ export class MicelioNode extends EventEmitter {
     this.nodeName = nodeName
     this.attach(team)
     await this.materialize()
+    await this.documents.start(this.config.watch.documents)
     this.changed('status')
     return this.status()
   }
@@ -336,7 +375,7 @@ export class MicelioNode extends EventEmitter {
   /** Impostazioni locali correnti (per la schermata Impostazioni). */
   settings (): NodeSettings {
     const { adapter, command, classifyModel, distillModel, dailyBudget } = this.config.llm
-    return { llm: { adapter, command, classifyModel, distillModel, dailyBudget }, watched: this.config.watch.sessions, port: this.config.port }
+    return { llm: { adapter, command, classifyModel, distillModel, dailyBudget }, watched: this.config.watch.sessions, documents: this.config.watch.documents, port: this.config.port }
   }
 
   /**
@@ -354,6 +393,107 @@ export class MicelioNode extends EventEmitter {
     })
     this.changed('settings')
     return this.settings()
+  }
+
+  // ═══════════════════════════ Documenti (Fase 4) ═══════════════════════════
+
+  /**
+   * Aggiunge una cartella di documenti sorvegliata.
+   * @param shareable se true, i colleghi possono scaricare gli originali su richiesta (D10)
+   */
+  async documentsAdd (dir: string, shareable: boolean): Promise<NodeSettings['documents']> {
+    if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) throw new UserError(`Cartella inesistente: ${path.resolve(dir)}`)
+    const abs = canonicalPath(dir)
+    this.config = updateConfig(this.paths, (c) => {
+      c.watch.documents = [...c.watch.documents.filter((d) => canonicalPath(d.path) !== abs), { path: abs, shareable }]
+    })
+    await this.documents.start(this.config.watch.documents)
+    this.changed('settings')
+    return this.config.watch.documents
+  }
+
+  /** Smette di sorvegliare una cartella (i ricordi già distillati restano nel team). */
+  async documentsRemove (dir: string): Promise<NodeSettings['documents']> {
+    const abs = canonicalPath(dir)
+    this.config = updateConfig(this.paths, (c) => {
+      c.watch.documents = c.watch.documents.filter((d) => canonicalPath(d.path) !== abs)
+    })
+    await this.documents.start(this.config.watch.documents)
+    this.changed('settings')
+    return this.config.watch.documents
+  }
+
+  /** Conteggi dei documenti per stato (in coda, elaborati, bloccati…). */
+  documentStats (): Record<string, number> {
+    return this.privateStore.documentStats()
+  }
+
+  /**
+   * Ottiene l'originale del documento da cui è stato distillato un ricordo (DESIGN §12-bis).
+   * - documento di questo nodo → il file locale;
+   * - già scaricato → la copia in cache;
+   * - altrimenti → richiesta P2P al proprietario (deve essere online, D11).
+   * @throws UserError se il ricordo non viene da un documento o il download non riesce
+   */
+  async fetchSource (memoryId: string): Promise<SourceFile> {
+    const rec = this.index.get(memoryId)
+    if (!rec) throw new UserError(`Nessun ricordo con id ${memoryId}`)
+    const src = rec.source
+    if (src?.type !== 'document' || !src.ref) throw new UserError('Questo ricordo non viene da un documento: non c\'è un originale da scaricare')
+    const name = path.basename(src.name ?? 'documento')
+    // Documento di questo nodo: nessun download.
+    if (rec.author === this.team?.localKey) {
+      const local = this.privateStore.documentsByHash(src.ref).find((d) => fs.existsSync(d.path))
+      if (local) return { path: local.path, name, size: local.size, local: true }
+    }
+    const cached = path.join(this.paths.home, 'sources', src.ref, name)
+    if (fs.existsSync(cached)) return { path: cached, name, size: fs.statSync(cached).size, local: true }
+    let r: { data: Buffer, name: string }
+    try {
+      r = await this.files.fetch(src.ref)
+    } catch (err) {
+      throw new UserError(`Download non riuscito: ${(err as Error).message}`)
+    }
+    fs.mkdirSync(path.dirname(cached), { recursive: true })
+    fs.writeFileSync(cached, r.data)
+    return { path: cached, name, size: r.data.length, local: false }
+  }
+
+  /** Testo estratto da un file scaricato (per il tool MCP: l'agente può leggerlo subito). */
+  async sourceText (file: string, max = 20_000): Promise<string> {
+    try {
+      return (await extractText(file)).slice(0, max)
+    } catch {
+      return ''
+    }
+  }
+
+  /**
+   * Lato proprietario: quale file locale servire per un hash, se condivisibile (D10).
+   * Il file deve stare in una cartella sorvegliata CONDIVISIBILE, esistere ed essere invariato.
+   */
+  private async resolveSharedFile (hash: string): Promise<{ file: string, name: string, size: number } | { denied: string }> {
+    const docs: DocumentRecord[] = this.privateStore.documentsByHash(hash)
+    if (docs.length === 0) return { denied: 'documento non disponibile su questo nodo' }
+    for (const d of docs) {
+      const folder = this.config.watch.documents.find((f) => canonicalPath(f.path) === canonicalPath(d.folder))
+      if (!folder?.shareable) continue
+      if (!fs.existsSync(d.path)) continue
+      if (await hashFile(d.path) !== hash) continue // modificato dopo l'elaborazione: non è più "quel" documento
+      return { file: d.path, name: path.basename(d.path), size: d.size }
+    }
+    return { denied: 'il proprietario non condivide gli originali di questa cartella' }
+  }
+
+  /** Elimina dalla cache i documenti scaricati più di SOURCE_CACHE_DAYS giorni fa. */
+  private sweepSourceCache (): void {
+    const dir = path.join(this.paths.home, 'sources')
+    if (!fs.existsSync(dir)) return
+    const limit = Date.now() - SOURCE_CACHE_DAYS * 24 * 3600 * 1000
+    for (const h of fs.readdirSync(dir)) {
+      const p = path.join(dir, h)
+      if (fs.statSync(p).mtimeMs < limit) fs.rmSync(p, { recursive: true, force: true })
+    }
   }
 
   /** Stato dell'ingestione: LLM, budget, coda, inbox. */
@@ -441,6 +581,9 @@ export class MicelioNode extends EventEmitter {
     this.team = team
     team.on('update', () => this.scheduleMaterialize())
     team.on('peers', () => this.changed('status'))
+    // Canale di scambio documenti su ogni connessione, comprese quelle già aperte.
+    team.on('connection', (conn: any) => this.files.attach(conn))
+    for (const conn of team.connections) this.files.attach(conn)
   }
 
   /** Emette un evento `change` per ciascun argomento (vedi ChangeTopic). */

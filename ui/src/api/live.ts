@@ -22,9 +22,9 @@ export const TOPIC_QUERIES: Record<string, string[][]> = {
   memories: [['memories'], ['graph']],
   members: [['members'], ['invites'], ['graph']],
   inbox: [['inbox'], ['ingest']],
-  jobs: [['ingest']],
+  jobs: [['ingest'], ['documents']],
   decisions: [['decisions']],
-  settings: [['settings'], ['ingest']]
+  settings: [['settings'], ['ingest'], ['documents']]
 }
 
 /** Un evento SSE già interpretato. */

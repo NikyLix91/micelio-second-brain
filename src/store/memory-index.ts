@@ -26,7 +26,8 @@ CREATE TABLE IF NOT EXISTS memories (
   body TEXT NOT NULL,
   tags TEXT NOT NULL,          -- tag separati da spazio, come vengono indicizzati
   author TEXT NOT NULL,
-  ts INTEGER NOT NULL
+  ts INTEGER NOT NULL,
+  source TEXT NOT NULL DEFAULT '{}'  -- JSON: origine del ricordo (tipo, hash, nome file…)
 );
 -- unicode61 + remove_diacritics 2: "perché" e "perche" coincidono, maiuscole ignorate.
 CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
@@ -50,6 +51,10 @@ export class MemoryIndex {
   constructor (file: string) {
     if (file !== ':memory:') fs.mkdirSync(path.dirname(file), { recursive: true })
     this.db = new DatabaseSync(file)
+    // L'indice è derivato: se lo schema è cambiato (es. colonna aggiunta in una versione nuova)
+    // lo si butta e ricrea, verrà ripopolato dalla vista alla prossima materializzazione.
+    const cols = (this.db.prepare("SELECT name FROM pragma_table_info('memories')").all() as any[]).map((c) => c.name)
+    if (cols.length > 0 && !cols.includes('source')) this.db.exec('DROP TABLE IF EXISTS memories_fts; DROP TABLE IF EXISTS memories;')
     this.db.exec(SCHEMA)
   }
 
@@ -65,11 +70,11 @@ export class MemoryIndex {
     try {
       // 'delete-all' è il comando FTS5 per svuotare un indice external-content.
       this.db.exec("DELETE FROM memories; DELETE FROM members; INSERT INTO memories_fts(memories_fts) VALUES('delete-all');")
-      const insM = this.db.prepare('INSERT INTO memories (id, kind, title, body, tags, author, ts) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      const insM = this.db.prepare('INSERT INTO memories (id, kind, title, body, tags, author, ts, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
       const insF = this.db.prepare('INSERT INTO memories_fts (rowid, title, body, tags) VALUES (?, ?, ?, ?)')
       for (const m of memories) {
         const tags = m.tags.join(' ')
-        const { lastInsertRowid } = insM.run(m.id, m.kind, m.title, m.body, tags, m.author, m.ts)
+        const { lastInsertRowid } = insM.run(m.id, m.kind, m.title, m.body, tags, m.author, m.ts, JSON.stringify(m.source ?? {}))
         // Stesso rowid nella tabella dati e nell'indice: è così che FTS5 ritrova il record.
         insF.run(lastInsertRowid, m.title, m.body, tags)
       }
@@ -91,7 +96,7 @@ export class MemoryIndex {
     const match = toFtsQuery(query)
     if (!match) return []
     const rows = this.db.prepare(`
-      SELECT m.id, m.kind, m.title, m.body, m.tags, m.author, m.ts, u.name AS authorName,
+      SELECT m.id, m.kind, m.title, m.body, m.tags, m.author, m.ts, m.source, u.name AS authorName,
              bm25(memories_fts, ${BM25_WEIGHTS}) AS rank
       FROM memories_fts
       JOIN memories m ON m.rowid = memories_fts.rowid
@@ -153,7 +158,8 @@ function rowToHit (r: any): Omit<RecallHit, 'score'> {
     tags: r.tags ? String(r.tags).split(' ') : [],
     author: r.author,
     authorName: r.authorName ?? null,
-    ts: r.ts
+    ts: r.ts,
+    source: r.source ? JSON.parse(r.source) : undefined
   }
 }
 

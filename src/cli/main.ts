@@ -315,6 +315,33 @@ watch.command('remove').description('disabilita la raccolta per una cartella').a
     console.log(list.length ? 'Cartelle abilitate:\n' + list.join('\n') : 'Nessuna cartella abilitata')
   })
 
+const docs = program.command('docs').description('cartelle di documenti sorvegliate (PDF, DOCX, XLSX, PPTX, ODT, MD…)')
+docs.action(async () => {
+  const r = await client().call<{ folders: { path: string, shareable: boolean }[], stats: Record<string, number> }>('GET', '/api/documents')
+  if (!r.folders.length) return console.log('Nessuna cartella di documenti: usa `micelio docs add <cartella> [--shareable]`')
+  for (const f of r.folders) console.log(`${f.path}  ${f.shareable ? '[originali scaricabili dai colleghi]' : '[solo distillato]'}`)
+  console.log(`Documenti: ${Object.entries(r.stats).map(([k, v]) => `${k} ${v}`).join(', ') || 'nessuno'}`)
+})
+docs.command('add').description('sorveglia una cartella di documenti').argument('[dir]', 'cartella', '.')
+  .option('--shareable', 'i colleghi possono scaricare gli originali su richiesta')
+  .action(async (dir: string, o: { shareable?: boolean }) => {
+    const list = await client().call<{ path: string, shareable: boolean }[]>('POST', '/api/documents/folders', { path: path.resolve(dir), shareable: !!o.shareable })
+    console.log('Cartelle di documenti:\n' + list.map((f) => `${f.path}${f.shareable ? '  [condivisibile]' : ''}`).join('\n'))
+  })
+docs.command('remove').description('smette di sorvegliare una cartella').argument('[dir]', 'cartella', '.')
+  .action(async (dir: string) => {
+    await client().call('DELETE', '/api/documents/folders', { path: path.resolve(dir) })
+    console.log('Cartella rimossa (i ricordi già distillati restano nel team)')
+  })
+
+program.command('fetch')
+  .description('scarica l\'originale del documento da cui viene un ricordo')
+  .argument('<id>', 'id del ricordo (anche abbreviato)')
+  .action(async (id: string) => {
+    const f = await client().call<{ path: string, name: string, size: number, local: boolean }>('POST', `/api/memories/${encodeURIComponent(id)}/source`, undefined, 120_000)
+    console.log(`${f.local ? 'Disponibile in locale' : 'Scaricato'}: ${f.name} (${Math.round(f.size / 1024)} KB)\n${f.path}`)
+  })
+
 const ingest = program.command('ingest').description('stato e controllo della raccolta automatica')
 ingest.command('status').description('LLM, budget, coda, inbox')
   .action(async () => {

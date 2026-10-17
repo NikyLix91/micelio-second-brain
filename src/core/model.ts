@@ -10,6 +10,9 @@ import type { MemoryKind } from './events'
 /** Ruolo di un membro. Gli admin sono anche indexer di Autobase (decisione D3). */
 export type Role = 'admin' | 'member'
 
+/** Origine di un ricordo (vedi MemoryInput.source in events.ts). */
+export interface MemorySource { type: string, ref?: string, name?: string, size?: number, mime?: string }
+
 /** Un ricordo del team come appare nella vista. */
 export interface MemoryRecord {
   /** Id content-addressed (vedi memoryId). */
@@ -18,7 +21,8 @@ export interface MemoryRecord {
   title: string
   body: string
   tags: string[]
-  source: { type: string, ref?: string }
+  /** Origine: per i documenti anche hash (`ref`), nome, dimensione e tipo del file originale. */
+  source: MemorySource
   /** Chiave pubblica (hex) del nodo autore, ricavata dal feed e non dal payload. */
   author: string
   /** Timestamp del nodo autore al momento della scrittura (informativo). */
@@ -73,6 +77,8 @@ export interface RecallHit {
   ts: number
   /** Rilevanza: più alto = più pertinente. Confrontabile solo dentro la stessa ricerca. */
   score: number
+  /** Origine del ricordo (assente nei risultati che non la includono). */
+  source?: MemorySource
 }
 
 /** Stato sintetico del nodo, mostrato da `micelio status` e dalla futura UI. */

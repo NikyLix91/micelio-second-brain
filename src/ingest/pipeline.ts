@@ -29,11 +29,14 @@
  * classificatore non giudica pulito con sicurezza (va in inbox, D9).
  */
 import { existsSync } from 'node:fs'
+import path from 'node:path'
 import { MemoryInput, type MemoryData } from '../core/events'
 import { LlmBudgetExceededError, LlmUnavailableError } from '../llm/types'
 import type { LlmRunner } from '../llm/runner'
 import { applyFilter, type FilterRules } from '../privacy/filter'
-import type { InboxItem, Job, PrivateStore, SourceRef } from '../store/private-store'
+import { isBlockedPath } from '../privacy/paths'
+import type { DocumentRecord, InboxItem, Job, PrivateStore, SourceRef } from '../store/private-store'
+import { CHUNK_CHARS, chunkText, extractText, MAX_CHUNKS, mimeOf } from './extract'
 import { CLASSIFY_SYSTEM, Classification, Distilled, distillSystem } from './prompts'
 import { extractTranscript } from './transcript'
 
@@ -57,6 +60,8 @@ export interface PipelineDeps {
   publish: (memory: MemoryData) => Promise<{ id: string, duplicate: boolean }>
   /** Regole del filtro in vigore: default + quelle del team. */
   rules: () => Promise<FilterRules>
+  /** Pattern dei percorsi bloccati per i documenti: default + quelli del team. */
+  blockedPaths: () => Promise<string[]>
   /** Lingua dei ricordi del team (`memory.language`). */
   language: () => Promise<string>
   log: (msg: string) => void
@@ -162,6 +167,7 @@ export class IngestPipeline {
     const { store, log } = this.deps
     try {
       if (job.kind === 'session') await this.processSession(job)
+      else if (job.kind === 'document') await this.processDocument(job)
       else log(`lavoro di tipo sconosciuto "${job.kind}": scartato`)
       store.finishJob(job.id)
     } catch (err) {
@@ -259,6 +265,100 @@ export class IngestPipeline {
       }
     }
     done()
+  }
+
+  // ═══════════════════════════ Ingresso: documenti (Fase 4) ═══════════════════════════
+
+  /**
+   * Accoda un documento nuovo o modificato di una cartella sorvegliata (vedi documents.ts).
+   * @param payload percorso assoluto, cartella sorvegliata di appartenenza, hash del contenuto
+   */
+  enqueueDocument (payload: { path: string, folder: string, hash: string, size: number }): number {
+    const prev = this.deps.store.getDocument(payload.path)
+    this.deps.store.saveDocument({ ...payload, status: 'queued', chunksDone: 0, memories: prev?.hash === payload.hash ? prev.memories : 0 })
+    const id = this.deps.store.enqueue('document', payload)
+    this.notify('jobs')
+    return id
+  }
+
+  /**
+   * Elabora un documento: percorso bloccato? → privato senza leggerlo. Altrimenti estrae il testo,
+   * lo divide in parti e, per ognuna, filtro → classificazione → distillazione, come le sessioni.
+   * I ricordi prodotti portano il riferimento all'originale (hash, nome, dimensione, tipo) per il
+   * download su richiesta (DESIGN §12-bis).
+   *
+   * Le parti già elaborate sono salvate (chunks_done): se il budget finisce a metà documento, si
+   * riparte dalla parte successiva invece che dall'inizio.
+   */
+  private async processDocument (job: Job): Promise<void> {
+    const { store, llm, log } = this.deps
+    const { path: file, folder, hash, size } = job.payload as { path: string, folder: string, hash: string, size: number }
+    const rec = store.getDocument(file)
+    // Il file è cambiato di nuovo dopo l'accodamento: questo lavoro è superato da uno più recente.
+    if (rec && rec.hash !== hash) return
+    const name = path.basename(file)
+    const source: SourceRef = { type: 'document', ref: hash, cwd: folder }
+    const save = (status: DocumentRecord['status'], chunksDone: number, memories: number) =>
+      store.saveDocument({ path: file, hash, size, folder, status, chunksDone, memories })
+
+    // 1) Regole sui percorsi: il documento non viene nemmeno aperto.
+    const blockedBy = isBlockedPath(path.relative(folder, file), await this.deps.blockedPaths())
+    if (blockedBy) {
+      this.logDecision(source, 'blocked', `percorso protetto (${blockedBy})`, name)
+      return save('blocked', 0, 0)
+    }
+    if (!existsSync(file)) return save('removed', 0, 0)
+
+    let text: string
+    try {
+      text = await extractText(file)
+    } catch (err) {
+      // Documento illeggibile (protetto da password, corrotto): non è un errore da riprovare.
+      this.logDecision(source, 'discarded', `testo non estraibile: ${(err as Error).message.slice(0, 120)}`, name)
+      return save('failed', 0, 0)
+    }
+    const chunks = chunkText(text)
+    const rules = await this.deps.rules()
+    let memories = rec?.memories ?? 0
+    const sourceInfo = { type: 'document', ref: hash, name, size, mime: mimeOf(file) }
+
+    for (let i = rec?.chunksDone ?? 0; i < chunks.length; i++) {
+      // Intestazione: aiuta il modello a capire che è un documento e quale parte sta leggendo.
+      const header = `DOCUMENTO: ${name}${chunks.length > 1 ? ` (parte ${i + 1} di ${chunks.length})` : ''}\n\n`
+      const filtered = applyFilter(header + chunks[i], rules)
+      if (filtered.blocked) {
+        this.logDecision(source, 'blocked', `parole chiave: ${filtered.reasons.join(', ')}`, `${name} · parte ${i + 1}`)
+        save('queued', i + 1, memories)
+        continue
+      }
+      if (!llm) {
+        this.logDecision(source, 'discarded', 'nessun LLM configurato: documento non elaborato', name)
+        return save('done', chunks.length, memories)
+      }
+      if (!llm.hasBudget(2)) throw new LlmBudgetExceededError('budget insufficiente per una parte di documento')
+
+      const c = await this.classify(filtered.text)
+      const r = route(c)
+      if (r === 'private' || r === 'discard') {
+        this.logDecision(source, r === 'private' ? 'private' : 'discarded', c.reason, `${name} · parte ${i + 1}`)
+      } else {
+        for (const raw of await this.distill(filtered.text)) {
+          const parsed = MemoryInput.safeParse({ ...raw, source: sourceInfo })
+          if (!parsed.success) continue
+          const fm = filterMemory(parsed.data, rules)
+          if (r === 'team' && !fm.blocked) {
+            await this.deps.publish(fm.memory)
+            memories++
+          } else {
+            this.addInbox(fm.memory, source, fm.blocked ? `parole chiave: ${fm.reasons.join(', ')}` : `da verificare: ${c.reason}`)
+          }
+        }
+      }
+      save('queued', i + 1, memories)
+    }
+    if (text.length > CHUNK_CHARS * MAX_CHUNKS) log(`documento ${name}: elaborate solo le prime ${MAX_CHUNKS} parti`)
+    log(`documento ${name} elaborato: ${memories} ricordi`)
+    save('done', chunks.length, memories)
   }
 
   // ═════════════════════════ Ingresso: esplicito (D6) ═════════════════════════

@@ -48,6 +48,18 @@ CREATE TABLE IF NOT EXISTS decisions (
 );
 CREATE TABLE IF NOT EXISTS llm_usage (day TEXT PRIMARY KEY, calls INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS session_progress (session_id TEXT PRIMARY KEY, lines INTEGER NOT NULL, updated INTEGER NOT NULL);
+-- Documenti delle cartelle sorvegliate (Fase 4): stato di elaborazione per percorso.
+CREATE TABLE IF NOT EXISTS documents (
+  path TEXT PRIMARY KEY,
+  hash TEXT NOT NULL,
+  size INTEGER NOT NULL,
+  folder TEXT NOT NULL,
+  status TEXT NOT NULL,          -- queued | done | blocked | failed | removed
+  chunks_done INTEGER NOT NULL DEFAULT 0,
+  memories INTEGER NOT NULL DEFAULT 0,
+  updated INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS documents_hash ON documents(hash);
 `
 
 /** Dopo quanto un elemento non deciso esce dall'inbox (D9). */
@@ -59,6 +71,18 @@ export interface SourceRef { type: string, ref?: string, cwd?: string }
 /** Un lavoro in coda. `payload` dipende da `kind` (oggi solo "session"). */
 export interface Job { id: number, kind: string, payload: any, status: string, attempts: number, error: string | null, created: number }
 /** Un ricordo in attesa di decisione. `memory` è già redatto dal filtro. */
+/** Un documento di una cartella sorvegliata e il suo stato di elaborazione. */
+export interface DocumentRecord {
+  path: string
+  hash: string
+  size: number
+  folder: string
+  status: 'queued' | 'done' | 'blocked' | 'failed' | 'removed'
+  chunksDone: number
+  memories: number
+  updated: number
+}
+
 export interface InboxItem { id: string, created: number, expires: number, source: SourceRef, reason: string, memory: MemoryData }
 /** Esiti registrati localmente: cosa NON è andato al team e perché. */
 export type DecisionOutcome = 'blocked' | 'private' | 'discarded' | 'rejected' | 'expired'
@@ -179,6 +203,33 @@ export class PrivateStore {
     this.db.prepare('INSERT INTO llm_usage (day, calls) VALUES (?, 1) ON CONFLICT(day) DO UPDATE SET calls = calls + 1').run(today(now))
   }
 
+  // ---------- Documenti ----------
+
+  /** Stato di un documento per percorso, o null se mai visto. */
+  getDocument (file: string): DocumentRecord | null {
+    const r = this.db.prepare('SELECT * FROM documents WHERE path = ?').get(file) as any
+    return r ? rowToDocument(r) : null
+  }
+
+  /** Documenti con un certo contenuto (hash), ancora presenti sul disco. */
+  documentsByHash (hash: string): DocumentRecord[] {
+    return (this.db.prepare("SELECT * FROM documents WHERE hash = ? AND status != 'removed'").all(hash) as any[]).map(rowToDocument)
+  }
+
+  /** Crea o aggiorna lo stato di un documento. */
+  saveDocument (d: Omit<DocumentRecord, 'updated'>): void {
+    this.db.prepare(`INSERT INTO documents (path, hash, size, folder, status, chunks_done, memories, updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(path) DO UPDATE SET hash = excluded.hash, size = excluded.size, folder = excluded.folder, status = excluded.status,
+      chunks_done = excluded.chunks_done, memories = excluded.memories, updated = excluded.updated`)
+      .run(d.path, d.hash, d.size, d.folder, d.status, d.chunksDone, d.memories, Date.now())
+  }
+
+  /** Conteggio dei documenti per stato (per la UI). */
+  documentStats (): Record<string, number> {
+    const rows = this.db.prepare('SELECT status, COUNT(*) AS n FROM documents GROUP BY status').all() as any[]
+    return Object.fromEntries(rows.map((r) => [r.status, r.n]))
+  }
+
   // ---------- Avanzamento sessioni ----------
 
   /** Righe della trascrizione già elaborate per una sessione (0 se mai vista). */
@@ -192,6 +243,10 @@ export class PrivateStore {
     this.db.prepare(`INSERT INTO session_progress (session_id, lines, updated) VALUES (?, ?, ?)
       ON CONFLICT(session_id) DO UPDATE SET lines = excluded.lines, updated = excluded.updated`).run(sessionId, lines, Date.now())
   }
+}
+
+function rowToDocument (r: any): DocumentRecord {
+  return { path: r.path, hash: r.hash, size: r.size, folder: r.folder, status: r.status, chunksDone: r.chunks_done, memories: r.memories, updated: r.updated }
 }
 
 function rowToInbox (r: any): InboxItem {

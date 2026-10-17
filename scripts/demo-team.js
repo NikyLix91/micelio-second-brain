@@ -149,6 +149,17 @@ async function main () {
       const node = NODES.find((n) => n.name === author)
       await call(node, 'POST', '/api/memories', { kind, title, body, tags })
     }
+    // Cartella di documenti condivisibile di alice (Fase 4): un DOCX vero e un Markdown.
+    // Con il LLM finto, ogni riga "LEZIONE: titolo | corpo" diventa un ricordo con la fonte.
+    const docs = path.join(DEMO, 'documenti-alice')
+    fs.mkdirSync(docs, { recursive: true })
+    const md = path.join(DEMO, 'tmp-architettura.md')
+    fs.writeFileSync(md, '# Architettura del servizio ordini\n\nLEZIONE: Il servizio ordini pubblica eventi su RabbitMQ | Ogni ordine confermato produce un evento ordine.confermato consumato da magazzino e fatturazione.\n\nLEZIONE: Timeout delle chiamate al magazzino | Le chiamate sincrone al magazzino hanno timeout di 2 secondi e circuit breaker.\n')
+    const { OfficeConverter } = require('officeparser')
+    fs.writeFileSync(path.join(docs, 'architettura-ordini.docx'), Buffer.from((await OfficeConverter.convert(md, 'docx')).value))
+    fs.rmSync(md)
+    fs.writeFileSync(path.join(docs, 'runbook-incidenti.md'), '# Runbook incidenti\n\nLEZIONE: Primo passo in un incidente di produzione | Aprire il canale di incidente e nominare un coordinatore prima di intervenire.\n')
+    await call(alice, 'POST', '/api/documents/folders', { path: docs, shareable: true })
     // Un caso dubbio in inbox e una decisione privata, per popolare anche quelle schermate.
     await call(alice, 'POST', '/api/memories', { title: 'Proxy aziendale nelle pipeline [incerto]', body: 'Serve HTTPS_PROXY negli step che scaricano pacchetti.', tags: ['ci'] })
     await call(alice, 'POST', '/api/memories', { title: 'Nota per la valutazione di fine anno', body: 'Appunti personali: non devono arrivare al team.' })
@@ -157,7 +168,7 @@ async function main () {
   // Attende la convergenza sul nodo di alice.
   for (let i = 0; i < 60; i++) {
     const s = await call(alice, 'GET', '/api/status')
-    if (s.memories >= MEMORIES.length) break
+    if (s.memories >= MEMORIES.length + 3) break // + 3 ricordi dai documenti
     await sleep(500)
   }
   const s = await call(alice, 'GET', '/api/status')

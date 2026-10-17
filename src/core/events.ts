@@ -45,7 +45,15 @@ export const MemoryInput = z.object({
    */
   source: z.object({
     type: z.string().min(1).max(40),
-    ref: z.string().max(200).optional()
+    ref: z.string().max(200).optional(),
+    /**
+     * Solo per i ricordi distillati da un DOCUMENTO (Fase 4): nome del file (senza percorso),
+     * dimensione e tipo. Con l'hash in `ref` e l'autore del ricordo (il nodo proprietario)
+     * permettono di chiedere l'originale (DESIGN §12-bis). Il percorso non viene mai replicato.
+     */
+    name: z.string().max(200).optional(),
+    size: z.number().int().nonnegative().optional(),
+    mime: z.string().max(120).optional()
   }).default({ type: 'api' })
 })
 /** Forma accettata in ingresso (campi con default opzionali). */

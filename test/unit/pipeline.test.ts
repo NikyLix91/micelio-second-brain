@@ -15,6 +15,7 @@ import type { Classification } from '../../src/ingest/prompts'
 import { FakeAdapter } from '../../src/llm/fake'
 import { LlmRunner } from '../../src/llm/runner'
 import { mergeRules } from '../../src/privacy/filter'
+import { mergeBlockedPaths } from '../../src/privacy/paths'
 import { PrivateStore } from '../../src/store/private-store'
 import { writeTranscript } from '../fixtures/transcript'
 import { tmpHome } from '../helpers'
@@ -55,6 +56,7 @@ describe('IngestPipeline', () => {
       models: () => ({ classify: 'haiku', distill: 'sonnet' }),
       publish: async (m) => { published.push(m); return { id: 'id-' + published.length, duplicate: false } },
       rules: async () => mergeRules([]),
+      blockedPaths: async () => mergeBlockedPaths([]),
       language: async () => 'it',
       log: () => {}
     })

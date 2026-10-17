@@ -9,6 +9,7 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { api, type ExplicitOutcome, type RecallHit } from '../api/client'
 import { Card, Empty, ErrorBox, Markdown, PageHeader } from '../components/ui'
+import { MemoryPanel } from '../components/MemoryPanel'
 import { dateTime, KIND_LABEL, short } from '../format'
 
 /** Restituisce `value` solo dopo che è rimasto fermo per `ms` millisecondi. */
@@ -63,21 +64,7 @@ export function Memory () {
         </div>
         <div>
           {selected
-            ? (
-              <Card title={selected.title}>
-                <div className='row small muted' style={{ marginBottom: 12 }}>
-                  <span className='badge accent'>{KIND_LABEL[selected.kind] ?? selected.kind}</span>
-                  {selected.tags.map((t) => <span key={t} className='badge'>#{t}</span>)}
-                </div>
-                <Markdown text={selected.body} />
-                <hr style={{ border: 0, borderTop: '1px solid var(--border)', margin: '16px 0 10px' }} />
-                <dl className='kv small'>
-                  <dt>Autore</dt><dd>{selected.authorName ?? '–'} <span className='mono muted'>{short(selected.author)}</span></dd>
-                  <dt>Scritto il</dt><dd>{dateTime(selected.ts)}</dd>
-                  <dt>Id</dt><dd className='mono'>{selected.id}</dd>
-                </dl>
-              </Card>
-              )
+            ? <MemoryPanel node={selected} onClose={() => setSelected(null)} />
             : <Empty>Seleziona un ricordo per leggerlo.</Empty>}
         </div>
       </div>
