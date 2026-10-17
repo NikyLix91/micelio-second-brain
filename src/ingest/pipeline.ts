@@ -38,7 +38,7 @@ import { isBlockedPath } from '../privacy/paths'
 import type { DocumentRecord, InboxItem, Job, PrivateStore, SourceRef } from '../store/private-store'
 import { CHUNK_CHARS, chunkText, extractText, MAX_CHUNKS, mimeOf } from './extract'
 import { CLASSIFY_SYSTEM, Classification, Distilled, distillSystem } from './prompts'
-import { summarizeChanges } from './git-changes'
+import { type ChangeSummary, codeRefs, repoInfo, type RepoInfo, summarizeChanges } from './git-changes'
 import { extractTranscript } from './transcript'
 
 /** Sotto questa soglia di confidenza il classificatore non decide da solo: si va in inbox. */
@@ -224,7 +224,8 @@ export class IngestPipeline {
 
     // 0) Modifiche al codice durante il capitolo (commit + lavoro non committato), se la cartella
     //    è un repository git. Vanno in coda alla conversazione e passano dallo stesso filtro.
-    const material = ex.text + this.codeChanges(cwd, ex.firstAt, ex.lastAt)
+    const changes = this.codeChanges(cwd, ex.firstAt, ex.lastAt)
+    const material = ex.text + changes.suffix
 
     // 1) Filtro deterministico: se blocca, il contenuto non lascia mai la macchina.
     const rules = await this.deps.rules()
@@ -260,7 +261,9 @@ export class IngestPipeline {
       return done()
     }
     for (const raw of memories) {
-      const parsed = MemoryInput.safeParse({ ...raw, source: { type: 'claude-code', ref: sessionId } })
+      // Riferimenti al codice (progetto, file, simboli, commit): dicono a chi legge dove approfondire.
+      const code = codeRefs(raw, cwd, changes.info, changes.summary)
+      const parsed = MemoryInput.safeParse({ ...raw, source: { type: 'claude-code', ref: sessionId, ...(code ? { code } : {}) } })
       if (!parsed.success) continue // ricordo malformato prodotto dal modello: lo ignoriamo
       // Secondo passaggio di filtro sul ricordo distillato (il modello potrebbe aver
       // riportato un dato sensibile sfuggito alla prima redazione).
@@ -277,19 +280,26 @@ export class IngestPipeline {
   }
 
   /**
-   * Riassunto git del capitolo di sessione, pronto da accodare al testo ("" se non disponibile).
+   * Contesto git del capitolo di sessione:
+   * - `suffix`: sezione "MODIFICHE AL CODICE" da accodare al testo ("" se non disponibile o spenta);
+   * - `info`: progetto, remote e branch (null fuori da un repository);
+   * - `summary`: commit e file del capitolo, per verificare i riferimenti proposti dal modello.
    * Le modifiche non committate si includono solo se il capitolo è recente: altrimenti sarebbero
    * lavoro fatto dopo, in un altro momento (es. recupero di una sessione vecchia).
    */
-  private codeChanges (cwd: string, firstAt: number | null, lastAt: number | null): string {
-    if (this.deps.gitChanges?.() === false || !cwd || firstAt === null || lastAt === null) return ''
+  private codeChanges (cwd: string, firstAt: number | null, lastAt: number | null): { suffix: string, info: RepoInfo | null, summary: ChangeSummary | null } {
+    const none = { suffix: '', info: null, summary: null }
+    if (!cwd || !existsSync(cwd)) return none
     try {
+      // Identità del repository: serve ai riferimenti dei ricordi anche se il riassunto è spento.
+      const info = repoInfo(cwd)
+      if (!info || this.deps.gitChanges?.() === false || firstAt === null || lastAt === null) return { ...none, info }
       const recent = Date.now() - lastAt < UNCOMMITTED_WINDOW_MS
       const summary = summarizeChanges(cwd, firstAt, lastAt, recent)
-      return summary ? '\n\n' + summary : ''
+      return { suffix: summary?.text ? '\n\n' + summary.text : '', info, summary }
     } catch (e) {
       this.deps.log(`riassunto git non disponibile per ${cwd}: ${(e as Error).message}`)
-      return ''
+      return none
     }
   }
 

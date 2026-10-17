@@ -15,6 +15,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { Command } from 'commander'
+import { formatCodeRefs } from '../core/code-refs'
 import { MEMORY_KINDS } from '../core/events'
 import type { MemberRecord, NodeStatus, RecallHit } from '../core/model'
 import { nodePaths, type NodePaths } from '../core/paths'
@@ -61,10 +62,12 @@ function printStatus (s: NodeStatus): void {
   console.log(`Ricordi:   ${s.memories}`)
 }
 
-function printHit (h: RecallHit): void {
+function printHit (h: RecallHit, full = false): void {
   console.log(`\n■ ${h.title}`)
   const prio = h.activation !== undefined ? ` · attivazione ${Math.round(h.activation * 100)}%${h.votes ? ` · voti ${h.votes > 0 ? '+' : ''}${h.votes}` : ''}${h.pinned ? ' · 📌' : ''}` : ''
   console.log(`  [${h.kind}] id:${h.id.slice(0, 12)} · ${h.authorName ?? short(h.author)} · ${date(h.ts)}${h.tags.length ? ' · #' + h.tags.join(' #') : ''}${prio}`)
+  // Riferimenti al codice (progetto, file, simboli, commit): dove approfondire
+  for (const l of formatCodeRefs(h.source?.code, full)) console.log(`  ↳ ${l.replace(/`/g, '')}`)
   console.log(indent(h.body))
 }
 
@@ -277,7 +280,7 @@ program.command('recall')
     const q = encodeURIComponent(query.join(' '))
     const hits = await client().call<RecallHit[]>('GET', `/api/memories/search?q=${q}&limit=${o.limit}`)
     if (!hits.length) return console.log('Nessun ricordo trovato')
-    hits.forEach(printHit)
+    hits.forEach((h) => printHit(h))
   })
 
 const dream = program.command('dream').description('dreaming: consolidamento del sapere del team (diario con `micelio dream log`)')
@@ -334,7 +337,7 @@ program.command('get')
   .action(async (id: string) => {
     const h = await client().call<RecallHit & { error?: string }>('GET', `/api/memories/${encodeURIComponent(id)}`)
     if (h.error) throw new DaemonError(`Nessun ricordo con id ${id}`)
-    printHit(h)
+    printHit(h, true)
   })
 
 program.command('export')

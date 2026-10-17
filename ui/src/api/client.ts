@@ -7,7 +7,7 @@
  *
  * Ogni funzione corrisponde a una rotta di src/daemon/api.controller.ts.
  */
-import type { MemoryData } from '../../../src/core/events'
+import type { CodeRefs, MemoryData } from '../../../src/core/events'
 import type { InviteRecord, MemberRecord, NodeStatus, RecallHit } from '../../../src/core/model'
 import type { ExplicitOutcome } from '../../../src/ingest/pipeline'
 import type { Graph, GraphLink, GraphNode } from '../../../src/graph/constellation'
@@ -16,7 +16,7 @@ import type { Decision, InboxItem } from '../../../src/store/private-store'
 import { getToken } from './auth'
 
 export type { Graph, GraphLink, GraphNode }
-export type { Decision, ExplicitOutcome, InboxItem, IngestStatus, InviteRecord, MemberRecord, MemoryData, NodeSettings, NodeStatus, RecallHit }
+export type { CodeRefs, Decision, ExplicitOutcome, InboxItem, IngestStatus, InviteRecord, MemberRecord, MemoryData, NodeSettings, NodeStatus, RecallHit }
 
 /** Errore dell'API con il messaggio leggibile restituito dal daemon. */
 export class ApiError extends Error {

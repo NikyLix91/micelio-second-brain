@@ -10,6 +10,7 @@
  */
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
+import { formatCodeRefs } from '../core/code-refs'
 import { MEMORY_KINDS } from '../core/events'
 import type { RecallHit } from '../core/model'
 import type { MicelioNode } from '../node/micelio-node'
@@ -25,15 +26,22 @@ const INSTRUCTIONS = `Micelio è la memoria condivisa del team di sviluppo: ogni
   dettagli, cause o raccomandazioni tue. Dopo il salvataggio mostra all'utente il testo salvato.
 - NON salvare mai dati personali, valutazioni di persone, questioni HR, credenziali, segreti o dati di clienti.
 - Alcuni ricordi finiscono nell'inbox dell'utente per una verifica: puoi proporgli di rivederli con "inbox_review".
-- Se un ricordo viene da un documento e serve approfondire, "fetch_source" scarica l'originale dal collega che lo possiede.`
+- Se un ricordo viene da un documento e serve approfondire, "fetch_source" scarica l'originale dal collega che lo possiede.
+- Se un ricordo ha riferimenti al codice (Progetto, File, Simboli, Commit) e stai lavorando nello stesso progetto,
+  per approfondire apri quei file o usa "git show <commit>"; il codice attuale può essere cambiato dopo il ricordo.`
 
-/** Formatta un risultato di ricerca come Markdown compatto (titolo, metadati, corpo). */
-function formatHit (h: RecallHit): string {
+/**
+ * Formatta un ricordo come Markdown (titolo, metadati, riferimenti, corpo).
+ * @param full true per `get` (tutti i riferimenti al codice), false per `recall` (forma compatta)
+ */
+function formatHit (h: RecallHit, full = false): string {
   const who = h.authorName ?? h.author.slice(0, 8)
   const tags = h.tags.length ? `  #${h.tags.join(' #')}` : ''
   // Ricordi distillati da un documento: l'agente sa che può chiedere l'originale con fetch_source.
   const doc = h.source?.type === 'document' ? `\nFonte: documento «${h.source.name ?? '?'}» (originale disponibile con fetch_source)` : ''
-  return `### ${h.title}\n[${h.kind}] id:${h.id.slice(0, 12)} · ${who} · ${new Date(h.ts).toISOString().slice(0, 10)}${tags}${doc}\n\n${h.body}`
+  // Ricordi distillati da una sessione di codice: dove guardare per approfondire.
+  const code = formatCodeRefs(h.source?.code, full).map((l) => '\n' + l).join('')
+  return `### ${h.title}\n[${h.kind}] id:${h.id.slice(0, 12)} · ${who} · ${new Date(h.ts).toISOString().slice(0, 10)}${tags}${doc}${code}\n\n${h.body}`
 }
 
 /** Risposta testuale di un tool. */
@@ -60,7 +68,7 @@ export function createMcpServer (node: MicelioNode): McpServer {
   }, async ({ query, limit }) => {
     const hits = await node.recallHybrid(query, limit ?? 5)
     if (hits.length === 0) return text(`Nessun ricordo del team trovato per "${query}".`)
-    return text(hits.map(formatHit).join('\n\n---\n\n'))
+    return text(hits.map((h) => formatHit(h)).join('\n\n---\n\n'))
   })
 
   // ── remember ────────────────────────────────────────────────────────────────────────
@@ -118,7 +126,7 @@ export function createMcpServer (node: MicelioNode): McpServer {
     annotations: { readOnlyHint: true }
   }, async ({ id }) => {
     const hit = node.get(id)
-    return hit ? text(formatHit(hit)) : error(`Nessun ricordo con id ${id}`)
+    return hit ? text(formatHit(hit, true)) : error(`Nessun ricordo con id ${id}`)
   })
 
   // ── fetch_source ────────────────────────────────────────────────────────────────────

@@ -5,13 +5,13 @@
  * un Hyperbee gestito da Autobase, con chiavi del tipo `memory/<id>`, `member/<chiave>`… (vedi
  * KEYS in src/net/apply.ts). Sono gli stessi oggetti che la CLI e l'API ricevono in JSON.
  */
-import type { MemoryKind } from './events'
+import type { CodeRefs, MemoryKind } from './events'
 
 /** Ruolo di un membro. Gli admin sono anche indexer di Autobase (decisione D3). */
 export type Role = 'admin' | 'member'
 
 /** Origine di un ricordo (vedi MemoryInput.source in events.ts). */
-export interface MemorySource { type: string, ref?: string, name?: string, size?: number, mime?: string }
+export interface MemorySource { type: string, ref?: string, name?: string, size?: number, mime?: string, code?: CodeRefs }
 
 /** Un ricordo del team come appare nella vista. */
 export interface MemoryRecord {

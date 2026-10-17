@@ -8,6 +8,7 @@
  * - "[incerto]" nel testo → confidenza 0.5 (caso dubbio);
  * - la distillazione produce un ricordo per ogni riga "LEZIONE: titolo | corpo".
  */
+import path from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { MemoryData } from '../../src/core/events'
 import { IngestPipeline, route } from '../../src/ingest/pipeline'
@@ -148,7 +149,8 @@ describe('IngestPipeline', () => {
         { assistant: 'LEZIONE: Build Angular OOM su Azure DevOps | Impostare NODE_OPTIONS=--max-old-space-size=6144.' }
       ])
       expect(published.map((m) => m.title)).toEqual(['Build Angular OOM su Azure DevOps'])
-      expect(published[0].source).toEqual({ type: 'claude-code', ref: 'tech' })
+      // Fuori da un repository git il riferimento al codice è solo il nome della cartella di lavoro
+      expect(published[0].source).toEqual({ type: 'claude-code', ref: 'tech', code: { project: path.basename(dir), files: [], symbols: [], commits: [] } })
       expect(store.jobStats()).toEqual({ done: 1 })
     })
 

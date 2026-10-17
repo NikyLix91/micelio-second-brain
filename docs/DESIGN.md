@@ -144,10 +144,25 @@ interface Memory {
     type: 'claude-code' | 'codex' | 'mcp' | 'document' | 'manual' | 'dream';
     ref: string;            // id sessione o hash del percorso: mai il percorso in chiaro
     hash?: string;          // hash del contenuto d'origine
+    code?: {                // solo ricordi da sessioni di codice: dove approfondire
+      project?: string;     // nome della cartella radice del repository
+      repo?: string;        // remote "origin" SENZA credenziali
+      branch?: string;
+      files: string[];      // relativi alla radice del repository, mai percorsi assoluti
+      symbols: string[];    // "class OrderService", "POST /orders/confirm"…
+      commits: string[];    // hash completi, verificati su git
+    };
   };
   confidence: number;       // 0..1, assegnato da distillazione / dreaming
 }
 ```
+
+**Riferimenti al codice (`source.code`).** Il distillatore indica per ogni ricordo file, simboli e commit coinvolti. La pipeline li verifica prima di salvarli (`codeRefs` in `src/ingest/git-changes.ts`):
+- un commit vale solo se è fra quelli del capitolo di sessione, e viene salvato con l'hash completo;
+- i percorsi diventano relativi alla radice; quelli assoluti fuori dal repository si scartano;
+- progetto, remote (senza credenziali) e branch arrivano da git, non dal modello.
+
+Fuori da un repository resta solo il nome della cartella come progetto. I riferimenti non entrano nell'id: lo stesso sapere citato da due sessioni resta un solo ricordo. I nodi con una versione precedente ignorano il campo.
 
 `id = sha256(kind + normalize(title + body))`: due nodi che distillano lo stesso ricordo producono lo stesso id, quindi i duplicati esatti si eliminano da soli.
 

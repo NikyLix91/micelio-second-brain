@@ -11,10 +11,16 @@
  *
  * Niente codice copiato: solo nomi di file, dichiarazioni e messaggi di commit (il codice è già
  * nel repository di tutti). Il riassunto passa comunque dal filtro privacy con il resto.
+ *
+ * Ogni ricordo distillato da una sessione riceve poi i RIFERIMENTI al codice (`source.code`:
+ * progetto, remote, branch, file, simboli, commit), così chi lo legge sa dove approfondire.
+ * Vedi codeRefs() in fondo al file.
  * Se la cartella non è un repository git, o git non c'è, semplicemente non si aggiunge nulla.
  */
 import { spawnSync } from 'node:child_process'
+import fs from 'node:fs'
 import path from 'node:path'
+import type { CodeRefs } from '../core/events'
 
 /** Lunghezza massima del riassunto (resta una piccola parte del materiale da distillare). */
 export const MAX_SUMMARY_CHARS = 4000
@@ -99,35 +105,83 @@ function parseNameStatus (text: string): Map<string, string> {
 
 const STATUS_LABEL: Record<string, string> = { A: 'nuovo', M: 'modificato', D: 'eliminato', R: 'rinominato', C: 'copiato' }
 
+/** Identità del repository in cui si lavorava: diventa `source.code` dei ricordi (progetto, remote, branch). */
+export interface RepoInfo {
+  /** Radice del repository sul disco locale: usata solo qui, MAI replicata nel team. */
+  root: string
+  /** Nome della cartella radice: è il "progetto" mostrato nei ricordi. */
+  project: string
+  /** URL del remote "origin" senza credenziali, se c'è. */
+  repo?: string
+  /** Branch corrente (assente se HEAD è staccato). */
+  branch?: string
+}
+
+/** Esito di summarizeChanges: testo per il distillatore + dati strutturati per i riferimenti. */
+export interface ChangeSummary {
+  info: RepoInfo
+  /** Sezione "MODIFICHE AL CODICE" da accodare alla conversazione; null se nel periodo non è cambiato nulla. */
+  text: string | null
+  /** Hash COMPLETI dei commit del periodo (per validare quelli citati dal modello). */
+  commits: string[]
+  /** File toccati nel periodo, relativi alla radice del repository. */
+  files: string[]
+}
+
+/**
+ * Toglie le credenziali da un URL di remote ("https://utente:token@host/…" → "https://host/…").
+ * Gli URL in forma scp ("git@host:org/repo.git") non contengono segreti e restano come sono.
+ */
+export function cleanRemote (url: string): string {
+  return url.trim().replace(/^([a-z][a-z0-9+.-]*:\/\/)[^@/]+@/i, '$1')
+}
+
+/** Progetto, remote e branch del repository che contiene `cwd`; null se non è un repository git. */
+export function repoInfo (cwd: string): RepoInfo | null {
+  const root = git(cwd, ['rev-parse', '--show-toplevel'])?.trim()
+  if (!root) return null
+  const remote = git(root, ['remote', 'get-url', 'origin'])?.trim()
+  const branch = git(root, ['rev-parse', '--abbrev-ref', 'HEAD'])?.trim()
+  return {
+    root,
+    project: path.basename(root),
+    ...(remote ? { repo: cleanRemote(remote) } : {}),
+    ...(branch && branch !== 'HEAD' ? { branch } : {})
+  }
+}
+
 /**
  * Riassunto delle modifiche al codice nel repository che contiene `cwd`, nell'intervallo indicato.
  * @param since inizio del capitolo di sessione (ms)
  * @param until fine del capitolo (ms)
  * @param includeUncommitted aggiungere le modifiche non ancora committate (capitolo recente)
- * @returns testo da aggiungere al materiale di distillazione, o null se non c'è nulla (o non è un repo)
+ * @returns null se la cartella non è un repository git; altrimenti identità del repository e, se
+ *          nel periodo è cambiato qualcosa, il testo da aggiungere al materiale di distillazione
  */
-export function summarizeChanges (cwd: string, since: number, until: number, includeUncommitted: boolean): string | null {
-  const top = git(cwd, ['rev-parse', '--show-toplevel'])?.trim()
-  if (!top) return null
-  const repo = path.basename(top)
+export function summarizeChanges (cwd: string, since: number, until: number, includeUncommitted: boolean): ChangeSummary | null {
+  const info = repoInfo(cwd)
+  if (!info) return null
+  const top = info.root
   const parts: { title: string, changes: FileChange[] }[] = []
+  let commits: { hash: string, subject: string }[] = []
 
   // 1) Commit del periodo (margine di 2 minuti: i commit arrivano spesso subito dopo l'ultimo messaggio)
   const iso = (ms: number) => new Date(ms).toISOString()
   const log = git(top, ['log', `--since=${iso(since - 120_000)}`, `--until=${iso(until + 120_000)}`, '--no-merges', '--format=%H%x09%s'])
-  const commits = (log ?? '').split('\n').filter(Boolean).map((l) => { const [h, ...s] = l.split('\t'); return { hash: h, subject: s.join('\t') } })
+  commits = (log ?? '').split('\n').filter(Boolean).map((l) => { const [h, ...s] = l.split('\t'); return { hash: h, subject: s.join('\t') } })
   if (commits.length > 0) {
+    // Intervallo: dal genitore del commit più vecchio al più recente (o il solo commit, se è il primo del repo)
     const oldest = commits[commits.length - 1].hash
-    const range = git(top, ['rev-parse', '--verify', '--quiet', `${oldest}^`]) ? `${oldest}^..${commits[0].hash}` : commits[0].hash
-    const names = parseNameStatus(git(top, ['diff', '--name-status', ...(range.includes('..') ? [range] : [`${range}^!`])]) ?? '')
-    const decls = parseDiff(git(top, ['diff', '-U0', ...(range.includes('..') ? [range] : [`${range}^!`])]) ?? '')
+    const range = git(top, ['rev-parse', '--verify', '--quiet', `${oldest}^`]) ? [`${oldest}^..${commits[0].hash}`] : [`${commits[0].hash}^!`]
+    const names = parseNameStatus(git(top, ['diff', '--name-status', ...range]) ?? '')
+    const decls = parseDiff(git(top, ['diff', '-U0', ...range]) ?? '')
     parts.push({
       title: `Commit nel periodo (${commits.length}): ${commits.slice(0, 6).map((c) => `${c.hash.slice(0, 8)} "${c.subject}"`).join('; ')}`,
       changes: toChanges(names, decls)
     })
   }
 
-  // 2) Modifiche non ancora committate (lavoro in corso)
+  // 2) Modifiche non ancora committate (lavoro in corso), file nuovi non tracciati compresi
   if (includeUncommitted) {
     const names = parseNameStatus(git(top, ['diff', '--name-status', 'HEAD']) ?? '')
     for (const f of (git(top, ['ls-files', '--others', '--exclude-standard']) ?? '').split('\n').filter(Boolean)) names.set(f, 'A')
@@ -135,8 +189,11 @@ export function summarizeChanges (cwd: string, since: number, until: number, inc
     if (names.size > 0) parts.push({ title: 'Modifiche non ancora committate', changes: toChanges(names, decls) })
   }
 
-  if (parts.length === 0) return null
-  const lines = [`MODIFICHE AL CODICE (repository "${repo}", riassunto automatico da git):`]
+  const files = [...new Set(parts.flatMap((p) => p.changes.map((c) => c.file)))]
+  if (parts.length === 0) return { info, text: null, commits: [], files: [] }
+
+  const where = [`progetto "${info.project}"`, info.branch ? `branch ${info.branch}` : ''].filter(Boolean).join(', ')
+  const lines = [`MODIFICHE AL CODICE (${where}; riassunto automatico da git):`]
   for (const p of parts) {
     lines.push(p.title)
     for (const c of p.changes) {
@@ -148,7 +205,12 @@ export function summarizeChanges (cwd: string, since: number, until: number, inc
     }
   }
   const text = lines.join('\n')
-  return text.length > MAX_SUMMARY_CHARS ? text.slice(0, MAX_SUMMARY_CHARS) + '\n  […]' : text
+  return {
+    info,
+    text: text.length > MAX_SUMMARY_CHARS ? text.slice(0, MAX_SUMMARY_CHARS) + '\n  […]' : text,
+    commits: commits.map((c) => c.hash),
+    files
+  }
 }
 
 /** Unisce stato dei file e dichiarazioni; i file con dichiarazioni vengono prima. */
@@ -156,4 +218,74 @@ function toChanges (names: Map<string, string>, decls: Map<string, { added: Set<
   return [...names].map(([file, status]) => ({ file, status, added: [...(decls.get(file)?.added ?? [])], removed: [...(decls.get(file)?.removed ?? [])] }))
     .sort((a, b) => (b.added.length + b.removed.length) - (a.added.length + a.removed.length))
     .slice(0, 40)
+}
+
+/** Riferimenti proposti dal distillatore per un ricordo (vedi Distilled in prompts.ts). */
+export interface ProposedRefs { files?: string[], symbols?: string[], commits?: string[] }
+
+/**
+ * Riferimenti al codice da allegare a un ricordo (`source.code`), a partire da ciò che propone il
+ * distillatore e verificati su ciò che sappiamo da git. Il modello può sbagliare un hash o un
+ * percorso: per questo
+ * - i commit valgono solo se corrispondono (per prefisso) a un commit del capitolo, e si salvano
+ *   con l'hash completo;
+ * - i file si normalizzano a percorsi relativi alla radice con "/"; i percorsi assoluti fuori dal
+ *   repository vengono scartati (rivelerebbero il disco di chi ha lavorato);
+ * - i simboli sono testo libero, solo accorciati.
+ * Progetto, remote e branch arrivano da git (o, fuori da un repository, dal nome della cartella).
+ *
+ * @param proposed riferimenti indicati dal modello per QUESTO ricordo
+ * @param cwd      cartella di lavoro della sessione
+ * @param info     identità del repository (null se la cartella non è un repository git)
+ * @param summary  riassunto del capitolo (null se non calcolato)
+ * @returns i riferimenti, o undefined se non c'è nulla da dire
+ */
+export function codeRefs (proposed: ProposedRefs, cwd: string, info: RepoInfo | null, summary: ChangeSummary | null): CodeRefs | undefined {
+  // La stessa radice può essere scritta in più modi: git restituisce il percorso lungo, la sessione
+  // può usare la cartella di lavoro (sotto-cartella) o, su Windows, il nome corto 8.3 (MARIOR~1).
+  const norm = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '')
+  const roots = uniq([info?.root ?? '', cwd, realpath(cwd)].map(norm)).sort((a, b) => b.length - a.length)
+  const files = uniq((proposed.files ?? []).map((f) => {
+    let p = f.trim().replace(/\\/g, '/').replace(/^\.\//, '')
+    // Assoluto dentro al repository → relativo alla radice; assoluto fuori → scartato
+    if (/^([a-z]:)?\//i.test(p)) {
+      const r = roots.find((r) => p.toLowerCase().startsWith(r.toLowerCase() + '/'))
+      p = r ? toRepoRelative(p.slice(r.length + 1), r, info) : ''
+    }
+    return p
+  })).slice(0, 30)
+  const known = summary?.commits ?? []
+  const commits = uniq((proposed.commits ?? [])
+    .map((c) => c.trim().toLowerCase())
+    .filter((c) => /^[0-9a-f]{7,40}$/.test(c))
+    .map((c) => known.find((k) => k.startsWith(c)) ?? '')).slice(0, 20)
+  const symbols = uniq((proposed.symbols ?? []).map((s) => s.trim().slice(0, 200))).slice(0, 30)
+  const project = info?.project ?? (path.basename(cwd) || undefined)
+  if (!project && files.length + commits.length + symbols.length === 0) return undefined
+  return {
+    ...(project ? { project } : {}),
+    ...(info?.repo ? { repo: info.repo } : {}),
+    ...(info?.branch ? { branch: info.branch } : {}),
+    files,
+    symbols,
+    commits
+  }
+}
+
+/** Elimina vuoti e doppioni mantenendo l'ordine. */
+const uniq = (xs: string[]): string[] => [...new Set(xs.filter(Boolean))]
+
+/** Percorso reale (risolve link e, su Windows, i nomi corti 8.3); il percorso stesso se non esiste. */
+function realpath (p: string): string {
+  try { return fs.realpathSync.native(p) } catch { return p }
+}
+
+/**
+ * Un percorso relativo a `base` (la radice del repository o una sua sotto-cartella, es. la cartella
+ * di lavoro della sessione) diventa relativo alla radice del repository.
+ */
+function toRepoRelative (rel: string, base: string, info: RepoInfo | null): string {
+  if (!info) return rel
+  const prefix = path.relative(realpath(info.root), realpath(base)).split(path.sep).join('/')
+  return prefix && !prefix.startsWith('..') ? `${prefix}/${rel}` : rel
 }

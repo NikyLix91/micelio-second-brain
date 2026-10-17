@@ -27,6 +27,30 @@ export type MemoryKind = z.infer<typeof MemoryKind>
 const hexKey = z.string().regex(/^[0-9a-f]{64}$/, 'chiave esadecimale di 32 byte')
 
 /**
+ * Riferimenti al codice di un ricordo distillato da una sessione di sviluppo: servono a chi legge
+ * il ricordo (persona o agente) per decidere se e dove approfondire ("apri questi file, guarda
+ * questo commit"). Tutti facoltativi: un ricordo può citare solo un file, o solo il progetto.
+ *
+ * Mai percorsi assoluti del disco (sono diversi su ogni macchina e rivelano nomi utente): i file
+ * sono relativi alla radice del repository; il progetto è il nome della cartella del repository.
+ */
+export const CodeRefs = z.object({
+  /** Nome del progetto (cartella radice del repository, o della cartella di lavoro). */
+  project: z.string().max(200).optional(),
+  /** URL del remote "origin", senza credenziali (es. https://dev.azure.com/org/prj/_git/ordini). */
+  repo: z.string().max(300).optional(),
+  /** Branch su cui si lavorava. */
+  branch: z.string().max(200).optional(),
+  /** File coinvolti, relativi alla radice del repository. */
+  files: z.array(z.string().max(300)).max(30).default([]),
+  /** Simboli coinvolti: classi, funzioni, endpoint (es. "class OrderService", "POST /orders/confirm"). */
+  symbols: z.array(z.string().max(200)).max(30).default([]),
+  /** Hash (completi) dei commit in cui la modifica è stata fatta. */
+  commits: z.array(z.string().regex(/^[0-9a-f]{7,40}$/)).max(20).default([])
+})
+export type CodeRefs = z.output<typeof CodeRefs>
+
+/**
  * Un ricordo come viene proposto (da CLI, API, MCP o dalla pipeline di ingestione).
  * I `default` vengono applicati dal parse: dopo `MemoryInput.parse()` tutti i campi esistono.
  */
@@ -53,7 +77,12 @@ export const MemoryInput = z.object({
      */
     name: z.string().max(200).optional(),
     size: z.number().int().nonnegative().optional(),
-    mime: z.string().max(120).optional()
+    mime: z.string().max(120).optional(),
+    /**
+     * Solo per i ricordi distillati da una sessione di CODICE: dove guardare per approfondire
+     * (progetto, repository, branch, file, simboli, commit). Vedi CodeRefs.
+     */
+    code: CodeRefs.optional()
   }).default({ type: 'api' })
 })
 /** Forma accettata in ingresso (campi con default opzionali). */

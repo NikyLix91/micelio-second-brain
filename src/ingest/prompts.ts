@@ -38,7 +38,13 @@ export const Distilled = z.object({
     kind: z.enum(MEMORY_KINDS),
     title: z.string(),
     body: z.string(),
-    tags: z.array(z.string())
+    tags: z.array(z.string()),
+    // Riferimenti per approfondire (vedi CodeRefs in events.ts). Obbligatori nello schema, così il
+    // modello li considera sempre; liste vuote quando il ricordo non riguarda codice specifico.
+    // La pipeline li verifica (commit esistenti, percorsi relativi) prima di salvarli.
+    files: z.array(z.string()),
+    symbols: z.array(z.string()),
+    commits: z.array(z.string())
   }))
 })
 export type Distilled = z.infer<typeof Distilled>
@@ -64,10 +70,15 @@ Dalla sessione estrai da 0 a 5 ricordi atomici di conoscenza riutilizzabile dal 
   nuovo. Non salvare cose generiche che ogni sviluppatore sa già.
 - Se in fondo c'è la sezione "MODIFICHE AL CODICE" (riassunto automatico da git), usala per ricordi sulla
   STRUTTURA del codice: nuovi moduli, classi, endpoint, spostamenti di responsabilità, API rimosse. Spiega
-  a cosa serve la novità usando le motivazioni presenti nella conversazione, e cita i percorsi dei file e
-  l'hash breve del commit (es. "src/orders/order.service.ts, commit 1a2b3c4d"). Non fare l'elenco dei file
+  a cosa serve la novità usando le motivazioni presenti nella conversazione. Non fare l'elenco dei file
   toccati: solo i cambiamenti che un collega deve conoscere. Le modifiche "non ancora committate" sono lavoro
   in corso: usale solo se la conversazione le dà per concluse.
+- RIFERIMENTI per approfondire (servono a chi legge per decidere se aprire il codice), per OGNI ricordo:
+  files = percorsi dei file coinvolti, relativi alla radice del progetto (es. "src/orders/order.service.ts");
+  symbols = classi, funzioni, metodi, endpoint o tabelle coinvolti (es. "class OrderService", "POST /orders/confirm");
+  commits = hash brevi dei commit in cui è stata fatta la modifica, SOLO se compaiono nella sezione MODIFICHE AL CODICE.
+  Indica solo riferimenti che compaiono nella sessione e riguardano davvero quel ricordo; liste vuote se non ce ne sono.
+  Nel body cita il file o il simbolo principale quando aiuta a orientarsi.
 - Scrivi in ${lang}; identificatori, nomi di API, comandi e codice restano invariati.
 - title: una riga autoesplicativa. body: Markdown conciso (massimo ~120 parole). tags: 1-5 tag minuscoli.
 - kind: fact | howto | decision | gotcha | snippet | reference.`

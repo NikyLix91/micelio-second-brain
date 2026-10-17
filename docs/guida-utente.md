@@ -151,6 +151,14 @@ Le soglie si cambiano in `config.json`, in `watch.sessionScan`: `intervalMinutes
 - il lavoro non ancora committato;
 - i file nuovi, modificati o eliminati, con le classi, le funzioni e gli endpoint aggiunti o rimossi.
 
+**Riferimenti per approfondire:** ogni ricordo nato da una sessione di codice porta con sé progetto, branch, repository, file, simboli e commit coinvolti. Li vedi:
+- nell'app, nel riquadro «Dal codice» del ricordo. Se il repository è su GitHub, GitLab o Azure DevOps, i commit sono link;
+- con `micelio get <id>` (tutti) e `micelio recall` (forma breve);
+- negli agenti, nei risultati MCP: se lavorano sullo stesso progetto possono aprire i file o fare `git show <commit>`;
+- nell'export Markdown, sotto il titolo; il progetto compare anche nel frontmatter.
+
+I commit vengono verificati su git, quindi un hash inventato dal modello viene scartato. I percorsi sono sempre relativi al repository, mai quelli del tuo disco.
+
 Così nascono ricordi come «Aggiunto `OrderService` in `src/orders` (commit `1a2b3c4d`): centralizza la conferma degli ordini, prima sparsa nei controller». Il codice non viene copiato: passano solo nomi e messaggi, e anche questi attraversano il filtro privacy. Per disattivarlo: `"gitChanges": false` in `watch` dentro `config.json`.
 
 - **Fedeltà alla fonte:** la distillazione riporta solo ciò che è stato detto o dimostrato nella sessione, senza aggiunte.

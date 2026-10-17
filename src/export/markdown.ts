@@ -10,6 +10,7 @@
  */
 import fs from 'node:fs'
 import path from 'node:path'
+import { formatCodeRefs } from '../core/code-refs'
 import type { MemberRecord, MemoryRecord } from '../core/model'
 
 const README = `# Micelio — export in sola lettura
@@ -42,9 +43,13 @@ export function renderMemory (m: MemoryRecord, authorName: string | null): strin
     `author: ${JSON.stringify(authorName ?? m.author.slice(0, 12))}`,
     `created: ${new Date(m.ts).toISOString()}`,
     `source: ${m.source.type}`,
+    // Progetto anche nel frontmatter, per filtrare l'export per progetto (es. in Obsidian)
+    ...(m.source.code?.project ? [`project: ${JSON.stringify(m.source.code.project)}`] : []),
     '---'
   ].join('\n')
-  return `${fm}\n\n# ${m.title}\n\n${m.body}\n`
+  // Riferimenti al codice in chiaro sotto il titolo: dove approfondire
+  const refs = formatCodeRefs(m.source.code).map((l) => `> ${l}  `).join('\n')
+  return `${fm}\n\n# ${m.title}\n\n${refs ? refs + '\n\n' : ''}${m.body}\n`
 }
 
 /**

@@ -18,7 +18,7 @@ Il server invia agli agenti delle **istruzioni**:
 |---|---|---|
 | `recall` | `query` (parole chiave), `limit?` (1–20, default 5) | Ricerca full-text nella memoria del team, ordinata per rilevanza (BM25: il titolo pesa più dei tag, i tag più del corpo). Ignora gli accenti e accetta prefissi. Sola lettura |
 | `remember` | `title`, `body` (Markdown), `kind?`, `tags?` | **Propone** un ricordo. Passa dal filtro privacy e dalla classificazione, poi risponde con l'esito: *Pubblicato* (con il testo esatto salvato), *in inbox* (con l'id e il motivo) o *trattenuto come privato* (con il motivo) |
-| `get` | `id` (anche abbreviato, min 6 caratteri) | Ricordo completo. Sola lettura |
+| `get` | `id` (anche abbreviato, min 6 caratteri) | Ricordo completo, con tutti i riferimenti al codice (progetto, branch, file, simboli, commit). Sola lettura |
 | `vote` | `id`, `useful` (true/false) | Segnala se un ricordo è stato utile o è fuorviante/obsoleto. I voti alzano o abbassano l'attivazione del ricordo per tutto il team |
 | `fetch_source` | `id` del ricordo | Per un ricordo distillato da un documento, scarica l'**originale** dal collega che lo possiede (deve essere online e condividere la cartella). Restituisce il percorso locale e il testo estratto (primi 20.000 caratteri) |
 | `inbox_review` | nessuno | Elenca i ricordi dubbi in attesa di decisione nell'inbox locale dell'utente. Sola lettura |

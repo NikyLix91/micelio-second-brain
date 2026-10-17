@@ -4,7 +4,7 @@
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { api, type GraphNode } from '../api/client'
+import { api, type CodeRefs, type GraphNode } from '../api/client'
 import { dateTime, KIND_LABEL, short } from '../format'
 import { authorColor } from '../pages/colors'
 import { Card, Empty, ErrorBox, Markdown, Meter } from './ui'
@@ -29,6 +29,45 @@ function SourceBox ({ id, name, size }: { id: string, name: string, size?: numbe
           {window.micelio?.showInFolder && <button className='btn small' onClick={() => void window.micelio!.showInFolder!(fetchIt.data!.path)}>Mostra</button>}
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * Indirizzo web di un commit, se il remote è un URL https (GitHub, GitLab, Azure DevOps e Bitbucket
+ * accettano tutti la forma `<repo>/commit/<hash>`); null per remote ssh o sconosciuti.
+ */
+function commitUrl (repo: string | undefined, hash: string): string | null {
+  if (!repo || !/^https?:\/\//.test(repo)) return null
+  return `${repo.replace(/\.git$/, '').replace(/\/+$/, '')}/commit/${hash}`
+}
+
+/**
+ * Riquadro "riferimenti al codice": il ricordo è stato distillato da una sessione di sviluppo e dice
+ * dove approfondire (progetto, branch, file, simboli, commit). I commit, se il repository è su un
+ * server web, sono link alla pagina del commit.
+ */
+function CodeBox ({ code }: { code: CodeRefs }) {
+  const repoUrl = code.repo && /^https?:\/\//.test(code.repo) ? code.repo : null
+  return (
+    <div className='notice small' style={{ marginTop: 12 }}>
+      <div style={{ marginBottom: 4 }}>
+        🧩 Dal codice: <strong>{code.project ?? 'progetto'}</strong>
+        {code.branch && <span className='muted'> · branch <span className='mono'>{code.branch}</span></span>}
+        {code.repo && (repoUrl
+          ? <> · <a href={repoUrl} target='_blank' rel='noreferrer'>repository</a></>
+          : <span className='muted mono'> · {code.repo}</span>)}
+      </div>
+      <dl className='kv' style={{ margin: 0 }}>
+        {code.files.length > 0 && <><dt>File</dt><dd>{code.files.map((f) => <div key={f} className='mono' style={{ overflowWrap: 'anywhere' }}>{f}</div>)}</dd></>}
+        {code.symbols.length > 0 && <><dt>Simboli</dt><dd>{code.symbols.map((s) => <span key={s} className='badge mono' style={{ marginRight: 4 }}>{s}</span>)}</dd></>}
+        {code.commits.length > 0 && (
+          <><dt>Commit</dt><dd>{code.commits.map((c) => {
+            const url = commitUrl(code.repo, c)
+            return <span key={c} className='mono' style={{ marginRight: 8 }} title={`git show ${c}`}>{url ? <a href={url} target='_blank' rel='noreferrer'>{c.slice(0, 8)}</a> : c.slice(0, 8)}</span>
+          })}</dd></>
+        )}
+      </dl>
     </div>
   )
 }
@@ -72,6 +111,7 @@ export function MemoryPanel ({ node, onClose }: { node: GraphNode, onClose: () =
         <dt>Scritto il</dt><dd>{dateTime(node.ts)}</dd>
       </dl>
       {full.data && <Signals id={node.id} activation={full.data.activation ?? 0} votes={full.data.votes ?? 0} uses={full.data.uses ?? 0} pinned={!!full.data.pinned} />}
+      {full.data?.source?.code && <CodeBox code={full.data.source.code} />}
       {full.data?.source?.type === 'document' && <SourceBox id={node.id} name={full.data.source.name ?? 'documento'} size={full.data.source.size} />}
       <p className='small' style={{ marginBottom: 0 }}><Link to='/memoria'>Apri nella ricerca →</Link></p>
     </Card>

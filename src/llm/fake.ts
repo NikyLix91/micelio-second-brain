@@ -9,7 +9,7 @@
  * - classify: testo con "cliente", "credenziali", "valutazione"… → private;
  *             testo più corto di 30 caratteri → discard; altrimenti → team;
  *             "[incerto]" nel testo → confidenza 0.5 (caso dubbio → inbox).
- * - distill:  un ricordo per ogni riga "LEZIONE: titolo | corpo" presente nell'input;
+ * - distill:  un ricordo per ogni riga "LEZIONE: titolo | corpo [| rif: file, simbolo, commit]";
  * - consolidate (dreaming): "[collega]" nel testo → link; altrimenti fonde il gruppo.
  */
 import type { LlmAdapter, LlmTask } from './types'
@@ -42,9 +42,17 @@ export class FakeAdapter implements LlmAdapter {
       })
     }
     if (task.name === 'distill') {
-      const memories = [...task.input.matchAll(/LEZIONE:\s*([^|\n]+)\|\s*([^\n]+)/g)].map((m) => ({
-        kind: 'gotcha', title: m[1].trim(), body: m[2].trim(), tags: ['test']
-      }))
+      // "LEZIONE: titolo | corpo | rif: a, b, c": i riferimenti facoltativi si smistano a occhio —
+      // con "/" o un'estensione → file; esadecimale di 7+ cifre → commit; il resto → simbolo.
+      const memories = [...task.input.matchAll(/LEZIONE:\s*([^|\n]+)\|\s*([^|\n]+)(?:\|\s*rif:\s*([^\n]+))?/g)].map((m) => {
+        const refs = (m[3] ?? '').split(',').map((r) => r.trim()).filter(Boolean)
+        const isCommit = (r: string) => /^[0-9a-f]{7,40}$/.test(r)
+        const isFile = (r: string) => !isCommit(r) && (r.includes('/') || /\.\w{1,5}$/.test(r))
+        return {
+          kind: 'gotcha', title: m[1].trim(), body: m[2].trim(), tags: ['test'],
+          files: refs.filter(isFile), commits: refs.filter(isCommit), symbols: refs.filter((r) => !isFile(r) && !isCommit(r))
+        }
+      })
       return task.schema.parse({ memories })
     }
     if (task.name === 'consolidate') {
