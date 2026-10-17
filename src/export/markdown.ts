@@ -1,5 +1,13 @@
-// Export Markdown in sola lettura (DESIGN §12): una cartella consultabile a mano (es. con
-// Obsidian) e utile per il debug. Viene rigenerata dalla vista: le modifiche manuali si perdono.
+/**
+ * @file Export Markdown in sola lettura del sapere del team (DESIGN §12).
+ *
+ * Scopo: poter sfogliare i ricordi a mano (con un editor o con Obsidian) e fare debug.
+ * La cartella viene RIGENERATA dalla vista a ogni aggiornamento: le modifiche manuali ai file
+ * vanno perse. Per cambiare un ricordo si passa sempre da Micelio.
+ *
+ * Struttura: <export>/team/<kind>/<slug-del-titolo>-<8 caratteri dell'id>.md
+ * Il pezzo di id nel nome evita collisioni tra ricordi con lo stesso titolo.
+ */
 import fs from 'node:fs'
 import path from 'node:path'
 import type { MemberRecord, MemoryRecord } from '../core/model'
@@ -10,13 +18,21 @@ Questa cartella è generata automaticamente dal nodo Micelio a partire dal saper
 **Non modificare i file:** vengono sovrascritti a ogni aggiornamento.
 `
 
+/**
+ * Converte un titolo in un nome di file sicuro su tutti i sistemi operativi:
+ * senza accenti, minuscolo, solo [a-z0-9-], massimo 60 caratteri.
+ */
 export function slugify (s: string): string {
   return s
-    .normalize('NFKD').replace(/[̀-ͯ]/g, '')
+    .normalize('NFKD').replace(/[̀-ͯ]/g, '') // separa e rimuove gli accenti
     .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
     .slice(0, 60) || 'ricordo'
 }
 
+/**
+ * Rende un ricordo come Markdown con frontmatter YAML (leggibile da Obsidian e simili).
+ * I valori testuali passano da JSON.stringify per essere YAML validi anche con ":" o virgolette.
+ */
 export function renderMemory (m: MemoryRecord, authorName: string | null): string {
   const fm = [
     '---',
@@ -31,7 +47,12 @@ export function renderMemory (m: MemoryRecord, authorName: string | null): strin
   return `${fm}\n\n# ${m.title}\n\n${m.body}\n`
 }
 
-/** Riscrive l'export: un file per ricordo in team/<kind>/, rimuovendo quelli non più presenti. */
+/**
+ * Riscrive l'export: un file per ricordo e rimozione di quelli non più presenti.
+ *
+ * Scrive un file solo se il contenuto è cambiato, così gli strumenti che osservano la cartella
+ * (Obsidian, sincronizzatori) non vedono modifiche inutili a ogni aggiornamento.
+ */
 export function writeExport (dir: string, memories: MemoryRecord[], members: MemberRecord[]): void {
   const teamDir = path.join(dir, 'team')
   fs.mkdirSync(teamDir, { recursive: true })
@@ -47,6 +68,8 @@ export function writeExport (dir: string, memories: MemoryRecord[], members: Mem
     if (!fs.existsSync(file) || fs.readFileSync(file, 'utf8') !== content) fs.writeFileSync(file, content)
   }
 
+  // Pulizia: elimina i file che non corrispondono più a un ricordo (es. dopo una redazione,
+  // in futuro, o se cambia lo slug di un titolo).
   for (const kind of fs.readdirSync(teamDir)) {
     const kindDir = path.join(teamDir, kind)
     if (!fs.statSync(kindDir).isDirectory()) continue

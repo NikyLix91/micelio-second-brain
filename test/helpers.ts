@@ -3,6 +3,8 @@ import os from 'node:os'
 import path from 'node:path'
 import createTestnet from 'hyperdht/testnet'
 import { nodePaths } from '../src/core/paths'
+import { FakeAdapter } from '../src/llm/fake'
+import type { ExplicitOutcome } from '../src/ingest/pipeline'
 import { MicelioNode } from '../src/node/micelio-node'
 
 export function tmpHome (label: string): string {
@@ -20,6 +22,8 @@ export function makeNode (label: string, bootstrap: { host: string, port: number
   const node = new MicelioNode(nodePaths(home), {
     bootstrap,
     materializeDelayMs: 50,
+    // LLM finto e deterministico: i test non consumano l'abbonamento e non dipendono dalla rete.
+    llm: new FakeAdapter(),
     log: verbose ? (m) => console.log(`[${label}] ${m}`) : undefined
   })
   return { node, home }
@@ -34,4 +38,13 @@ export async function eventually (fn: () => Promise<boolean> | boolean, nodes: M
     await new Promise((r) => setTimeout(r, 200))
   }
   throw new Error('condizione non raggiunta entro il timeout')
+}
+
+/**
+ * Verifica che un salvataggio esplicito sia stato pubblicato nel team e ne restituisce id e
+ * flag di duplicato. Se è finito in inbox o in privato il test fallisce con il motivo.
+ */
+export function published (r: ExplicitOutcome): { id: string, duplicate: boolean } {
+  if (r.outcome !== 'team') throw new Error(`atteso "team", ottenuto "${r.outcome}": ${'reason' in r ? r.reason : ''}`)
+  return { id: r.id, duplicate: r.duplicate }
 }

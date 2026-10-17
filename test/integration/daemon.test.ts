@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { nodePaths } from '../../src/core/paths'
 import { loadConfig } from '../../src/node/config'
 import { startDaemon } from '../../src/daemon/main'
+import { writeTranscript } from '../fixtures/transcript'
 import { localDht, tmpHome } from '../helpers'
 
 describe('daemon', () => {
@@ -27,6 +28,7 @@ describe('daemon', () => {
 
   const start = async () => {
     process.env.MICELIO_PORT = '0' // porta libera scelta dal sistema
+    process.env.MICELIO_LLM_ADAPTER = 'fake' // niente chiamate reali a Claude nei test
     process.env.MICELIO_DHT_BOOTSTRAP = dht.bootstrap.map((b) => `${b.host}:${b.port}`).join(',')
     app = await startDaemon(paths)
     const addr = app.getHttpServer().address() as import('node:net').AddressInfo
@@ -44,6 +46,7 @@ describe('daemon', () => {
     await dht?.destroy()
     delete process.env.MICELIO_PORT
     delete process.env.MICELIO_DHT_BOOTSTRAP
+    delete process.env.MICELIO_LLM_ADAPTER
   })
 
   it('health è pubblico, il resto richiede il token', async () => {
@@ -76,11 +79,11 @@ describe('daemon', () => {
       requestInit: { headers: { authorization: `Bearer ${token}` } }
     }))
     const { tools } = await client.listTools()
-    expect(tools.map((t) => t.name).sort()).toEqual(['get', 'recall', 'remember'])
+    expect(tools.map((t) => t.name).sort()).toEqual(['get', 'inbox_decide', 'inbox_review', 'recall', 'remember'])
     expect(client.getInstructions()).toMatch(/memoria condivisa/)
 
     const saved = await client.callTool({ name: 'remember', arguments: { title: 'Drizzle come ORM standard', body: 'Niente motore binario.', kind: 'decision', tags: ['orm'] } })
-    expect((saved.content as any)[0].text).toMatch(/Salvato/)
+    expect((saved.content as any)[0].text).toMatch(/Pubblicato/)
     const again = await client.callTool({ name: 'remember', arguments: { title: 'Drizzle come ORM standard', body: 'Niente motore binario.', kind: 'decision' } })
     expect((again.content as any)[0].text).toMatch(/Già presente/)
 
@@ -93,12 +96,44 @@ describe('daemon', () => {
     await client.close()
   })
 
+  it('ingestione di una sessione: solo nelle cartelle opt-in, poi ricercabile', async () => {
+    const project = tmpHome('progetto')
+    const transcriptPath = writeTranscript(project, 'sess-1', [
+      { user: 'La build Angular va in out of memory sugli agent di Azure DevOps. '.repeat(8) },
+      { assistant: 'LEZIONE: Heap Node basso sugli agent Azure | Impostare NODE_OPTIONS=--max-old-space-size=6144.' }
+    ])
+    const body = { session_id: 'sess-1', transcript_path: transcriptPath, cwd: project }
+
+    // Cartella non abilitata: la sessione viene ignorata (D7)
+    const ignored = await api('POST', '/api/ingest/session', body)
+    expect(ignored.data).toMatchObject({ queued: false })
+
+    expect((await api('POST', '/api/watch', { path: project })).data).toContain(project)
+    expect((await api('POST', '/api/ingest/session', body)).data).toMatchObject({ queued: true })
+    expect((await api('POST', '/api/ingest/run')).data).toEqual({ processed: true })
+
+    const hits = await api('GET', '/api/memories/search?q=heap%20node%20azure')
+    expect(hits.data[0].title).toBe('Heap Node basso sugli agent Azure')
+    const status = await api('GET', '/api/ingest/status')
+    expect(status.data).toMatchObject({ llm: { adapter: 'fake' }, jobs: { done: 1 }, inbox: 0 })
+    await api('DELETE', '/api/watch', { path: project })
+  })
+
+  it('inbox via API: un caso dubbio si approva con correzioni', async () => {
+    const r = await api('POST', '/api/memories', { title: 'Proxy aziendale [incerto]', body: 'Serve HTTPS_PROXY nella pipeline.' })
+    expect(r.data.outcome).toBe('inbox')
+    const ok = await api('POST', `/api/inbox/${r.data.inboxId}/approve`, { title: 'Proxy aziendale in pipeline' })
+    expect(ok.data.memory.title).toBe('Proxy aziendale in pipeline')
+    expect((await api('GET', '/api/inbox')).data).toEqual([])
+    expect((await api('POST', '/api/inbox/inesistente/reject')).status).toBe(400)
+  })
+
   it('dopo un riavvio il nodo ritrova team e ricordi', async () => {
     await app.close()
     await start()
     const s = await api('GET', '/api/status')
     expect(s.data.team.name).toBe('Team Test')
-    expect(s.data.memories).toBe(2)
+    expect(s.data.memories).toBe(4) // 1 API + 1 MCP + 1 sessione + 1 inbox approvato
     expect((await api('GET', '/api/memories/search?q=drizzle')).data).toHaveLength(1)
   })
 })

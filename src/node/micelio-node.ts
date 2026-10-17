@@ -1,39 +1,102 @@
-// Nodo Micelio: orchestra rete (TeamNode), indice di ricerca ed export. Non dipende da NestJS:
-// il daemon lo espone via HTTP/MCP, i test lo usano direttamente.
+/**
+ * @file Nodo Micelio: l'orchestratore di tutto ciò che vive su una macchina.
+ *
+ * Mette insieme:
+ * - `TeamNode`        rete P2P e log del team (src/net);
+ * - `MemoryIndex`     ricerca locale, derivata dalla vista (src/store/memory-index);
+ * - `PrivateStore`    archivio privato: inbox, decisioni, coda, budget (src/store/private-store);
+ * - `IngestPipeline`  filtro + classificazione + distillazione (src/ingest);
+ * - export Markdown   (src/export).
+ *
+ * Non dipende da NestJS né da HTTP: il daemon lo espone via API e MCP, i test lo usano
+ * direttamente. Ogni operazione "utente" (CLI, API, MCP, UI futura) passa da qui.
+ *
+ * Errori: le condizioni causate dall'utente (nodo non configurato, permessi, input non valido)
+ * sono `UserError` e diventano HTTP 400 con un messaggio leggibile; il resto sono bug (500).
+ */
 import fs from 'node:fs'
+import path from 'node:path'
 import { MemoryInput, memoryId, type MemoryData } from '../core/events'
 import type { InviteRecord, MemberRecord, NodeStatus, RecallHit } from '../core/model'
 import type { NodePaths } from '../core/paths'
 import { writeExport } from '../export/markdown'
+import { type ExplicitOutcome, IngestPipeline, InboxNotFoundError } from '../ingest/pipeline'
+import { ClaudeCliAdapter } from '../llm/claude-cli'
+import { FakeAdapter } from '../llm/fake'
+import { LlmRunner } from '../llm/runner'
+import type { LlmAdapter } from '../llm/types'
 import { TeamNode } from '../net/team-node'
+import { mergeRules } from '../privacy/filter'
 import { MemoryIndex } from '../store/memory-index'
-import { loadState, saveState } from './config'
+import { type Decision, type InboxItem, PrivateStore } from '../store/private-store'
+import { type Config, isInsideWatched, loadConfig, loadState, saveState, updateConfig } from './config'
 
 export interface MicelioNodeOptions {
+  /** Nodi bootstrap DHT (test o rete privata); assente = DHT pubblica. */
   bootstrap?: { host: string, port: number }[]
   log?: (msg: string) => void
-  /** Ritardo di accorpamento degli aggiornamenti della vista prima di reindicizzare. */
+  /** Ritardo con cui si accorpano gli aggiornamenti della vista prima di reindicizzare. */
   materializeDelayMs?: number
+  /**
+   * Adapter LLM da usare al posto di quello configurato (test). `null` = nessun LLM.
+   * Se omesso si usa `llm.adapter` di config.json.
+   */
+  llm?: LlmAdapter | null
 }
 
+/** Errore causato dall'utente o dallo stato del nodo: messaggio pensato per essere mostrato. */
 export class UserError extends Error {}
+
+/** Stato dell'ingestione, per `micelio ingest status` e la futura Dashboard. */
+export interface IngestStatus {
+  llm: { adapter: string, available: boolean, budget: { used: number, limit: number } } | null
+  jobs: Record<string, number>
+  inbox: number
+  watched: string[]
+}
 
 export class MicelioNode {
   private team: TeamNode | null = null
   private nodeName: string | null = null
   private readonly index: MemoryIndex
+  private readonly privateStore: PrivateStore
+  private readonly pipeline: IngestPipeline
+  private readonly llm: LlmRunner | null
+  private config: Config
+  /** Timer di accorpamento degli aggiornamenti della vista (vedi scheduleMaterialize). */
   private timer: NodeJS.Timeout | null = null
+  /** Catena delle materializzazioni: mai due ricostruzioni dell'indice in parallelo. */
   private materializing: Promise<void> = Promise.resolve()
   private readonly log: (msg: string) => void
 
   constructor (private readonly paths: NodePaths, private readonly opts: MicelioNodeOptions = {}) {
     this.log = opts.log ?? (() => {})
     fs.mkdirSync(paths.home, { recursive: true })
+    this.config = loadConfig(paths)
     this.index = new MemoryIndex(paths.index)
+    this.privateStore = new PrivateStore(paths.private)
+
+    // Scelta dell'adapter: override dei test > configurazione.
+    const adapter = opts.llm !== undefined ? opts.llm : createAdapter(this.config)
+    this.llm = adapter ? new LlmRunner(adapter, this.privateStore, { dailyBudget: this.config.llm.dailyBudget, log: this.log }) : null
+
+    this.pipeline = new IngestPipeline({
+      store: this.privateStore,
+      llm: this.llm,
+      models: { classify: this.config.llm.classifyModel, distill: this.config.llm.distillModel },
+      publish: (m) => this.publish(m),
+      // Regole e lingua si leggono dalla vista a ogni uso: un admin può cambiarle in qualunque momento.
+      rules: async () => mergeRules(await this.team?.config('filter.blockKeywords')),
+      language: async () => (await this.team?.config<string>('memory.language')) ?? 'it',
+      log: this.log
+    })
   }
 
-  /** Avvia il nodo: se il team è già configurato si ricollega alla rete. */
+  // ═══════════════════════════════ Ciclo di vita ═══════════════════════════════
+
+  /** Avvia il nodo: se il team è già configurato si ricollega alla rete. Avvia il worker di ingestione. */
   async start (): Promise<void> {
+    this.pipeline.start()
     const state = loadState(this.paths)
     if (!state) {
       this.log('nodo non ancora configurato: usa `micelio init` o `micelio join`')
@@ -46,16 +109,20 @@ export class MicelioNode {
     await this.materialize()
   }
 
+  /** Ferma tutto in ordine: worker, indicizzazione in corso, rete, database. */
   async stop (): Promise<void> {
+    await this.pipeline.stop()
     if (this.timer) clearTimeout(this.timer)
     await this.materializing.catch(() => {})
     await this.team?.close()
     this.team = null
     this.index.close()
+    this.privateStore.close()
   }
 
-  // ---------- Team ----------
+  // ═══════════════════════════════════ Team ════════════════════════════════════
 
+  /** Crea un nuovo team con questo nodo come fondatore. */
   async init (teamName: string, nodeName: string): Promise<NodeStatus> {
     this.assertNotConfigured()
     const team = this.newTeamNode()
@@ -63,7 +130,7 @@ export class MicelioNode {
       const secrets = await team.create(teamName, nodeName)
       saveState(this.paths, { nodeName, ...secrets })
     } catch (err) {
-      await team.close()
+      await team.close() // non lasciare swarm e file aperti se qualcosa va storto
       throw err
     }
     this.nodeName = nodeName
@@ -72,6 +139,7 @@ export class MicelioNode {
     return this.status()
   }
 
+  /** Entra in un team esistente con un codice d'invito. */
   async join (code: string, nodeName: string): Promise<NodeStatus> {
     this.assertNotConfigured()
     const team = this.newTeamNode()
@@ -88,18 +156,22 @@ export class MicelioNode {
     return this.status()
   }
 
+  /** Crea un invito (qualunque membro). Vedi TeamNode.createInvite per `replicated`. */
   async invite (): Promise<{ code: string, expires: number, replicated: boolean }> {
     return this.requireTeam().createInvite()
   }
 
+  /** Inviti non ancora usati. */
   async invites (): Promise<InviteRecord[]> {
     return this.requireTeam().invites()
   }
 
+  /** Tutti i membri, compresi gli espulsi. */
   async members (): Promise<MemberRecord[]> {
     return this.requireTeam().members()
   }
 
+  /** Espelle un membro (solo admin). Un nodo non può espellere se stesso. */
   async removeMember (ref: string): Promise<MemberRecord> {
     await this.requireAdmin()
     const target = await this.resolveMember(ref)
@@ -109,6 +181,7 @@ export class MicelioNode {
     return target
   }
 
+  /** Promuove un membro ad admin e indexer (solo admin). */
   async promoteMember (ref: string): Promise<MemberRecord> {
     await this.requireAdmin()
     const target = await this.resolveMember(ref)
@@ -117,14 +190,47 @@ export class MicelioNode {
     return target
   }
 
-  // ---------- Ricordi ----------
+  /**
+   * Imposta una configurazione condivisa del team (solo admin).
+   * Chiavi note: `memory.language` (es. "it", "en"), `filter.blockKeywords` (array di stringhe).
+   */
+  async setTeamConfig (key: string, value: unknown): Promise<void> {
+    await this.requireAdmin()
+    await this.requireTeam().append({ type: 'team.config', key, value })
+    await this.sync()
+  }
 
-  async remember (input: MemoryInput): Promise<{ id: string, duplicate: boolean }> {
-    const team = this.requireTeam()
+  // ═════════════════════════════════ Ricordi ═══════════════════════════════════
+
+  /**
+   * Salvataggio ESPLICITO (CLI, API, MCP). Passa da filtro e classificazione (decisione D6):
+   * l'esito può essere "team", "inbox" o "private".
+   */
+  async remember (input: MemoryInput): Promise<ExplicitOutcome> {
+    this.requireTeam()
     const parsed = MemoryInput.safeParse(input)
     if (!parsed.success) throw new UserError(parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '))
-    const memory: MemoryData = parsed.data
+    return this.pipeline.ingestExplicit(parsed.data)
+  }
+
+  /** Ricerca full-text nella memoria del team (indice locale). */
+  recall (query: string, limit = 5): RecallHit[] {
+    return this.index.search(query, limit)
+  }
+
+  /** Un ricordo per id (anche abbreviato). */
+  get (id: string): RecallHit | null {
+    return this.index.get(id)
+  }
+
+  /**
+   * Pubblica un ricordo nel team SENZA filtri: usato dalla pipeline dopo che ha deciso.
+   * Non esposto all'esterno: tutto ciò che arriva da fuori passa da `remember`.
+   */
+  private async publish (memory: MemoryData): Promise<{ id: string, duplicate: boolean }> {
+    const team = this.requireTeam()
     const id = memoryId(memory)
+    // Controllo locale dei duplicati: evita di scrivere nel log un evento che apply ignorerebbe.
     const duplicate = this.index.get(id)?.id === id
     if (!duplicate) {
       await team.append({ type: 'memory.add', memory })
@@ -133,15 +239,91 @@ export class MicelioNode {
     return { id, duplicate }
   }
 
-  recall (query: string, limit = 5): RecallHit[] {
-    return this.index.search(query, limit)
+  // ═══════════════════════════ Ingestione automatica ═══════════════════════════
+
+  /**
+   * Riceve la notifica di fine sessione di Claude Code (dall'hook SessionEnd).
+   * Accoda la sessione SOLO se la cartella di lavoro è opt-in (decisione D7).
+   * @returns `queued: false` con il motivo se la sessione è stata ignorata
+   */
+  ingestSession (payload: { sessionId: string, transcriptPath: string, cwd: string }): { queued: boolean, reason?: string, jobId?: number } {
+    if (!this.team) return { queued: false, reason: 'nodo non configurato' }
+    if (!isInsideWatched(payload.cwd, this.config.watch.sessions)) return { queued: false, reason: 'cartella non abilitata (micelio watch add)' }
+    const jobId = this.pipeline.enqueueSession(payload)
+    this.log(`sessione ${payload.sessionId.slice(0, 8)} accodata per l'ingestione`)
+    return { queued: true, jobId }
   }
 
-  get (id: string): RecallHit | null {
-    return this.index.get(id)
+  /** Cartelle opt-in per la raccolta dalle sessioni. */
+  watched (): string[] {
+    return this.config.watch.sessions
   }
 
-  // ---------- Stato ----------
+  /** Abilita la raccolta automatica per una cartella (e sottocartelle). */
+  watchAdd (dir: string): string[] {
+    const abs = path.resolve(dir)
+    if (!fs.existsSync(abs) || !fs.statSync(abs).isDirectory()) throw new UserError(`Cartella inesistente: ${abs}`)
+    this.config = updateConfig(this.paths, (c) => {
+      if (!isInsideWatched(abs, c.watch.sessions)) c.watch.sessions.push(abs)
+    })
+    return this.config.watch.sessions
+  }
+
+  /** Disabilita la raccolta automatica per una cartella. */
+  watchRemove (dir: string): string[] {
+    const abs = path.resolve(dir)
+    this.config = updateConfig(this.paths, (c) => {
+      c.watch.sessions = c.watch.sessions.filter((w) => path.resolve(w) !== abs)
+    })
+    return this.config.watch.sessions
+  }
+
+  /** Stato dell'ingestione: LLM, budget, coda, inbox. */
+  async ingestStatus (): Promise<IngestStatus> {
+    return {
+      llm: this.llm ? { adapter: this.llm.adapter.name, available: await this.llm.available(), budget: this.llm.budget } : null,
+      jobs: this.privateStore.jobStats(),
+      inbox: this.privateStore.listInbox().length,
+      watched: this.config.watch.sessions
+    }
+  }
+
+  /** Elabora subito un lavoro in coda (test e comando `micelio ingest run`). */
+  processQueue (): Promise<boolean> {
+    return this.pipeline.tick()
+  }
+
+  // ═══════════════════════════════ Inbox e privato ═════════════════════════════
+
+  inbox (): InboxItem[] {
+    return this.pipeline.listInbox()
+  }
+
+  /** Approva un elemento dell'inbox (con eventuali modifiche) e lo pubblica nel team. */
+  async approve (id: string, overrides: Partial<Pick<MemoryData, 'title' | 'body' | 'kind' | 'tags'>> = {}): Promise<{ id: string, duplicate: boolean, memory: MemoryData }> {
+    this.requireTeam()
+    try {
+      return await this.pipeline.approve(id, overrides)
+    } catch (err) {
+      throw err instanceof InboxNotFoundError ? new UserError(err.message) : err
+    }
+  }
+
+  /** Rifiuta un elemento dell'inbox. */
+  reject (id: string): void {
+    try {
+      this.pipeline.reject(id)
+    } catch (err) {
+      throw err instanceof InboxNotFoundError ? new UserError(err.message) : err
+    }
+  }
+
+  /** Registro di ciò che NON è andato al team (bloccato, privato, scartato, rifiutato, scaduto). */
+  decisions (limit = 50): Decision[] {
+    return this.privateStore.listDecisions(limit)
+  }
+
+  // ═══════════════════════════════════ Stato ═══════════════════════════════════
 
   async status (): Promise<NodeStatus> {
     const team = this.team
@@ -164,23 +346,28 @@ export class MicelioNode {
     }
   }
 
-  /** Allinea la vista e l'indice locali con quanto già replicato. */
+  /** Scarica ciò che è disponibile dai peer e riallinea indice ed export. */
   async sync (): Promise<void> {
     await this.requireTeam().update()
     await this.materialize()
   }
 
-  // ---------- Interni ----------
+  // ═════════════════════════════════ Interni ═══════════════════════════════════
 
   private newTeamNode (): TeamNode {
     return new TeamNode({ storeDir: this.paths.store, bootstrap: this.opts.bootstrap, log: this.log })
   }
 
+  /** Collega il TeamNode al nodo: ogni aggiornamento della vista programma una reindicizzazione. */
   private attach (team: TeamNode): void {
     this.team = team
     team.on('update', () => this.scheduleMaterialize())
   }
 
+  /**
+   * Accorpa gli aggiornamenti: durante una sincronizzazione Autobase emette molti 'update' di
+   * fila, ma basta reindicizzare una volta alla fine della raffica.
+   */
   private scheduleMaterialize (): void {
     if (this.timer) return
     this.timer = setTimeout(() => {
@@ -190,8 +377,8 @@ export class MicelioNode {
   }
 
   /**
-   * Ricostruisce indice ed export dalla vista. Per l'MVP è una ricostruzione completa: con
-   * migliaia di ricordi costa decine di millisecondi. L'aggiornamento incrementale è in Fase 4.
+   * Ricostruisce indice ed export dalla vista. Le chiamate sono serializzate sulla catena
+   * `materializing`, così due ricostruzioni non si sovrappongono mai.
    */
   private materialize (): Promise<void> {
     this.materializing = this.materializing.catch(() => {}).then(async () => {
@@ -211,8 +398,9 @@ export class MicelioNode {
 
   /**
    * Le azioni da admin vengono rifiutate già qui, oltre che in apply. Motivo: apply valuta i
-   * permessi nell'ordine linearizzato, e un'espulsione emessa da un membro CONCORRENTEMENTE
-   * alla sua promozione potrebbe essere ordinata dopo la promozione e quindi accettata.
+   * permessi nell'ordine linearizzato, e un'azione emessa da un membro CONCORRENTEMENTE alla sua
+   * promozione potrebbe essere ordinata dopo la promozione e quindi accettata (DESIGN §9).
+   * Prima di decidere sincronizziamo, per avere il ruolo più aggiornato possibile.
    */
   private async requireAdmin (): Promise<void> {
     await this.sync()
@@ -223,7 +411,10 @@ export class MicelioNode {
     if (this.team || loadState(this.paths)) throw new UserError('Questo nodo appartiene già a un team')
   }
 
-  /** Trova un membro per chiave (anche abbreviata, min 6 caratteri) o per nome esatto. */
+  /**
+   * Trova un membro attivo per nome esatto o per chiave (anche abbreviata, almeno 6 caratteri).
+   * @throws UserError se nessuno o più di uno corrisponde
+   */
   private async resolveMember (ref: string): Promise<MemberRecord> {
     const all = (await this.requireTeam().members()).filter((m) => !m.removed)
     const byName = all.filter((m) => m.name === ref)
@@ -232,5 +423,14 @@ export class MicelioNode {
     if (found.length === 0) throw new UserError(`Nessun membro attivo corrisponde a "${ref}"`)
     if (found.length > 1) throw new UserError(`"${ref}" è ambiguo: usa una parte più lunga della chiave`)
     return found[0]
+  }
+}
+
+/** Crea l'adapter LLM indicato in configurazione; null se "none". */
+function createAdapter (config: Config): LlmAdapter | null {
+  switch (config.llm.adapter) {
+    case 'claude': return new ClaudeCliAdapter(config.llm.command)
+    case 'fake': return new FakeAdapter()
+    default: return null
   }
 }

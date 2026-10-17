@@ -1,10 +1,22 @@
-// Nodo di rete di un team: Autobase (log multi-writer + vista), Hyperswarm (discovery su DHT),
-// blind-pairing (ingresso di nuovi membri). È l'unico modulo che parla con le librerie Holepunch.
-//
-// Lezioni dallo spike A (DESIGN §5):
-// - la replica deve agganciare anche il protocollo "wakeup" (base.replicate / wakeup.addStream),
-//   altrimenti i core dei nuovi writer non vengono scoperti;
-// - la discovery va rinfrescata spesso quando si è isolati.
+/**
+ * @file Nodo di rete di un team: l'UNICO modulo che parla con le librerie Holepunch.
+ *
+ * Mette insieme tre pezzi:
+ * - **Autobase**: log multi-writer. Ogni membro scrive sul proprio feed; Autobase li ordina e
+ *   calcola la vista tramite `applyNodes` (src/net/apply.ts).
+ * - **Hyperswarm**: trova gli altri membri su internet tramite una DHT (nessun server) e apre
+ *   connessioni cifrate (Noise) attraverso i NAT.
+ * - **blind-pairing**: protocollo d'ingresso. Il nuovo nodo presenta un codice d'invito, un
+ *   membro online lo verifica e gli consegna, su canale cifrato, le chiavi del team (D2).
+ *
+ * Lezioni dallo spike A (DESIGN §5) applicate qui:
+ * - la replica deve agganciare anche il protocollo "wakeup", che segnala i core dei writer
+ *   attivi; senza, i nuovi membri non vengono mai scoperti;
+ * - Hyperswarm rifà la ricerca dei peer di rado: va rinfrescata spesso quando si è isolati.
+ *
+ * Il resto del codice usa solo i metodi tipizzati di questa classe: le librerie Holepunch non
+ * hanno tipi TypeScript (sono `any`, vedi src/types/holepunch.d.ts) e la loro API evolve.
+ */
 import { EventEmitter } from 'node:events'
 import Autobase from 'autobase'
 import Corestore from 'corestore'
@@ -18,30 +30,49 @@ import { envelope, type EventPayload } from '../core/events'
 import type { InviteRecord, MemberRecord, MemoryRecord, TeamRecord } from '../core/model'
 import { KEYS, RANGES, applyNodes, openView } from './apply'
 
+/**
+ * Le due chiavi che identificano un team. Vanno salvate (state.json) e protette:
+ * chi ha `encryptionKey` può leggere tutto il sapere del team.
+ */
 export interface TeamSecrets {
+  /** Chiave pubblica dell'Autobase (identifica il team). */
   baseKey: string
+  /** Chiave simmetrica con cui sono cifrati i blocchi di tutti i feed. */
   encryptionKey: string
 }
 
 export interface TeamNodeOptions {
+  /** Cartella del Corestore (i feed replicati). */
   storeDir: string
-  /** Nodi bootstrap della DHT (test/rete privata). Vuoto = DHT pubblica. */
+  /** Nodi bootstrap della DHT (test o rete privata). Vuoto = DHT pubblica di Holepunch. */
   bootstrap?: { host: string, port: number }[]
+  /** Funzione di log; di default silenziosa. */
   log?: (msg: string) => void
 }
 
 const hex = (b: Uint8Array) => b4a.toString(b, 'hex') as string
 const buf = (h: string) => b4a.from(h, 'hex')
 
+/** Validità di un invito. */
 const INVITE_TTL_MS = 24 * 60 * 60 * 1000
+/** Ogni quanto rinfrescare la discovery quando non abbiamo nessun peer. */
 const REFRESH_ISOLATED_MS = 5_000
+/** Ogni quanto rinfrescarla comunque (per scoprire peer nuovi anche se ne abbiamo già). */
 const REFRESH_NORMAL_MS = 60_000
 
+/**
+ * Un nodo connesso a un team. Ciclo di vita: `create` | `open` | `join` → uso → `close`.
+ *
+ * Eventi emessi:
+ * - `update`: la vista è cambiata (nuovi blocchi applicati);
+ * - `peers` (n): il numero di connessioni è cambiato.
+ */
 export class TeamNode extends EventEmitter {
   private store: any
   private swarm: any = null
   private wakeup: any = null
   private pairing: any = null
+  /** Registrazione come "membro" di blind-pairing: risponde alle richieste d'ingresso. */
   private member: any = null
   private discovery: any = null
   private refreshTimer: NodeJS.Timeout | null = null
@@ -54,31 +85,51 @@ export class TeamNode extends EventEmitter {
     this.store = new Corestore(opts.storeDir)
   }
 
-  // ---------- Ciclo di vita ----------
+  // ═══════════════════════════════ Ciclo di vita ═══════════════════════════════
 
-  /** Crea un nuovo team: questo nodo ne diventa fondatore, admin e indexer. */
+  /**
+   * Crea un nuovo team. Questo nodo diventa il primo writer, quindi fondatore, admin e indexer.
+   * @param teamName nome leggibile del team
+   * @param nodeName nome di questo nodo
+   * @returns le chiavi del team, da salvare in state.json
+   */
   async create (teamName: string, nodeName: string): Promise<TeamSecrets> {
+    // La chiave di cifratura nasce qui e lascerà questo nodo solo via pairing cifrato.
     const encryptionKey = crypto.randomBytes(32)
     await this.startNetwork()
+    // bootstrap = null: Autobase crea una base nuova il cui primo writer è il nostro feed locale.
     await this.openBase(null, encryptionKey)
     await this.append({ type: 'team.init', name: teamName, founderName: nodeName })
     await this.base.update()
     return this.secrets()
   }
 
-  /** Riapre un team già configurato su questo nodo. */
+  /** Riapre un team già configurato (avvio del daemon). */
   async open (secrets: TeamSecrets): Promise<void> {
     await this.startNetwork()
     await this.openBase(buf(secrets.baseKey), buf(secrets.encryptionKey))
   }
 
   /**
-   * Entra in un team con un codice d'invito. Un membro online qualsiasi verifica l'invito,
-   * ci aggiunge come writer e ci consegna chiave del team e chiave di cifratura (decisione D2).
+   * Entra in un team con un codice d'invito (decisione D2).
+   *
+   * Sequenza:
+   * 1. calcoliamo la chiave del NOSTRO futuro feed (serve al membro per aggiungerci come writer);
+   * 2. ci presentiamo come "candidato" blind-pairing: la richiesta viaggia cifrata con il
+   *    segreto dell'invito, quindi solo chi conosce l'invito (i membri) può leggerla;
+   * 3. un membro online qualsiasi verifica l'invito, pubblica `member.add` e ci "conferma"
+   *    consegnandoci chiave dell'Autobase e chiave di cifratura;
+   * 4. apriamo la base e aspettiamo che il nostro permesso di scrittura sia replicato.
+   *
+   * @param inviteCode codice z32 prodotto da `createInvite`
+   * @param nodeName   nome di questo nodo, visibile agli altri
+   * @param timeoutMs  quanto aspettare un membro online prima di arrendersi
    */
   async join (inviteCode: string, nodeName: string, timeoutMs = 120_000): Promise<TeamSecrets> {
     await this.startNetwork()
     await this.store.ready()
+    // Il "local core" è il feed su cui scriveremo. Ne apriamo solo la chiave e lo richiudiamo:
+    // Autobase lo riaprirà quando creeremo la base.
     const local = Autobase.getLocalCore(this.store)
     await local.ready()
     const writerKey = hex(local.key)
@@ -91,11 +142,12 @@ export class TeamNode extends EventEmitter {
       }, timeoutMs)
       const candidate = this.pairing.addCandidate({
         invite: z32.decode(inviteCode.trim()),
+        // userData arriva al membro che accoglie: gli diciamo chi siamo e quale feed aggiungere.
         userData: b4a.from(JSON.stringify({ key: writerKey, name: nodeName })),
         onadd: (res: any) => {
           clearTimeout(timer)
           candidate.close().catch(() => {})
-          resolve(res)
+          resolve(res) // res.key = chiave Autobase, res.encryptionKey = chiave di cifratura
         }
       })
     })
@@ -105,6 +157,7 @@ export class TeamNode extends EventEmitter {
     return this.secrets()
   }
 
+  /** Chiude tutto in ordine inverso di apertura. Gli errori di chiusura sono ignorati. */
   async close (): Promise<void> {
     if (this.refreshTimer) clearInterval(this.refreshTimer)
     if (this.member) await this.member.close().catch(() => {})
@@ -114,44 +167,63 @@ export class TeamNode extends EventEmitter {
     await this.store.close().catch(() => {})
   }
 
-  // ---------- Rete ----------
+  // ═══════════════════════════════════ Rete ════════════════════════════════════
 
+  /**
+   * Avvia Hyperswarm e il protocollo di pairing. Idempotente.
+   * Separato da `openBase` perché durante `join` la rete serve PRIMA che la base esista.
+   */
   private async startNetwork (): Promise<void> {
     if (this.swarm) return
     await this.store.ready()
     this.wakeup = new Wakeup()
     this.swarm = new Hyperswarm({
+      // Chiave stabile del nodo sulla DHT, conservata nel Corestore.
       keyPair: await this.store.createKeyPair('hyperswarm'),
       ...(this.opts.bootstrap?.length ? { bootstrap: this.opts.bootstrap } : {})
     })
     this.swarm.on('connection', (conn: any, info: any) => {
+      // Un errore su una singola connessione (peer che cade) non deve far crashare il nodo.
       conn.on('error', () => {})
       this.log(`peer connesso ${hex(info.publicKey).slice(0, 8)}`)
+      // Replica di tutti i core del Corestore su questa connessione…
       this.store.replicate(conn)
-      this.wakeup.addStream(conn) // equivalente di base.replicate(), ma valido anche prima che la base esista
+      // …più il protocollo wakeup. Insieme equivalgono a `base.replicate(conn)` (lezione dello
+      // spike A), ma funzionano anche per le connessioni aperte prima che la base esista.
+      this.wakeup.addStream(conn)
       this.emit('peers', this.swarm.connections.size)
       conn.once('close', () => this.emit('peers', this.swarm?.connections.size ?? 0))
     })
+    // BlindPairing si aggancia da solo alle connessioni dello swarm.
     this.pairing = new BlindPairing(this.swarm)
   }
 
+  /**
+   * Apre l'Autobase del team, si annuncia sulla DHT e si registra come "membro" di pairing.
+   * @param key           chiave dell'Autobase; null per crearne una nuova
+   * @param encryptionKey chiave di cifratura dei blocchi
+   */
   private async openBase (key: Uint8Array | null, encryptionKey: Uint8Array): Promise<void> {
     this.base = new Autobase(this.store, key, {
       open: openView,
       apply: applyNodes,
       valueEncoding: 'json',
+      // Ack automatici: aiutano l'ordinamento a convergere quando ci sono fork causali.
       ackInterval: 1000,
       encryptionKey,
+      // Lo stesso protocollo wakeup agganciato alle connessioni in startNetwork.
       wakeup: this.wakeup
     })
     this.base.on('update', () => this.emit('update'))
     this.base.on('error', (err: Error) => this.log(`errore autobase: ${err.message}`))
     await this.base.ready()
 
+    // Il topic DHT è la discoveryKey della base: un hash della chiave, che non la rivela.
     this.discovery = this.swarm.join(this.base.discoveryKey, { server: true, client: true })
     await this.discovery.flushed()
     this.log(`annunciato sul topic del team ${hex(this.base.discoveryKey).slice(0, 8)}`)
 
+    // Refresh della discovery: frequente se isolati, raro altrimenti (spike A).
     let lastRefresh = Date.now()
     this.refreshTimer = setInterval(() => {
       const isolated = this.swarm.connections.size === 0
@@ -160,31 +232,43 @@ export class TeamNode extends EventEmitter {
         this.discovery.refresh({ client: true, server: true }).catch(() => {})
       }
     }, REFRESH_ISOLATED_MS)
-    this.refreshTimer.unref()
+    this.refreshTimer.unref() // il timer non deve tenere vivo il processo da solo
 
-    // Ogni membro risponde alle richieste d'ingresso: chi ha invitato può essere offline.
+    // OGNI membro risponde alle richieste d'ingresso: chi ha invitato può essere offline.
     this.member = this.pairing.addMember({
       discoveryKey: this.base.discoveryKey,
       onadd: (candidate: any) => this.onCandidate(candidate)
     })
   }
 
+  /**
+   * Gestisce una richiesta d'ingresso arrivata via blind-pairing.
+   * Se l'invito non è valido NON rispondiamo affatto: il candidato andrà in timeout, senza
+   * ricevere informazioni su perché è stato rifiutato.
+   */
   private async onCandidate (candidate: any): Promise<void> {
+    // Un nodo non (più) writer non può pubblicare member.add: lasciamo rispondere gli altri.
     if (!this.base.writable) return
     const inviteId = hex(candidate.inviteId)
     const inv = await this.getRecord<InviteRecord>(KEYS.invite(inviteId))
+    // L'invito deve essere nella nostra vista: se chi l'ha creato è andato offline prima di
+    // replicarlo a noi, non possiamo verificarlo (vedi createInvite → `replicated`).
     if (!inv) return
+    // La scadenza si controlla QUI e non in apply: qui possiamo usare l'orologio locale.
     if (inv.expires && inv.expires < Date.now()) {
       this.log(`invito ${inviteId.slice(0, 8)} scaduto: rifiutato`)
       return
     }
+    // "open" decifra la richiesta con la chiave pubblica dell'invito e ne verifica la firma.
     candidate.open(buf(inv.publicKey))
     const { key, name } = JSON.parse(b4a.toString(candidate.userData))
     this.log(`richiesta d'ingresso valida da "${name}": aggiungo il writer`)
     await this.append({ type: 'member.add', key, name, inviteId })
+    // Consegna delle chiavi sul canale cifrato del pairing.
     candidate.confirm({ key: this.base.key, encryptionKey: this.base.encryptionKey })
   }
 
+  /** Attende che questo nodo diventi writer (il member.add che ci riguarda è replicato). */
   private async waitWritable (timeoutMs: number): Promise<void> {
     if (this.base.writable) return
     await new Promise<void>((resolve, reject) => {
@@ -200,16 +284,24 @@ export class TeamNode extends EventEmitter {
     })
   }
 
-  // ---------- Operazioni ----------
+  // ═════════════════════════════════ Operazioni ════════════════════════════════
 
+  /**
+   * Appende un evento al feed locale (verrà replicato a tutti).
+   * @throws se il nodo non è writer (non ancora accettato, o espulso)
+   */
   async append (payload: EventPayload): Promise<void> {
     if (!this.base?.writable) throw new Error('Questo nodo non è (ancora) un writer del team')
     await this.base.append(envelope(payload))
   }
 
   /**
-   * Crea un invito. `replicated` dice se almeno un peer ha già ricevuto l'evento `invite.add`:
-   * solo allora un altro membro può accogliere il nuovo arrivato anche se questo nodo va offline.
+   * Crea un invito monouso valido 24 ore.
+   *
+   * `replicated` indica se almeno un peer ha già ricevuto l'evento `invite.add`. Solo in quel
+   * caso un ALTRO membro può accogliere il nuovo arrivato se questo nodo va offline.
+   *
+   * @param waitMs quanto attendere al massimo la replica dell'invito
    */
   async createInvite (waitMs = 10_000): Promise<{ code: string, expires: number, replicated: boolean }> {
     const expires = Date.now() + INVITE_TTL_MS
@@ -217,10 +309,14 @@ export class TeamNode extends EventEmitter {
     await this.append({ type: 'invite.add', id: hex(id), publicKey: hex(publicKey), expires })
     if (this.member) await this.member.flushed()
     const replicated = await this.waitLocalReplicated(waitMs)
+    // Il codice contiene il seed dell'invito (segreto) e la discoveryKey: NON la chiave di cifratura.
     return { code: z32.encode(invite), expires, replicated }
   }
 
-  /** Attende che almeno un peer abbia tutto il nostro feed locale (best-effort). */
+  /**
+   * Attende che almeno un peer abbia scaricato tutto il nostro feed locale (best-effort).
+   * Usa `remoteContiguousLength`: quanti blocchi contigui il peer dichiara di avere.
+   */
   private async waitLocalReplicated (timeoutMs: number): Promise<boolean> {
     const local = this.base.local
     const t0 = Date.now()
@@ -231,35 +327,43 @@ export class TeamNode extends EventEmitter {
     return false
   }
 
-  async invites (): Promise<InviteRecord[]> {
-    return this.scan<InviteRecord>(RANGES.invites)
-  }
-
+  /** Forza Autobase a scaricare e applicare ciò che è disponibile dai peer. */
   async update (): Promise<void> {
     await this.base.update()
   }
 
-  // ---------- Letture dalla vista ----------
+  // ═════════════════════════════ Letture dalla vista ═══════════════════════════
 
+  /** true quando la base è aperta (dopo create/open/join). */
   get ready (): boolean { return this.base !== null }
   get writable (): boolean { return !!this.base?.writable }
   get isIndexer (): boolean { return !!this.base?.isIndexer }
+  /** Chiave del feed locale (hex): è l'identità di questo nodo nel team. */
   get localKey (): string | null { return this.base ? hex(this.base.local.key) : null }
   get peers (): number { return this.swarm?.connections.size ?? 0 }
 
+  /** Chiavi del team, da salvare in state.json. */
   secrets (): TeamSecrets {
     return { baseKey: hex(this.base.key), encryptionKey: hex(this.base.encryptionKey) }
   }
 
+  /** Legge un record qualsiasi della vista; null se assente. */
   async getRecord<T> (key: string): Promise<T | null> {
     const node = await this.base.view.get(key)
     return node ? node.value as T : null
+  }
+
+  /** Valore di una configurazione di team (`team.config`), o undefined se non impostata. */
+  async config<T = unknown> (key: string): Promise<T | undefined> {
+    const rec = await this.getRecord<{ value: T }>(KEYS.config(key))
+    return rec?.value
   }
 
   async team (): Promise<TeamRecord | null> {
     return this.getRecord<TeamRecord>(KEYS.team)
   }
 
+  /** Tutti i membri, compresi gli espulsi (`removed: true`). */
   async members (): Promise<MemberRecord[]> {
     return this.scan<MemberRecord>(RANGES.members)
   }
@@ -268,6 +372,12 @@ export class TeamNode extends EventEmitter {
     return this.scan<MemoryRecord>(RANGES.memories)
   }
 
+  /** Inviti non ancora usati né annullati. */
+  async invites (): Promise<InviteRecord[]> {
+    return this.scan<InviteRecord>(RANGES.invites)
+  }
+
+  /** Scorre un range di chiavi della vista. */
   private async scan<T> (range: { gt: string, lt: string }): Promise<T[]> {
     const out: T[] = []
     for await (const { value } of this.base.view.createReadStream(range)) out.push(value as T)

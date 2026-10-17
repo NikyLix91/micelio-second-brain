@@ -2,7 +2,7 @@
 // convergenza dei ricordi, ingresso con chi ha invitato offline, permessi admin.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { MicelioNode } from '../../src/node/micelio-node'
-import { eventually, localDht, makeNode } from '../helpers'
+import { eventually, localDht, makeNode, published } from '../helpers'
 
 describe('team multi-nodo', () => {
   let dht: Awaited<ReturnType<typeof localDht>>
@@ -59,9 +59,9 @@ describe('team multi-nodo', () => {
 
   it('lo stesso ricordo scritto da due nodi non si duplica', async () => {
     const m = { title: 'Le migrazioni si eseguono nel job di release', body: 'Mai a mano in produzione.' }
-    const a = await alice.remember(m)
+    const a = published(await alice.remember(m))
     await eventually(() => bob.get(a.id) !== null, [bob])
-    const b = await bob.remember(m)
+    const b = published(await bob.remember(m))
     expect(b.id).toBe(a.id)
     expect(b.duplicate).toBe(true)
   })
