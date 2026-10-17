@@ -146,6 +146,13 @@ Quando chiudi una sessione di Claude Code in una cartella abilitata, l'hook avvi
 - **recupero:** le sessioni finite mentre il daemon era spento vengono recuperate al primo avvio. Anche quelle aperte prima di `micelio setup` vengono raccolte.
 
 Le soglie si cambiano in `config.json`, in `watch.sessionScan`: `intervalMinutes`, `idleMinutes`, `minUserTurns`, `minChars`, `staleHours`, `enabled`.
+**Modifiche al codice:** se il progetto è un repository git, Micelio aggiunge al materiale da distillare un riassunto di cosa è cambiato durante quel pezzo di sessione:
+- i commit, con hash e messaggio;
+- il lavoro non ancora committato;
+- i file nuovi, modificati o eliminati, con le classi, le funzioni e gli endpoint aggiunti o rimossi.
+
+Così nascono ricordi come «Aggiunto `OrderService` in `src/orders` (commit `1a2b3c4d`): centralizza la conferma degli ordini, prima sparsa nei controller». Il codice non viene copiato: passano solo nomi e messaggi, e anche questi attraversano il filtro privacy. Per disattivarlo: `"gitChanges": false` in `watch` dentro `config.json`.
+
 - **Fedeltà alla fonte:** la distillazione riporta solo ciò che è stato detto o dimostrato nella sessione, senza aggiunte.
 - **Sessioni brevi:** quelle che non insegnano nulla non producono ricordi.
 - **Sessioni riprese:** se riprendi una sessione, viene elaborata solo la parte nuova.

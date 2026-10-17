@@ -23,6 +23,12 @@ export interface TranscriptExtract {
   lines: number
   /** Numero di messaggi dell'utente nella parte nuova. */
   userTurns: number
+  /**
+   * Istante (ms) del primo e dell'ultimo messaggio della parte nuova, dai campi `timestamp` delle
+   * righe; null se assenti. Servono a ritrovare in git le modifiche fatte durante il capitolo.
+   */
+  firstAt: number | null
+  lastAt: number | null
 }
 
 /** Limite di testo inviato al LLM: oltre, si tagliano le parti centrali. */
@@ -53,10 +59,15 @@ export function extractTranscript (file: string, fromLine = 0): TranscriptExtrac
   const all = fs.readFileSync(file, 'utf8').split('\n').filter((l) => l.trim())
   const parts: string[] = []
   let userTurns = 0
+  let firstAt: number | null = null
+  let lastAt: number | null = null
 
   for (const raw of all.slice(fromLine)) {
     let row: any
     try { row = JSON.parse(raw) } catch { continue }
+    // Intervallo temporale del capitolo (anche le righe di sotto-agenti contano: è tempo di lavoro)
+    const at = typeof row.timestamp === 'string' ? Date.parse(row.timestamp) : NaN
+    if (!Number.isNaN(at)) { firstAt ??= at; lastAt = at }
     if (row.isSidechain || row.isMeta) continue // sotto-agenti e messaggi di servizio
     const content = row.message?.content
 
@@ -85,5 +96,5 @@ export function extractTranscript (file: string, fromLine = 0): TranscriptExtrac
     // Inizio (il problema) + fine (la soluzione): la parte centrale è spesso tentativi intermedi.
     text = text.slice(0, MAX_CHARS * 0.25) + '\n[… parte centrale omessa …]\n' + text.slice(-MAX_CHARS * 0.75)
   }
-  return { text, lines: all.length, userTurns }
+  return { text, lines: all.length, userTurns, firstAt, lastAt }
 }

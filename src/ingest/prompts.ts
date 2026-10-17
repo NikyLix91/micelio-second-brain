@@ -62,6 +62,12 @@ Dalla sessione estrai da 0 a 5 ricordi atomici di conoscenza riutilizzabile dal 
   decisione presa); ignora ipotesi, tentativi aperti e lavoro a metà, verranno ripresi più avanti.
 - Zero ricordi è una risposta valida e frequente: la maggior parte delle sessioni non insegna niente di
   nuovo. Non salvare cose generiche che ogni sviluppatore sa già.
+- Se in fondo c'è la sezione "MODIFICHE AL CODICE" (riassunto automatico da git), usala per ricordi sulla
+  STRUTTURA del codice: nuovi moduli, classi, endpoint, spostamenti di responsabilità, API rimosse. Spiega
+  a cosa serve la novità usando le motivazioni presenti nella conversazione, e cita i percorsi dei file e
+  l'hash breve del commit (es. "src/orders/order.service.ts, commit 1a2b3c4d"). Non fare l'elenco dei file
+  toccati: solo i cambiamenti che un collega deve conoscere. Le modifiche "non ancora committate" sono lavoro
+  in corso: usale solo se la conversazione le dà per concluse.
 - Scrivi in ${lang}; identificatori, nomi di API, comandi e codice restano invariati.
 - title: una riga autoesplicativa. body: Markdown conciso (massimo ~120 parole). tags: 1-5 tag minuscoli.
 - kind: fact | howto | decision | gotcha | snippet | reference.`

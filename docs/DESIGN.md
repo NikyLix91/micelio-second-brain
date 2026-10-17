@@ -286,6 +286,13 @@ Da una sessione o da un documento si producono **0..N ricordi atomici**:
 
 **Perché una lingua fissa e non quella d'origine:** la ricerca full-text non funziona tra lingue diverse, e il consolidamento nel dreaming confronta e fonde meglio ricordi scritti nella stessa lingua. Se la lingua di team cambia, i ricordi esistenti non vengono tradotti in blocco: le versioni aggiornate nascono nella nuova lingua man mano che il dreaming li consolida.
 
+**Modifiche al codice (distillazione consapevole del diff).** La conversazione spiega il *perché*; la struttura cambiata sta nel repository. Se la cartella della sessione è un repository git, al materiale da distillare si accoda un riassunto automatico (`src/ingest/git-changes.ts`):
+- i commit fatti durante il capitolo (intervallo ricavato dai `timestamp` della trascrizione), con hash e messaggio;
+- le modifiche non ancora committate, solo se il capitolo è recente (meno di 2 ore);
+- per ogni file lo stato (nuovo, modificato, eliminato) e le dichiarazioni aggiunte o rimosse: classi, funzioni, endpoint HTTP. Il riconoscimento è euristico, con espressioni regolari per TS/JS, C#/Java, Python, Go e Rust.
+
+Non si copia codice: solo nomi di file, dichiarazioni e messaggi di commit, al massimo 4.000 caratteri. Il riassunto passa dallo stesso filtro privacy della conversazione. Il distillatore lo usa per ricordi sulla struttura ("aggiunto `OrderService` in `src/orders`, commit `1a2b3c4d`: centralizza la conferma degli ordini") e non per elencare i file toccati. Si disattiva con `watch.gitChanges: false`.
+
 Prima di scrivere si controlla l'hash dell'id per scartare i duplicati esatti. Le quasi-duplicazioni le gestisce il dreaming.
 
 ---

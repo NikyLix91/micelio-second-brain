@@ -13,8 +13,10 @@ type Turn =
 /**
  * Converte una sequenza di turni nelle righe JSONL corrispondenti.
  * @param cwd cartella di lavoro registrata nei messaggi dell'utente (come fa Claude Code)
+ * @param at  se indicato, istante (ms) del primo messaggio: ogni riga riceve un `timestamp`
+ *            a un minuto di distanza dalla precedente, come nelle trascrizioni reali
  */
-export function transcriptLines (turns: Turn[], cwd?: string): string[] {
+export function transcriptLines (turns: Turn[], cwd?: string, at?: number): string[] {
   const lines: string[] = []
   for (const t of turns) {
     if ('user' in t) {
@@ -32,13 +34,14 @@ export function transcriptLines (turns: Turn[], cwd?: string): string[] {
     // Righe di servizio che il parser deve ignorare
     lines.push(JSON.stringify({ type: 'file-history-snapshot', snapshot: {} }))
   }
-  return lines
+  if (at === undefined) return lines
+  return lines.map((l, i) => JSON.stringify({ ...JSON.parse(l), timestamp: new Date(at + i * 60_000).toISOString() }))
 }
 
 /** Scrive (o estende) un file di trascrizione e ne restituisce il percorso. */
-export function writeTranscript (dir: string, sessionId: string, turns: Turn[], append = false, cwd?: string): string {
+export function writeTranscript (dir: string, sessionId: string, turns: Turn[], append = false, cwd?: string, at?: number): string {
   const file = path.join(dir, `${sessionId}.jsonl`)
-  const data = transcriptLines(turns, cwd).join('\n') + '\n'
+  const data = transcriptLines(turns, cwd, at).join('\n') + '\n'
   if (append) fs.appendFileSync(file, data)
   else fs.writeFileSync(file, data)
   return file

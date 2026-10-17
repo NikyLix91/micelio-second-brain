@@ -22,12 +22,12 @@ const TRIVIAL_HINTS = /^.{0,30}$/s
 export class FakeAdapter implements LlmAdapter {
   readonly name = 'fake'
   /** Registro delle chiamate ricevute: i test lo usano per verificare COSA è stato inviato al LLM. */
-  calls: { name: string, model: string }[] = []
+  calls: { name: string, model: string, input: string }[] = []
 
   async available (): Promise<boolean> { return true }
 
   async run<T> (task: LlmTask<T>): Promise<T> {
-    this.calls.push({ name: task.name, model: task.model })
+    this.calls.push({ name: task.name, model: task.model, input: task.input })
     if (task.name === 'classify') {
       const text = task.input
       const destination = PRIVATE_HINTS.test(text) ? 'private' : TRIVIAL_HINTS.test(text.trim()) ? 'discard' : 'team'

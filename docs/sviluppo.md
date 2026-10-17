@@ -69,6 +69,7 @@ Riferimenti: [src/ingest/pipeline.ts](../src/ingest/pipeline.ts), DESIGN §6.
 
 | Passo | Dove | Note |
 |---|---|---|
+| Riassunto git | `ingest/git-changes.ts` | Solo sessioni in un repository git: commit del capitolo (dai `timestamp` della trascrizione, ±2 min) e lavoro non committato se il capitolo è finito da meno di 2 ore. Solo nomi di file, dichiarazioni e messaggi di commit, max 4.000 caratteri. Si accoda alla conversazione **prima** del filtro |
 | Filtro deterministico | `privacy/filter.ts` | Gira **prima** di qualunque LLM. Blocca gli argomenti HR e redige i segreti |
 | Classificazione | `ingest/prompts.ts` (Haiku) | Output strutturato validato con zod |
 | Instradamento | `route()` in `pipeline.ts` | Funzione pura: team / inbox / private / discard. Soglia di confidenza 0,8 |

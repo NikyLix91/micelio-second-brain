@@ -38,12 +38,15 @@ import { isBlockedPath } from '../privacy/paths'
 import type { DocumentRecord, InboxItem, Job, PrivateStore, SourceRef } from '../store/private-store'
 import { CHUNK_CHARS, chunkText, extractText, MAX_CHUNKS, mimeOf } from './extract'
 import { CLASSIFY_SYSTEM, Classification, Distilled, distillSystem } from './prompts'
+import { summarizeChanges } from './git-changes'
 import { extractTranscript } from './transcript'
 
 /** Sotto questa soglia di confidenza il classificatore non decide da solo: si va in inbox. */
 export const CONFIDENCE_THRESHOLD = 0.8
 /** Una sessione con meno testo di così non vale due chiamate LLM. */
 const MIN_SESSION_CHARS = 400
+/** Le modifiche non committate entrano nel riassunto git solo se il capitolo è finito da meno di così. */
+const UNCOMMITTED_WINDOW_MS = 2 * 60 * 60 * 1000
 /** Ogni quanto il worker controlla la coda. */
 const WORKER_INTERVAL_MS = 3_000
 /** Ogni quanto si eliminano gli elementi scaduti dell'inbox. */
@@ -64,6 +67,8 @@ export interface PipelineDeps {
   blockedPaths: () => Promise<string[]>
   /** Lingua dei ricordi del team (`memory.language`). */
   language: () => Promise<string>
+  /** Aggiungere alle sessioni il riassunto delle modifiche git (config `watch.gitChanges`); default sì. */
+  gitChanges?: () => boolean
   log: (msg: string) => void
   /** Avvisa chi osserva il nodo (UI) che una parte dello stato privato è cambiata. */
   notify?: (topic: 'inbox' | 'jobs' | 'decisions') => void
@@ -217,9 +222,13 @@ export class IngestPipeline {
 
     if (ex.userTurns === 0 || ex.text.length < MIN_SESSION_CHARS) return done()
 
+    // 0) Modifiche al codice durante il capitolo (commit + lavoro non committato), se la cartella
+    //    è un repository git. Vanno in coda alla conversazione e passano dallo stesso filtro.
+    const material = ex.text + this.codeChanges(cwd, ex.firstAt, ex.lastAt)
+
     // 1) Filtro deterministico: se blocca, il contenuto non lascia mai la macchina.
     const rules = await this.deps.rules()
-    const filtered = applyFilter(ex.text, rules)
+    const filtered = applyFilter(material, rules)
     if (filtered.blocked) {
       this.logDecision(source, 'blocked', `parole chiave: ${filtered.reasons.join(', ')}`, firstUserLine(ex.text))
       return done()
@@ -265,6 +274,23 @@ export class IngestPipeline {
       }
     }
     done()
+  }
+
+  /**
+   * Riassunto git del capitolo di sessione, pronto da accodare al testo ("" se non disponibile).
+   * Le modifiche non committate si includono solo se il capitolo è recente: altrimenti sarebbero
+   * lavoro fatto dopo, in un altro momento (es. recupero di una sessione vecchia).
+   */
+  private codeChanges (cwd: string, firstAt: number | null, lastAt: number | null): string {
+    if (this.deps.gitChanges?.() === false || !cwd || firstAt === null || lastAt === null) return ''
+    try {
+      const recent = Date.now() - lastAt < UNCOMMITTED_WINDOW_MS
+      const summary = summarizeChanges(cwd, firstAt, lastAt, recent)
+      return summary ? '\n\n' + summary : ''
+    } catch (e) {
+      this.deps.log(`riassunto git non disponibile per ${cwd}: ${(e as Error).message}`)
+      return ''
+    }
   }
 
   // ═══════════════════════════ Ingresso: documenti (Fase 4) ═══════════════════════════

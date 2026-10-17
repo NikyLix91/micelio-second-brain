@@ -58,7 +58,13 @@ const WatchConfig = z.object({
     minUserTurns: z.number().int().min(1).default(4),
     minChars: z.number().int().min(100).default(6000),
     staleHours: z.number().min(1).default(6)
-  }).prefault({})
+  }).prefault({}),
+  /**
+   * Distillazione consapevole delle modifiche (src/ingest/git-changes.ts): se la cartella della
+   * sessione è un repository git, al materiale da distillare si aggiunge il riassunto di commit e
+   * modifiche fatte durante il capitolo (file, classi, funzioni, endpoint).
+   */
+  gitChanges: z.boolean().default(true)
 }).prefault({}) // prefault: il default {} passa dal parse, così si applicano i default interni
 
 /** Embedding per la ricerca semantica (Fase 5). */

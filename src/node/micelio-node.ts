@@ -180,6 +180,7 @@ export class MicelioNode extends EventEmitter {
       rules: async () => mergeRules(await this.team?.config('filter.blockKeywords')),
       blockedPaths: async () => mergeBlockedPaths(await this.team?.config('filter.blockedPaths')),
       language: async () => (await this.team?.config<string>('memory.language')) ?? 'it',
+      gitChanges: () => this.config.watch.gitChanges,
       log: this.log,
       notify: (topic) => this.changed(topic)
     })
