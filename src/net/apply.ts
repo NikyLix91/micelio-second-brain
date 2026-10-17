@@ -37,7 +37,13 @@ export const KEYS = {
   vote: (id: string, node: string) => `vote/${id}/${node}`,
   pin: (id: string) => `pin/${id}`,
   /** Uso di un ricordo da parte di un nodo: contatore cumulativo e ultimo uso. */
-  usage: (id: string, node: string) => `usage/${id}/${node}`
+  usage: (id: string, node: string) => `usage/${id}/${node}`,
+  /** Collegamento esplicito fra ricordi (dreaming). */
+  link: (from: string, to: string) => `link/${from}/${to}`,
+  /** Chi ha "vinto" il sogno di un'epoca. */
+  dreamClaim: (epoch: string) => `dream/${epoch}`,
+  /** Diario del sogno di un'epoca. */
+  dreamLog: (epoch: string) => `dreamlog/${epoch}`
 } as const
 
 /**
@@ -50,7 +56,9 @@ export const RANGES = {
   invites: { gt: 'invite/', lt: 'invite0' },
   votes: { gt: 'vote/', lt: 'vote0' },
   pins: { gt: 'pin/', lt: 'pin0' },
-  usage: { gt: 'usage/', lt: 'usage0' }
+  usage: { gt: 'usage/', lt: 'usage0' },
+  links: { gt: 'link/', lt: 'link0' },
+  dreamLogs: { gt: 'dreamlog/', lt: 'dreamlog0' }
 } as const
 
 /**
@@ -239,6 +247,67 @@ async function applyEvent (ev: TeamEvent, author: string, view: any, host: any):
           await view.put(key, { count: Math.max(u.count, prev?.count ?? 0), last: Math.max(u.last, prev?.last ?? 0) })
         }
       }
+      return
+    }
+
+    // ── memory.supersede (dreaming) ──────────────────────────────────────────────────
+    // Fusione: il nuovo ricordo prende il posto dei vecchi. Valida solo se TUTTI i vecchi sono
+    // ancora attivi e nessuno è fissato: se due nodi sognano in parallelo, vince la prima fusione
+    // nell'ordine linearizzato e la seconda (che tocca ricordi già sostituiti) viene ignorata.
+    case 'memory.supersede': {
+      const olds: MemoryRecord[] = []
+      for (const id of ev.old) {
+        const o = await get<MemoryRecord>(view, KEYS.memory(id))
+        if (!o || o.status !== 'active' || await get(view, KEYS.pin(id))) return
+        olds.push(o)
+      }
+      const m = ev.memory
+      const kind = m.kind ?? 'fact'
+      const id = memoryId({ kind, title: m.title, body: m.body })
+      if (!(await get(view, KEYS.memory(id)))) {
+        await view.put(KEYS.memory(id), { id, kind, title: m.title, body: m.body, tags: m.tags ?? [], source: m.source ?? { type: 'dream' }, author, ts: ev.ts, status: 'active' } satisfies MemoryRecord)
+      }
+      for (const o of olds) if (o.id !== id) await view.put(KEYS.memory(o.id), { ...o, status: 'superseded', supersededBy: id, statusReason: ev.reason })
+      return
+    }
+
+    // ── memory.link ──────────────────────────────────────────────────────────────────
+    case 'memory.link': {
+      if (ev.from === ev.to) return
+      if (!(await get(view, KEYS.memory(ev.from))) || !(await get(view, KEYS.memory(ev.to)))) return
+      await view.put(KEYS.link(ev.from, ev.to), { rel: ev.rel, by: author, ts: ev.ts })
+      return
+    }
+
+    // ── memory.archive / memory.restore ──────────────────────────────────────────────
+    // Archiviare: qualunque membro (in pratica il dreaming); mai un ricordo fissato.
+    // Ripristinare: qualunque membro, da archiviato o sostituito.
+    case 'memory.archive': {
+      const m = await get<MemoryRecord>(view, KEYS.memory(ev.id))
+      if (!m || m.status !== 'active' || await get(view, KEYS.pin(ev.id))) return
+      await view.put(KEYS.memory(ev.id), { ...m, status: 'archived', statusReason: ev.reason })
+      return
+    }
+    case 'memory.restore': {
+      const m = await get<MemoryRecord>(view, KEYS.memory(ev.id))
+      if (!m || m.status === 'active') return
+      const { supersededBy, statusReason, ...rest } = m
+      void supersededBy; void statusReason
+      await view.put(KEYS.memory(ev.id), { ...rest, status: 'active' })
+      return
+    }
+
+    // ── dream.claim / dream.complete ─────────────────────────────────────────────────
+    // Coordinamento (DESIGN §10.1): per ogni epoca vale solo la PRIMA rivendicazione
+    // nell'ordine linearizzato, identico su tutti i nodi. Il diario è accettato solo dal vincitore.
+    case 'dream.claim': {
+      if (!(await get(view, KEYS.dreamClaim(ev.epoch)))) await view.put(KEYS.dreamClaim(ev.epoch), { by: author, ts: ev.ts })
+      return
+    }
+    case 'dream.complete': {
+      const claim = await get<{ by: string }>(view, KEYS.dreamClaim(ev.epoch))
+      if (claim?.by !== author) return
+      await view.put(KEYS.dreamLog(ev.epoch), { epoch: ev.epoch, by: author, ts: ev.ts, summary: ev.summary, stats: ev.stats })
       return
     }
 

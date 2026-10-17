@@ -211,6 +211,29 @@ Il calcolo dei significati (embedding) avviene sul tuo PC, senza servizi esterni
 
 Nell'app: attivazione, usi, 👍 👎 e 📌 nel dettaglio di ogni ricordo. Nel Nucleo i ricordi più vivi sono le stelle più grandi e dorate.
 
+## 7-quater. Dreaming: il sapere si riordina da solo
+
+Una volta al giorno **un** nodo del team "sogna" per tutti. Di default dalle 13; se quel nodo è spento o non ha Claude, tocca al successivo 30 minuti dopo, e così via. Il sogno:
+
+- **fonde** i ricordi quasi uguali, scritti magari da colleghi diversi, in uno solo;
+- **archivia** quelli superati da ricordi più recenti (per esempio una decisione cambiata);
+- **collega** quelli correlati: i legami del dreaming sono le sinapsi dorate nel Nucleo;
+- lascia **decadere** quelli che nessuno usa più da mesi (attivazione sotto il 15%, più di 90 giorni);
+- scrive un **diario** di cosa ha fatto.
+
+Niente viene cancellato: fusi e archiviati restano nell'**archivio** e si ripristinano. I ricordi **fissati** non vengono mai toccati. Ogni sogno usa al massimo 30 chiamate a Claude.
+
+```bash
+micelio dream now          # sogna subito su questo nodo
+micelio dream log          # diario dei sogni del team
+micelio archive            # ricordi archiviati o sostituiti
+micelio restore <id>       # ripristina
+```
+
+Nell'app: schermata **Sogni**, con diario, "Sogna ora" e archivio con "Ripristina". Per non far mai sognare il tuo PC: `"dream": { "enabled": false }` in `config.json`.
+
+![Sogni](img/sogni.png)
+
 ## 8. Inbox: i casi dubbi
 
 L'inbox contiene **solo** ciò su cui il filtro non ha potuto decidere da solo. I contenuti puliti vanno al team senza chiederti nulla, quelli chiaramente personali restano privati. L'inbox è locale: nessun collega la vede.

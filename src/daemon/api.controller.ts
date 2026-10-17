@@ -278,6 +278,34 @@ export class ApiController {
     return this.node.decisions(Math.min(Math.max(Number(limit) || 50, 1), 500))
   }
 
+  // ═══════════════════════════════ Dreaming (Fase 6) ═══════════════════════════════
+
+  /** Diario dei sogni del team. */
+  @Get('dreams')
+  dreams () {
+    return this.node.dreams()
+  }
+
+  /** Avvia subito un sogno su questo nodo (può richiedere minuti: una chiamata LLM per gruppo). */
+  @Post('dreams/run')
+  @HttpCode(200)
+  dreamNow () {
+    return this.node.dreamNow()
+  }
+
+  /** Ricordi archiviati o sostituiti (storico). */
+  @Get('archive')
+  archived () {
+    return this.node.archived()
+  }
+
+  @Post('archive/:id/restore')
+  @HttpCode(200)
+  async restore (@Param('id') id: string) {
+    await this.node.restore(id)
+    return { ok: true }
+  }
+
   // ═══════════════════════════════ Impostazioni ═══════════════════════════════
 
   /** Impostazioni locali (LLM, cartelle abilitate, porta). */

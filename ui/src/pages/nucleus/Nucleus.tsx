@@ -234,7 +234,8 @@ export default function Nucleus () {
         showNavInfo={false}
         nodeThreeObject={nodeObject}
         nodeLabel={(n: any) => `<div class="hud-tip">${escapeHtml(n.title)}</div>`}
-        linkColor={(l: any) => (linkOn(l) ? HOLO.amber : '#3a2c18')}
+        // Sinapsi: ambra per i legami da tag/significato, oro pieno per quelli creati dal dreaming.
+        linkColor={(l: any) => (!linkOn(l) ? '#3a2c18' : l.kind === 'dream' ? HOLO.gold : HOLO.amber)}
         linkOpacity={0.22}
         linkWidth={0}
         // Impulsi di luce che percorrono le sinapsi più forti: il "pensiero" che scorre.

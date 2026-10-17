@@ -27,8 +27,15 @@ export interface MemoryRecord {
   author: string
   /** Timestamp del nodo autore al momento della scrittura (informativo). */
   ts: number
-  /** Per ora sempre 'active'. Fasi successive: 'superseded' | 'archived' | 'redacted'. */
-  status: 'active'
+  /**
+   * Stato (Fase 6): 'active' è nella ricerca; 'superseded' è stato fuso in un ricordo più nuovo
+   * (`supersededBy`); 'archived' è decaduto o obsoleto. Gli ultimi due restano come storico e si
+   * possono ripristinare.
+   */
+  status: 'active' | 'superseded' | 'archived'
+  supersededBy?: string
+  /** Motivo dell'archiviazione o della sostituzione. */
+  statusReason?: string
 }
 
 /** Un membro del team. I membri espulsi restano nella vista con `removed: true` (storico). */

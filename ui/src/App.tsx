@@ -23,6 +23,7 @@ import { Onboarding } from './pages/Onboarding'
 import { Private } from './pages/Private'
 import { Settings } from './pages/Settings'
 import { Team } from './pages/Team'
+import { Dreams } from './pages/Dreams'
 
 // Il Nucleo 3D porta con sé three.js: caricato solo quando serve (bundle separato).
 const Nucleus = lazy(() => import('./pages/nucleus/Nucleus'))
@@ -45,6 +46,7 @@ export function App () {
             <Route path='/memoria' element={<Memory />} />
             <Route path='/inbox' element={<Inbox />} />
             <Route path='/team' element={<Team />} />
+            <Route path='/sogni' element={<Dreams />} />
             <Route path='/privato' element={<Private />} />
             <Route path='/impostazioni' element={<Settings />} />
           </Routes>
@@ -84,6 +86,7 @@ function Sidebar ({ live, team, node }: { live: boolean, team: string, node: str
       <NavLink to='/memoria' className={link}>Memoria</NavLink>
       <NavLink to='/inbox' className={link}>Inbox {inbox > 0 && <span className='count'>{inbox}</span>}</NavLink>
       <NavLink to='/team' className={link}>Team</NavLink>
+      <NavLink to='/sogni' className={link}>Sogni</NavLink>
       <NavLink to='/stato' className={link}>Stato</NavLink>
       <NavLink to='/privato' className={link}>Registro privato</NavLink>
       <NavLink to='/impostazioni' className={link}>Impostazioni</NavLink>

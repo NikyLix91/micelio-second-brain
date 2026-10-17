@@ -250,6 +250,29 @@ program.command('recall')
     hits.forEach(printHit)
   })
 
+const dream = program.command('dream').description('dreaming: consolidamento del sapere del team (diario con `micelio dream log`)')
+dream.command('now').description('sogna subito su questo nodo (fonde duplicati, archivia ciò che è decaduto)')
+  .action(async () => {
+    console.log('Sogno in corso (può richiedere qualche minuto)…')
+    const r = await client().call<{ summary: string, merged: number, obsolete: number, linked: number, decayed: number }>('POST', '/api/dreams/run', undefined, 1_800_000)
+    console.log(`\nFusi: ${r.merged} · superati: ${r.obsolete} · collegati: ${r.linked} · decaduti: ${r.decayed}\n\n${r.summary}`)
+  })
+dream.command('log').description('diario dei sogni del team')
+  .action(async () => {
+    const list = await client().call<{ epoch: string, by: string, ts: number, summary: string }[]>('GET', '/api/dreams')
+    if (!list.length) return console.log('Nessun sogno ancora')
+    for (const d of list) console.log(`\n◆ ${d.epoch} · ${date(d.ts)} · da ${short(d.by)}\n${indent(d.summary)}`)
+  })
+
+program.command('archive').description('ricordi archiviati o sostituiti (storico)')
+  .action(async () => {
+    const list = await client().call<{ id: string, title: string, status: string, statusReason?: string, ts: number }[]>('GET', '/api/archive')
+    if (!list.length) return console.log('Archivio vuoto')
+    for (const m of list) console.log(`[${m.status === 'superseded' ? 'sostituito' : 'archiviato'}] id:${m.id.slice(0, 12)} ${m.title}\n   ↳ ${m.statusReason ?? ''}`)
+  })
+program.command('restore').description('ripristina un ricordo archiviato o sostituito').argument('<id>')
+  .action(async (id: string) => { await client().call('POST', `/api/archive/${encodeURIComponent(id)}/restore`); console.log('Ripristinato') })
+
 program.command('vote')
   .description('vota un ricordo: up (utile), down (fuorviante/obsoleto), clear (ritira il voto)')
   .argument('<id>').argument('<voto>', 'up | down | clear')

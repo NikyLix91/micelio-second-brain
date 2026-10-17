@@ -31,6 +31,8 @@ import { buildGraph, type Graph, type GraphLink } from '../graph/constellation'
 import { type Embedder, HashEmbedder, LocalEmbedder } from '../embed/embedder'
 import { activation } from '../rank/activation'
 import { hybridRank, nearest } from '../rank/hybrid'
+import { currentEpoch, Dreamer, type DreamReport, dreamOrder } from '../dream/dreamer'
+import type { MemoryRecord } from '../core/model'
 import os from 'node:os'
 import { type ExplicitOutcome, IngestPipeline, InboxNotFoundError } from '../ingest/pipeline'
 import { ClaudeCliAdapter } from '../llm/claude-cli'
@@ -105,6 +107,14 @@ function semanticThreshold (model: string): number {
   return model.includes('e5') ? 0.83 : 0.3
 }
 
+/** Soglia "quasi duplicato" per il dreaming: più alta di quella di pertinenza. */
+function duplicateThreshold (model: string): number {
+  return model.includes('e5') ? 0.92 : 0.7
+}
+
+/** Ogni quanto il nodo controlla se è il suo turno di sognare. */
+const DREAM_CHECK_MS = 10 * 60 * 1000
+
 /** Dopo quanti giorni le copie scaricate escono dalla cache (decisione D11). */
 const SOURCE_CACHE_DAYS = 30
 
@@ -132,6 +142,12 @@ export class MicelioNode extends EventEmitter {
   /** Catena dei calcoli di embedding: mai due in parallelo. */
   private embedding: Promise<void> = Promise.resolve()
   private usageTimer: NodeJS.Timeout | null = null
+  private dreamTimer: NodeJS.Timeout | null = null
+  private readonly dreamer: Dreamer
+  /** Ricordi non attivi (archiviati o sostituiti), per la schermata Archivio. */
+  private inactive: MemoryRecord[] = []
+  /** Collegamenti espliciti creati dal dreaming (per la costellazione). */
+  private dreamLinks: { from: string, to: string, rel: string }[] = []
   private config: Config
   /** Timer di accorpamento degli aggiornamenti della vista (vedi scheduleMaterialize). */
   private timer: NodeJS.Timeout | null = null
@@ -166,6 +182,17 @@ export class MicelioNode extends EventEmitter {
     })
     this.documents = new DocumentWatcher(this.pipeline, this.privateStore, this.log)
     this.embedder = opts.embedder !== undefined ? opts.embedder : createEmbedder(this.config)
+    this.dreamer = new Dreamer({
+      me: () => this.team?.localKey ?? '',
+      llm: this.llm,
+      model: () => this.config.llm.distillModel,
+      memories: () => this.enrich(this.index.all()),
+      vectors: () => ({ map: this.embedder ? this.index.vectors(this.embedder.model) : new Map(), duplicate: duplicateThreshold(this.embedder?.model ?? '') }),
+      append: (p) => this.requireTeam().append(p),
+      sync: () => this.sync(),
+      claimOf: async (epoch) => (await this.team?.dreamClaim(epoch)) ?? null,
+      log: this.log
+    })
     this.files = new FileShare({
       isMember: async (key, signer) => {
         const active = !!(await this.team?.members())?.some((m) => m.key === key && !m.removed)
@@ -186,6 +213,9 @@ export class MicelioNode extends EventEmitter {
     // Pubblicazione periodica dell'uso locale dei ricordi (Fase 5).
     this.usageTimer = setInterval(() => { this.flushUsage().catch(() => {}) }, USAGE_FLUSH_MS)
     this.usageTimer.unref()
+    // Controllo periodico del turno di sogno (Fase 6).
+    this.dreamTimer = setInterval(() => { this.checkDreamTurn().catch((e) => this.log(`dreaming: ${e.message}`)) }, DREAM_CHECK_MS)
+    this.dreamTimer.unref()
     const state = loadState(this.paths)
     if (!state) {
       this.log('nodo non ancora configurato: usa `micelio init` o `micelio join`')
@@ -202,6 +232,8 @@ export class MicelioNode extends EventEmitter {
   /** Ferma tutto in ordine: worker, indicizzazione in corso, rete, database. */
   async stop (): Promise<void> {
     if (this.usageTimer) clearInterval(this.usageTimer)
+    if (this.dreamTimer) clearInterval(this.dreamTimer)
+    while (this.dreamer.busy) await new Promise((r) => setTimeout(r, 200))
     await this.flushUsage().catch(() => {})
     await this.embedding.catch(() => {})
     await this.embedder?.close()
@@ -330,7 +362,7 @@ export class MicelioNode extends EventEmitter {
 
   /** Costellazione del sapere: ricordi come nodi, correlazioni come collegamenti (src/graph). */
   graph (): Graph {
-    const g = buildGraph(this.index.all(), this.semanticLinks())
+    const g = buildGraph(this.index.all(), [...this.semanticLinks(), ...this.explicitLinks()])
     const signals = this.index.signals()
     return { ...g, nodes: g.nodes.map((n) => ({ ...n, activation: this.activationOf(n.id, signals) })) }
   }
@@ -367,6 +399,60 @@ export class MicelioNode extends EventEmitter {
     ranked.forEach((r, i) => { if (hits[i]) hits[i].score = r.score })
     if (track && hits.length) this.privateStore.countUsage(hits.map((h) => h.id))
     return hits
+  }
+
+  // ═══════════════════════════ Dreaming (Fase 6) ═══════════════════════════
+
+  /**
+   * Controlla se oggi tocca a questo nodo sognare (DESIGN §10.1): turnazione deterministica fra
+   * i membri attivi; il primo può iniziare dall'ora configurata, ogni turno successivo dopo
+   * `slotMinutes` se nessuno ha ancora rivendicato l'epoca.
+   */
+  private async checkDreamTurn (now = Date.now()): Promise<void> {
+    const team = this.team
+    if (!team?.writable || !this.llm || !this.config.dream.enabled || this.dreamer.busy) return
+    const epoch = currentEpoch(now)
+    if (await team.dreamClaim(epoch)) return
+    const members = (await team.members()).filter((m) => !m.removed).map((m) => m.key)
+    const position = dreamOrder(epoch, members).indexOf(team.localKey!)
+    if (position < 0) return
+    const start = new Date(now)
+    start.setHours(this.config.dream.hour, 0, 0, 0)
+    if (now < start.getTime() + position * this.config.dream.slotMinutes * 60_000) return
+    await this.runDream(epoch)
+  }
+
+  /** Sogno manuale (`micelio dream now`, pulsante nell'app): epoca dedicata, nessuna attesa. */
+  async dreamNow (): Promise<DreamReport> {
+    if (this.dreamer.busy) throw new UserError('Un sogno è già in corso')
+    if (!this.llm) throw new UserError('Serve un LLM per sognare (llm.adapter in config.json)')
+    const r = await this.runDream(`manuale-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}`)
+    if (!r) throw new UserError('Un altro nodo sta già sognando questa epoca')
+    return r
+  }
+
+  private async runDream (epoch: string): Promise<DreamReport | null> {
+    const r = await this.dreamer.dream(epoch)
+    if (r) this.changed('memories', 'status')
+    return r
+  }
+
+  /** Diario dei sogni del team, dal più recente. */
+  async dreams (): Promise<{ epoch: string, by: string, ts: number, summary: string, stats: Record<string, number> }[]> {
+    return this.requireTeam().dreamLogs()
+  }
+
+  /** Ricordi archiviati o sostituiti (storico), dal più recente. */
+  archived (): MemoryRecord[] {
+    return [...this.inactive].sort((a, b) => b.ts - a.ts)
+  }
+
+  /** Ripristina un ricordo archiviato o sostituito. */
+  async restore (id: string): Promise<void> {
+    const m = this.inactive.find((x) => x.id === id || x.id.startsWith(id.toLowerCase()))
+    if (!m) throw new UserError(`Nessun ricordo archiviato con id ${id}`)
+    await this.requireTeam().append({ type: 'memory.restore', id: m.id })
+    await this.sync()
   }
 
   /** Voto di utilità su un ricordo: +1, -1, 0 per ritirarlo. Un voto per nodo. */
@@ -454,6 +540,11 @@ export class MicelioNode extends EventEmitter {
       }
     }
     return links
+  }
+
+  /** Collegamenti creati dal dreaming, fra ricordi ancora attivi (peso fisso: sono "decisi"). */
+  private explicitLinks (): GraphLink[] {
+    return this.dreamLinks.map((l) => ({ source: l.from, target: l.to, weight: 0.8, kind: 'dream' as const }))
   }
 
   /** Ultimi ricordi arrivati nel team, dal più recente. */
@@ -767,12 +858,16 @@ export class MicelioNode extends EventEmitter {
     this.materializing = this.materializing.catch(() => {}).then(async () => {
       const team = this.team
       if (!team) return
-      const [memories, members, votes, pins, usage] = await Promise.all([team.memories(), team.members(), team.votes(), team.pins(), team.usage()])
+      const [all, members, votes, pins, usage, links] = await Promise.all([team.memories(), team.members(), team.votes(), team.pins(), team.usage(), team.links()])
+      // Solo i ricordi ATTIVI entrano in ricerca, costellazione ed export; gli altri sono storico.
+      const memories = all.filter((m) => (m.status ?? 'active') === 'active')
+      this.inactive = all.filter((m) => (m.status ?? 'active') !== 'active')
+      this.dreamLinks = links
       this.index.rebuild(memories, members, { votes, pins, usage })
       writeExport(this.paths.export, memories, members)
       // Collegamenti per ricordo (servono all'attivazione)
       const degrees = new Map<string, number>()
-      for (const l of buildGraph(this.index.all(), this.semanticLinks()).links) for (const k of [l.source, l.target]) degrees.set(k, (degrees.get(k) ?? 0) + 1)
+      for (const l of buildGraph(this.index.all(), [...this.semanticLinks(), ...this.explicitLinks()]).links) for (const k of [l.source, l.target]) degrees.set(k, (degrees.get(k) ?? 0) + 1)
       this.degrees = degrees
       this.scheduleEmbedding()
       this.changed('memories', 'members', 'status')

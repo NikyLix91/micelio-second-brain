@@ -78,7 +78,10 @@ const MEMORIES = [
   ['carla', 'howto', 'Scansione delle dipendenze vulnerabili in CI', '`npm audit --omit=dev` blocca la pipeline sulle vulnerabilità alte; eccezioni documentate nel repo.', ['security', 'npm', 'ci']],
   ['carla', 'fact', 'Header di sicurezza HTTP obbligatori', 'CSP, HSTS, X-Content-Type-Options e Referrer-Policy su tutti i frontend pubblici.', ['security', 'react', 'angular']],
   ['carla', 'gotcha', 'CORS troppo permissivo sulle API interne', 'Un `Access-Control-Allow-Origin: *` con credenziali esponeva le API: whitelist esplicita dei domini.', ['security', 'node']],
-  ['carla', 'howto', 'Release notes generate dalle PR', 'Etichette sulle PR (feature, fix, breaking) e changelog generato al tag: niente note scritte a mano.', ['release', 'git', 'ci']]
+  ['carla', 'howto', 'Release notes generate dalle PR', 'Etichette sulle PR (feature, fix, breaking) e changelog generato al tag: niente note scritte a mano.', ['release', 'git', 'ci']],
+  // Quasi duplicati scritti da colleghi diversi: materiale per il dreaming (`micelio dream now`).
+  ['bruno', 'howto', 'Procedura hotfix in produzione', 'Hotfix: branch hotfix da main, PR con un’approvazione, tag di versione che avvia la release, poi merge in develop.', ['git', 'release']],
+  ['alice', 'gotcha', 'Build Angular out of memory su Azure DevOps', 'La build Angular su Azure DevOps va out of memory: heap di Node basso, impostare NODE_OPTIONS=--max-old-space-size=6144.', ['angular', 'ci']]
 ]
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))

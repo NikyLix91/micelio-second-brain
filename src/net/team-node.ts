@@ -407,6 +407,28 @@ export class TeamNode extends EventEmitter {
     return this.scan<MemoryRecord>(RANGES.memories)
   }
 
+  /** Collegamenti espliciti creati dal dreaming. */
+  async links (): Promise<{ from: string, to: string, rel: string }[]> {
+    const out: { from: string, to: string, rel: string }[] = []
+    for await (const { key, value } of this.base.view.createReadStream(RANGES.links)) {
+      const [, from, to] = String(key).split('/')
+      out.push({ from, to, rel: (value as { rel: string }).rel })
+    }
+    return out
+  }
+
+  /** Chi ha vinto il sogno di un'epoca (chiave del nodo), o null. */
+  async dreamClaim (epoch: string): Promise<string | null> {
+    return (await this.getRecord<{ by: string }>(KEYS.dreamClaim(epoch)))?.by ?? null
+  }
+
+  /** Diario dei sogni, dal più recente. */
+  async dreamLogs (): Promise<{ epoch: string, by: string, ts: number, summary: string, stats: Record<string, number> }[]> {
+    const out: any[] = []
+    for await (const { value } of this.base.view.createReadStream(RANGES.dreamLogs)) out.push(value)
+    return out.sort((a, b) => b.ts - a.ts)
+  }
+
   /** Voti per ricordo: somma dei voti di tutti i nodi. */
   async votes (): Promise<Map<string, number>> {
     const out = new Map<string, number>()

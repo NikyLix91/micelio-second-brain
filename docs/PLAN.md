@@ -1,7 +1,7 @@
 # Micelio — Piano di lavoro
 
 > Documento vivo: viene aggiornato a ogni avanzamento. Design di riferimento: [DESIGN.md](DESIGN.md). Indice della documentazione: [README.md](README.md).
-> Ultimo aggiornamento: **2026-10-17**. Fase 5 completata, Fase 6 in corso (lavoro in autonomia).
+> Ultimo aggiornamento: **2026-10-17**. Fase 6 completata, Fase 7 in corso (lavoro in autonomia).
 
 ## Stato
 
@@ -13,8 +13,8 @@
 | 3 — UI base | App desktop di monitoraggio, controllo e decisioni (React + Electron) | ✅ Completata |
 | 4 — Documenti | Cartelle sorvegliate + documento originale su richiesta | ✅ Completata |
 | 5 — Priorità | Vettori, ricerca ibrida, attivazione | ✅ Completata |
-| 6 — Dreaming | Consolidamento coordinato | 🔄 In corso |
-| 7 — Hardening | Offboarding, redazione, installer, altri client | ⬜ Da fare |
+| 6 — Dreaming | Consolidamento coordinato | ✅ Completata |
+| 7 — Hardening | Offboarding, redazione, installer, altri client | 🔄 In corso (parziale) |
 
 ---
 
@@ -225,9 +225,27 @@ La stessa UI funziona anche dal browser con `micelio ui`.
 
 ---
 
-## Fasi successive
+## Fase 6 — Dreaming ✅
 
-- **Fase 6 — Dreaming:** elezione per epoca, consolidamento, contraddizioni, collegamenti, decadimento, diario dei sogni (schermata UI), budget.
+| # | Attività | Stato |
+|---|---|---|
+| 6.1 | Eventi `memory.supersede`, `memory.link`, `memory.archive`/`restore`, `dream.claim`, `dream.complete`, con regole deterministiche in apply: la prima fusione vince, i ricordi fissati sono intoccabili, il diario è accettato solo dal vincitore dell'epoca | ✅ |
+| 6.2 | Turnazione per epoca (giorno): ordine deterministico per hash(epoca + chiave), finestra dalle 13, un turno ogni 30 minuti; attesa dopo la rivendicazione per ridurre i sogni doppi | ✅ |
+| 6.3 | Gruppi di quasi duplicati (union-find sui vettori, soglia per modello) → decisione del LLM: fondi / superato / collega / niente; prompt prudente e fedele ai contenuti | ✅ |
+| 6.4 | Decadimento deterministico (attivazione < 15%, oltre 90 giorni, non fissati), massimo 20 per sogno | ✅ |
+| 6.5 | Budget: massimo 30 chiamate per sogno, entro il budget giornaliero | ✅ |
+| 6.6 | Diario, archivio e ripristino: `micelio dream now/log`, `micelio archive/restore`, schermata Sogni; nel Nucleo le sinapsi del dreaming sono dorate | ✅ |
+| 6.7 | Test (unità: selezione, decadimento, turnazione, regole di apply; integrazione: fusione replicata, ripristino, sogni concorrenti) e documentazione | ✅ |
+
+**Esito:** 107 test del daemon + 8 della UI. Nel team demo un sogno ha fuso due coppie di quasi duplicati scritti da colleghi diversi (schermata in `docs/img/sogni.png`).
+
+**Problema emerso:** due nodi che sognano la stessa epoca nello stesso istante vedono entrambi la propria rivendicazione prima di quella dell'altro. La correttezza è garantita da apply (un solo diario, fusioni non duplicate); per ridurre il lavoro sprecato il nodo attende 5 secondi dopo la rivendicazione e ricontrolla chi ha vinto.
+
+**Limite noto:** la qualità delle fusioni con Claude reale non è ancora stata misurata con un set di valutazione come quello della Fase 2. Va fatto prima di attivare il dreaming su un team vero.
+
+---
+
+## Fasi successive
 - **Fase 7 — Hardening:** rotazione della chiave all'offboarding, redazione, `micelio setup` per Codex, VS Code e WebStorm, shim MCP stdio, installer dell'app desktop per Windows/macOS/Linux, test su macOS, osservabilità.
 
 ---
@@ -248,3 +266,4 @@ La stessa UI funziona anche dal browser con `micelio ui`.
 | 2026-10-17 | Richiesta: home "wow" in 3D con navigazione guidata (stile ologramma) e viste 2D per scopi specifici. Fase 3 completata: UI React + app Electron, Nucleo 3D, Mappa 2D, notifiche, team demo, documentazione con catture reali. Avvio della Fase 4 in autonomia |
 | 2026-10-17 | Fase 4 completata: cartelle di documenti, regole sui percorsi, documento originale su richiesta via P2P (verificato fra daemon reali). Avvio della Fase 5 |
 | 2026-10-17 | Fase 5 completata: attivazione, ricerca ibrida con embedding locali, voti, pin, uso condiviso (G-Counter), collegamenti semantici. Avvio della Fase 6 |
+| 2026-10-17 | Fase 6 completata: dreaming coordinato (fusioni, superati, collegamenti, decadimento, diario, archivio). Avvio della Fase 7 |

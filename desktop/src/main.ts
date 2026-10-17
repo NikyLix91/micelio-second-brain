@@ -113,7 +113,7 @@ async function takeScreenshots (dir: string): Promise<void> {
   fs.mkdirSync(dir, { recursive: true })
   const routes: [string, string, number][] = [
     ['nucleo', '/', 9000], ['nucleo-tour', '/?tour=1', 11000], ['mappa-2d', '/mappa', 6000], ['memoria', '/memoria', 2000], ['inbox', '/inbox', 2000],
-    ['team', '/team', 2000], ['stato', '/stato', 2000], ['privato', '/privato', 2000], ['impostazioni', '/impostazioni', 2000]
+    ['team', '/team', 2000], ['sogni', '/sogni', 2000], ['stato', '/stato', 2000], ['privato', '/privato', 2000], ['impostazioni', '/impostazioni', 2000]
   ]
   // MICELIO_SCREENSHOT_ONLY=nucleo,team limita le catture ad alcune schermate (diagnostica).
   const only = process.env.MICELIO_SCREENSHOT_ONLY?.split(',')

@@ -94,6 +94,19 @@ export const TeamEvent = z.discriminatedUnion('type', [
    * (è un G-Counter: ogni nodo ha il suo contatore, il totale è la somma).
    */
   z.object({ ...base, type: z.literal('usage.report'), counts: z.record(z.string().regex(/^[0-9a-f]{64}$/), z.object({ count: z.number().int().nonnegative(), last: z.number().int().nonnegative() })) }),
+  // ── Dreaming (Fase 6, DESIGN §10) ─────────────────────────────────────────────────
+  /** Più ricordi sostituiti da uno nuovo (fusione di duplicati). I vecchi restano come storico. */
+  z.object({ ...base, type: z.literal('memory.supersede'), old: z.array(z.string().regex(/^[0-9a-f]{64}$/)).min(1).max(20), memory: MemoryInput, reason: z.string().max(500) }),
+  /** Collegamento esplicito fra due ricordi (es. "si contraddicono", "approfondisce"). */
+  z.object({ ...base, type: z.literal('memory.link'), from: z.string().regex(/^[0-9a-f]{64}$/), to: z.string().regex(/^[0-9a-f]{64}$/), rel: z.enum(['relates', 'refines', 'contradicts', 'depends-on']) }),
+  /** Archiviazione (decadimento o obsolescenza): esce dalla ricerca, resta recuperabile. */
+  z.object({ ...base, type: z.literal('memory.archive'), id: z.string().regex(/^[0-9a-f]{64}$/), reason: z.string().max(500) }),
+  /** Ripristino di un ricordo archiviato o sostituito. */
+  z.object({ ...base, type: z.literal('memory.restore'), id: z.string().regex(/^[0-9a-f]{64}$/) }),
+  /** Un nodo dichiara di "sognare" per un'epoca: vince il primo nell'ordine linearizzato. */
+  z.object({ ...base, type: z.literal('dream.claim'), epoch: z.string().min(1).max(40) }),
+  /** Diario del sogno: cosa è stato consolidato, archiviato, collegato. */
+  z.object({ ...base, type: z.literal('dream.complete'), epoch: z.string().min(1).max(40), summary: z.string().max(4000), stats: z.record(z.string(), z.number()) }),
   /** Configurazione condivisa del team, es. `memory.language` (solo admin). */
   z.object({ ...base, type: z.literal('team.config'), key: z.string().min(1).max(100), value: z.unknown() })
 ])

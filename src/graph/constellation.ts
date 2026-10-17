@@ -79,7 +79,9 @@ export function buildGraph (memories: RecallHit[], extraLinks: GraphLink[] = [])
     const [source, target] = key.split('|')
     candidates.push({ source, target, weight: max > 0 ? w / max : 0, kind: 'tags' })
   }
-  candidates.push(...extraLinks)
+  // Collegamenti da altre fonti: solo fra ricordi presenti nel grafo (es. non verso archiviati).
+  const present = new Set(nodes.map((n) => n.id))
+  candidates.push(...extraLinks.filter((l) => present.has(l.source) && present.has(l.target)))
 
   return { nodes, links: keepStrongest(candidates, MAX_LINKS_PER_NODE) }
 }

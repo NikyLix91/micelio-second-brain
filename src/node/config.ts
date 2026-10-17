@@ -57,6 +57,16 @@ const EmbeddingsConfig = z.object({
   model: z.string().default('Xenova/multilingual-e5-small')
 }).prefault({})
 
+/** Dreaming (Fase 6, DESIGN §10). */
+const DreamConfig = z.object({
+  /** Se false questo nodo non sogna mai (gli altri sì). */
+  enabled: z.boolean().default(true),
+  /** Ora locale da cui il primo nodo della turnazione può sognare (default 13: pausa pranzo). */
+  hour: z.number().int().min(0).max(23).default(13),
+  /** Minuti di attesa fra un turno e il successivo, se il nodo precedente non ha sognato. */
+  slotMinutes: z.number().int().min(1).default(30)
+}).prefault({})
+
 const Config = z.object({
   /** Interfaccia di ascolto: 127.0.0.1 (solo questa macchina); 0.0.0.0 nei container. */
   host: z.string().default('127.0.0.1'),
@@ -65,7 +75,8 @@ const Config = z.object({
   token: z.string().min(32),
   llm: LlmConfig,
   watch: WatchConfig,
-  embeddings: EmbeddingsConfig
+  embeddings: EmbeddingsConfig,
+  dream: DreamConfig
 })
 export type Config = z.infer<typeof Config>
 
