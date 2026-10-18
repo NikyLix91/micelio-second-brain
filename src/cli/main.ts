@@ -897,6 +897,36 @@ ingest.command('run').description('elabora subito il prossimo lavoro in coda')
  * l'utente di Claude Code per un problema di Micelio. Di norma termina in un istante; solo se il
  * daemon è spento lo avvia, impiegando qualche secondo.
  */
+// ── Radici nei file per gli agenti, import (B4) ───────────────────────────────────
+roots.command('export')
+  .description('scrive le Radici del progetto in CLAUDE.md, AGENTS.md o nelle regole di Cursor, e le tiene aggiornate')
+  .argument('[cartella]', 'cartella del progetto (default: quella corrente)', '.')
+  .option('-f, --format <formato>', 'claude | agents | cursor', 'claude')
+  .option('-p, --project <nome>', 'progetto (default: il repository o il nome della cartella)')
+  .option('--once', 'scrivi una volta sola, senza tenerlo aggiornato')
+  .action(async (dir: string, o: { format: string, project?: string, once?: boolean }) => {
+    const r = await client().call<{ file: string, changed: boolean }>('POST', '/api/roots/agent-files', { dir: path.resolve(dir), format: o.format, project: o.project, keep: !o.once })
+    console.log(`${r.changed ? 'Scritto' : 'Già aggiornato'}: ${r.file}${o.once ? '' : ' (si aggiornerà da solo quando le Radici cambiano)'}`)
+  })
+
+roots.command('exports')
+  .description('i file per gli agenti tenuti aggiornati')
+  .action(async () => {
+    const list = await client().call<{ format: string, project: string, file: string, exists: boolean }[]>('GET', '/api/roots/agent-files')
+    if (!list.length) return console.log('Nessuno. Crea il primo con: micelio roots export <cartella> --format claude')
+    for (const f of list) console.log(`${f.format.padEnd(7)} ${f.project}  ${f.file}${f.exists ? '' : '  (file non presente)'}`)
+  })
+
+roots.command('import')
+  .description('importa come Radici ADR, CLAUDE.md / AGENTS.md (a sezioni) o un vault Markdown')
+  .argument('<percorso>', 'file o cartella')
+  .option('-c, --category <categoria>', `categoria: ${ROOT_CATEGORIES.join(' | ')} (default: architecture per gli ADR, practice per il resto)`)
+  .action(async (target: string, o: { category?: string }) => {
+    const r = await client().call<{ imported: number, duplicates: number, blocked: string[] }>('POST', '/api/roots/import', { path: path.resolve(target), category: o.category })
+    console.log(`Importate ${r.imported} Radici${r.duplicates ? `, ${r.duplicates} già presenti (rese Radici)` : ''}.`)
+    if (r.blocked.length) console.log(`Non importati (contenuti personali o riservati):\n  ${r.blocked.join('\n  ')}`)
+  })
+
 program.command('hook')
   .description('(interno) hook per Claude Code')
   .argument('<event>', 'session-end | session-start | prompt')

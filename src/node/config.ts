@@ -146,6 +146,12 @@ const Config = z.object({
   network: NetworkConfig,
   context: ContextConfig,
   /**
+   * File di istruzioni per gli agenti tenuti aggiornati con le Radici (B4, src/roots/agent-files.ts):
+   * cartella del progetto, formato (claude = CLAUDE.md, agents = AGENTS.md, cursor = regole di
+   * Cursor) e progetto (assente = nome della cartella). Impostazione del team.
+   */
+  agentFiles: z.array(z.object({ dir: z.string(), format: z.enum(['claude', 'agents', 'cursor']), project: z.string().optional() })).default([]),
+  /**
    * Team usato quando una richiesta non ne indica uno (B3): id locale della cartella `teams/<id>`.
    * Assente = il primo team in ordine di creazione.
    */
@@ -158,7 +164,7 @@ export type Config = z.infer<typeof Config>
  * cartelle, la sua DHT e il suo orario di sogno, in `teams/<id>/settings.json`.
  * Il resto (porta, token, LLM, embedding) resta in config.json: è uno per macchina.
  */
-const TEAM_SECTIONS = ['watch', 'network', 'dream'] as const
+const TEAM_SECTIONS = ['watch', 'network', 'dream', 'agentFiles'] as const
 
 /** true se configurazione e impostazioni del team stanno nello stesso file (struttura a un team). */
 const singleFile = (paths: NodePaths) => path.resolve(paths.config) === path.resolve(paths.settings)

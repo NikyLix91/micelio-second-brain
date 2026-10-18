@@ -79,4 +79,37 @@ describe('contesto automatico', () => {
     expect(d.roots.added.map((r) => r.title)).toEqual(['Architettura del servizio ordini'])
     expect(d.gaps).toEqual([]) // l'unica lacuna è chiusa
   })
+
+  it('file per gli agenti: CLAUDE.md con le Radici, aggiornato da solo quando cambiano', async () => {
+    fs.writeFileSync(path.join(project, 'CLAUDE.md'), '# Mie istruzioni\n\nUsa pnpm.\n')
+    const r = await node.exportAgentFile({ dir: project, format: 'claude', keep: true })
+    expect(r.changed).toBe(true)
+    let text = fs.readFileSync(path.join(project, 'CLAUDE.md'), 'utf8')
+    expect(text).toContain('Usa pnpm.')
+    expect(text).toContain('**Architettura del servizio ordini**')
+    expect(node.agentFiles()).toMatchObject([{ format: 'claude', project: 'ordini', exists: true }])
+    // una nuova Radice del progetto: il file si aggiorna senza fare nulla
+    const id = published(await node.remember({ title: 'Policy dei segreti negli ordini', body: 'Le chiavi del servizio ordini stanno nel vault, mai nel repository.', tags: ['ordini'] })).id
+    await node.rootSet(id, 'policy')
+    for (let i = 0; i < 50 && !fs.readFileSync(path.join(project, 'CLAUDE.md'), 'utf8').includes('Policy dei segreti'); i++) await new Promise((r) => setTimeout(r, 100))
+    text = fs.readFileSync(path.join(project, 'CLAUDE.md'), 'utf8')
+    expect(text).toContain('**Policy dei segreti negli ordini**')
+    expect(text.match(/micelio:start/g)).toHaveLength(1)
+    node.removeAgentFile(project, 'claude')
+    expect(node.agentFiles()).toEqual([])
+  })
+
+  it('import: ADR e CLAUDE.md diventano Radici, i contenuti riservati no', async () => {
+    const dir = path.join(project, 'docs', 'adr')
+    fs.mkdirSync(dir, { recursive: true })
+    fs.writeFileSync(path.join(dir, '0002-api-rest.md'), '# API REST versionate\n\nTutte le API pubbliche hanno la versione nel percorso (/v1/).')
+    fs.writeFileSync(path.join(dir, '0003-hr.md'), '# Note sulla valutazione annuale\n\nValutazione delle performance e stipendio di un collega.')
+    const r = await node.importRoots(dir)
+    expect(r).toMatchObject({ imported: 1, duplicates: 0 })
+    expect(r.blocked).toHaveLength(1)
+    const roots = await node.roots()
+    expect(roots.find((x) => x.memory.title === 'API REST versionate')).toMatchObject({ category: 'architecture' })
+    // reimportare non duplica
+    expect(await node.importRoots(dir)).toMatchObject({ imported: 0, duplicates: 1 })
+  })
 })

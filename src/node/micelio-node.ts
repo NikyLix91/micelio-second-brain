@@ -58,6 +58,8 @@ import { computeStaleness, stalenessFactor } from '../rank/code-staleness'
 import { promptContext, sessionContext } from '../context/agent-context'
 import { computeDigest, type Digest } from '../insight/digest'
 import { gapId, gapKey } from '../insight/gaps'
+import { AGENT_FILE_FORMATS, type AgentFileFormat, renderRootsBlock, writeAgentFile } from '../roots/agent-files'
+import { readImport } from '../roots/import'
 import { repoInfo } from '../ingest/git-changes'
 import { type Identity, signMembership } from '../core/identity'
 import { checkDecision, WRITE_CANDIDATES, WriteDecision, writeUpdateInput, writeUpdateSystem } from '../ingest/write-update'
@@ -281,6 +283,11 @@ const CONTEXT_ROOTS = 8
 const CONTEXT_MEMORIES = 6
 const CONTEXT_PER_PROMPT = 4
 const CONTEXT_MIN_PROMPT = 15
+
+/** Progetto di una cartella: il repository git che la contiene, altrimenti il nome della cartella. */
+function projectOf (dir: string): string {
+  return repoInfo(dir)?.project ?? path.basename(dir)
+}
 
 /** Ricordi e codice (B4): primo controllo dopo l'avvio, poi ogni 6 ore. */
 const STALE_FIRST_CHECK_MS = 60 * 1000
@@ -1083,11 +1090,8 @@ export class MicelioNode extends EventEmitter {
       let shown: RecallHit[] = []
       if (o.event === 'session-start') {
         if (!cfg.sessionStart) return ''
-        const project = repoInfo(o.cwd)?.project ?? path.basename(o.cwd)
-        // Radici del progetto, più quelle generali (best practice e policy valgono ovunque)
-        const all = await this.roots()
-        const roots = all.filter((r) => r.memory.source?.code?.project?.toLowerCase() === project.toLowerCase() || r.memory.tags.includes(project.toLowerCase()) ||
-          ((r.category === 'practice' || r.category === 'policy') && !r.memory.source?.code?.project)).map((r) => r.memory).slice(0, CONTEXT_ROOTS)
+        const project = projectOf(o.cwd)
+        const roots = (await this.projectRoots(project)).slice(0, CONTEXT_ROOTS)
         const rootIds = new Set(roots.map((r) => r.id))
         const memories = this.enrich(this.index.all())
           .filter((h) => !rootIds.has(h.id) && (h.source?.code?.project?.toLowerCase() === project.toLowerCase() || h.tags.includes(project.toLowerCase())))
@@ -1112,6 +1116,98 @@ export class MicelioNode extends EventEmitter {
       this.log(`contesto per l'agente non calcolato: ${(err as Error).message}`)
       return ''
     }
+  }
+
+  /**
+   * Radici di un progetto: quelle che citano il progetto (codice o tag) più quelle GENERALI
+   * (best practice e policy senza progetto, che valgono ovunque). Per contesto e file degli agenti.
+   */
+  private async projectRoots (project: string): Promise<RecallHit[]> {
+    const p = project.toLowerCase()
+    return (await this.roots())
+      .filter((r) => r.memory.source?.code?.project?.toLowerCase() === p || r.memory.tags.includes(p) ||
+        ((r.category === 'practice' || r.category === 'policy') && !r.memory.source?.code?.project))
+      .map((r) => r.memory)
+  }
+
+  // ═══════════════════════ File per gli agenti e import (B4) ═══════════════════════
+
+  /**
+   * Scrive le Radici del progetto nel file per gli agenti (CLAUDE.md, AGENTS.md o regole di
+   * Cursor) della cartella. Con `keep` la cartella entra nell'elenco dei file tenuti aggiornati:
+   * si riscrivono da soli quando le Radici cambiano.
+   */
+  async exportAgentFile (o: { dir: string, format: AgentFileFormat, project?: string, keep?: boolean }): Promise<{ file: string, changed: boolean }> {
+    this.requireTeam()
+    if (!fs.existsSync(o.dir) || !fs.statSync(o.dir).isDirectory()) throw new UserError(`Cartella inesistente: ${path.resolve(o.dir)}`, `Folder not found: ${path.resolve(o.dir)}`)
+    if (!(o.format in AGENT_FILE_FORMATS)) throw new UserError('Formato: claude, agents o cursor', 'Format: claude, agents or cursor')
+    const dir = canonicalPath(o.dir)
+    const project = o.project?.trim() || projectOf(dir)
+    const r = writeAgentFile(dir, o.format, renderRootsBlock({ team: this.teamNameCache ?? '', project, roots: await this.projectRoots(project) }))
+    if (o.keep) {
+      this.config = updateConfig(this.paths, (c) => {
+        c.agentFiles = [...c.agentFiles.filter((f) => !(canonicalPath(f.dir) === dir && f.format === o.format)), { dir, format: o.format, ...(o.project?.trim() ? { project: o.project.trim() } : {}) }]
+      })
+      this.changed('settings')
+    }
+    return r
+  }
+
+  /** I file per gli agenti tenuti aggiornati, e se esistono. */
+  agentFiles (): { dir: string, format: AgentFileFormat, project: string, file: string, exists: boolean }[] {
+    return this.config.agentFiles.map((f) => {
+      const file = path.join(f.dir, AGENT_FILE_FORMATS[f.format])
+      return { dir: f.dir, format: f.format, project: f.project ?? projectOf(f.dir), file, exists: fs.existsSync(file) }
+    })
+  }
+
+  /** Smette di aggiornare un file (il file resta com'è). */
+  removeAgentFile (dir: string, format: AgentFileFormat): void {
+    const d = canonicalPath(dir)
+    this.config = updateConfig(this.paths, (c) => { c.agentFiles = c.agentFiles.filter((f) => !(canonicalPath(f.dir) === d && f.format === format)) })
+    this.changed('settings')
+  }
+
+  /** Riscrive i file tenuti aggiornati (solo quelli cambiati davvero). Dopo ogni aggiornamento della vista. */
+  private async refreshAgentFiles (): Promise<void> {
+    for (const f of this.config.agentFiles) {
+      try {
+        if (!fs.existsSync(f.dir)) continue
+        const project = f.project ?? projectOf(f.dir)
+        const r = writeAgentFile(f.dir, f.format, renderRootsBlock({ team: this.teamNameCache ?? '', project, roots: await this.projectRoots(project) }))
+        if (r.changed) this.log(`file per gli agenti aggiornato: ${r.file}`)
+      } catch (err) {
+        this.log(`file per gli agenti non aggiornato (${f.dir}): ${(err as Error).message}`)
+      }
+    }
+  }
+
+  /**
+   * Importa come Radici file già scritti dal team (ADR, CLAUDE.md / AGENTS.md a sezioni, vault
+   * Markdown), senza LLM: src/roots/import.ts. Passano dal filtro dei segreti; i contenuti
+   * bloccati (personali/HR) non entrano. Un ricordo già presente diventa comunque Radice.
+   */
+  async importRoots (target: string, category?: RootCategory): Promise<{ imported: number, duplicates: number, blocked: string[], ids: string[] }> {
+    const team = this.requireTeam()
+    if (category && !ROOT_CATEGORIES.includes(category)) throw new UserError(`Categoria sconosciuta: ${category}`, `Unknown category: ${category}`)
+    let items
+    try { items = readImport(target) } catch (err) { throw new UserError((err as Error).message, `Path not found: ${target}`) }
+    if (!items.length) throw new UserError('Nessun file Markdown da importare', 'No Markdown file to import')
+    const rules = await this.filterRules()
+    const out = { imported: 0, duplicates: 0, blocked: [] as string[], ids: [] as string[] }
+    for (const it of items) {
+      const fm = filterMemory(MemoryInput.parse({ kind: it.kind, title: it.title, body: it.body, tags: ['import'], source: { type: 'import', name: it.file } }), rules)
+      if (fm.blocked) { out.blocked.push(`${it.file}: ${it.title}`); continue }
+      const id = memoryId(fm.memory)
+      if (this.index.get(id)?.id === id) out.duplicates++
+      else { await team.append({ type: 'memory.add', memory: fm.memory }); out.imported++ }
+      // ADR → decisioni architetturali; il resto → best practice, salvo categoria indicata
+      await team.append({ type: 'root.set', id, category: category ?? (it.kind === 'decision' ? 'architecture' : 'practice') })
+      out.ids.push(id)
+    }
+    await this.sync()
+    this.changed('roots')
+    return out
   }
 
   /**
@@ -1924,6 +2020,8 @@ export class MicelioNode extends EventEmitter {
       this.degrees = degrees
       this.scheduleEmbedding()
       this.changed('memories', 'members', 'status')
+      // B4: i file per gli agenti seguono le Radici (si riscrivono solo se cambiano davvero)
+      if (this.config.agentFiles.length) this.refreshAgentFiles().catch((err) => this.log(`file per gli agenti: ${err.message}`))
     })
     return this.materializing
   }

@@ -75,7 +75,7 @@ const newTeamId = () => randomBytes(4).toString('hex')
 const LEGACY_ENTRIES = ['state.json', 'corestore', 'view.db', 'view.db-wal', 'view.db-shm', 'private.db', 'private.db-wal', 'private.db-shm', 'export', 'sources']
 
 /** Sezioni di config.json che appartengono al team (vedi TEAM_SECTIONS in config.ts). */
-const TEAM_SECTIONS = ['watch', 'network', 'dream']
+const TEAM_SECTIONS = ['watch', 'network', 'dream', 'agentFiles']
 
 export class MicelioHost extends EventEmitter {
   /** Nodi aperti per id: i team configurati più, al massimo, uno "in attesa" (vedi pending). */

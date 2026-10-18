@@ -397,6 +397,35 @@ export class ApiController {
     return this.node.rootReview(ids)
   }
 
+  /** File per gli agenti tenuti aggiornati con le Radici (B4). Prima di roots/:id. */
+  @Get('roots/agent-files')
+  agentFiles () {
+    return this.node.agentFiles()
+  }
+
+  /** Scrive le Radici in CLAUDE.md / AGENTS.md / regole di Cursor di una cartella (keep = tienilo aggiornato). */
+  @Post('roots/agent-files')
+  @HttpCode(200)
+  exportAgentFile (@Body() body: unknown) {
+    const b = z.object({ dir: z.string().min(1).max(1000), format: z.enum(['claude', 'agents', 'cursor']), project: z.string().max(200).optional(), keep: z.boolean().default(true) }).parse(body)
+    return this.node.exportAgentFile(b)
+  }
+
+  @Delete('roots/agent-files')
+  removeAgentFile (@Body() body: unknown) {
+    const b = z.object({ dir: z.string().min(1).max(1000), format: z.enum(['claude', 'agents', 'cursor']) }).parse(body)
+    this.node.removeAgentFile(b.dir, b.format)
+    return { ok: true }
+  }
+
+  /** Importa come Radici ADR, CLAUDE.md / AGENTS.md o un vault Markdown (file o cartella). */
+  @Post('roots/import')
+  @HttpCode(200)
+  importRoots (@Body() body: unknown) {
+    const b = z.object({ path: z.string().min(1).max(1000), category: z.enum(ROOT_CATEGORIES).optional() }).parse(body)
+    return this.node.importRoots(b.path, b.category)
+  }
+
   /** Radici suggerite dal distillatore su questo nodo, da promuovere o ignorare. */
   @Get('roots/suggestions')
   rootSuggestions () {
