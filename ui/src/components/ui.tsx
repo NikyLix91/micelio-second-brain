@@ -4,6 +4,12 @@
  */
 import { type ReactNode, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
+import { defineStrings, useStrings } from '../i18n'
+
+const S = defineStrings({
+  it: { confirm: 'Conferma', cancel: 'Annulla' },
+  en: { confirm: 'Confirm', cancel: 'Cancel' }
+})
 
 /** Intestazione di pagina con titolo e sottotitolo. */
 export function PageHeader ({ title, subtitle, actions }: { title: string, subtitle?: ReactNode, actions?: ReactNode }) {
@@ -70,15 +76,16 @@ export function Empty ({ children }: { children: ReactNode }) {
  * Pulsante che chiede conferma prima di un'azione irreversibile o "pubblica" (espulsioni,
  * modifiche alla configurazione dell'utente). Al primo clic mostra Conferma/Annulla.
  */
-export function ConfirmButton ({ label, confirmLabel = 'Conferma', onConfirm, danger, disabled }: {
+export function ConfirmButton ({ label, confirmLabel, onConfirm, danger, disabled }: {
   label: string, confirmLabel?: string, onConfirm: () => void, danger?: boolean, disabled?: boolean
 }) {
   const [asking, setAsking] = useState(false)
+  const s = useStrings(S)
   if (!asking) return <button className={`btn small ${danger ? 'danger' : ''}`} disabled={disabled} onClick={() => setAsking(true)}>{label}</button>
   return (
     <span className='row'>
-      <button className={`btn small ${danger ? 'danger' : 'primary'}`} onClick={() => { setAsking(false); onConfirm() }}>{confirmLabel}</button>
-      <button className='btn small' onClick={() => setAsking(false)}>Annulla</button>
+      <button className={`btn small ${danger ? 'danger' : 'primary'}`} onClick={() => { setAsking(false); onConfirm() }}>{confirmLabel ?? s.confirm}</button>
+      <button className='btn small' onClick={() => setAsking(false)}>{s.cancel}</button>
     </span>
   )
 }

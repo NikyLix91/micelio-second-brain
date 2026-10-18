@@ -213,3 +213,8 @@ th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .hud-legend-item.on { border-color: #ffb347; background: rgb(255 170 60 / 20%); }
 .hud-legend-item.off { opacity: .45; }
 .hud-legend-count { margin-left: auto; opacity: .6; font-size: 11px; }
+
+/* Selettore della lingua (barra laterale) */
+.lang-switch { display: inline-flex; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
+.lang-btn { background: transparent; border: 0; padding: 1px 8px; font-size: 11px; color: var(--muted); cursor: pointer; }
+.lang-btn.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }

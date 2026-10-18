@@ -15,6 +15,7 @@ import { HashRouter, NavLink, Route, Routes, useLocation } from 'react-router-do
 import { api } from './api/client'
 import { useLiveEvents } from './api/live'
 import { ErrorBox } from './components/ui'
+import { defineStrings, LangSwitch, useStrings } from './i18n'
 import { Constellation } from './pages/Constellation'
 import { Dashboard } from './pages/Dashboard'
 import { Inbox } from './pages/Inbox'
@@ -27,22 +28,41 @@ import { Settings } from './pages/Settings'
 import { Team } from './pages/Team'
 import { Dreams } from './pages/Dreams'
 
+/** Testi dell'ossatura (menu, stati di connessione) nelle due lingue. */
+const S = defineStrings({
+  it: {
+    connecting: 'Connessione al nodo…',
+    nucleusLoading: 'Accensione del nucleo…',
+    nav: { nucleus: 'Nucleo', map: 'Mappa 2D', memory: 'Memoria', roots: 'Radici', inbox: 'Inbox', team: 'Team', dreams: 'Sogni', status: 'Stato', private: 'Registro privato', security: 'Sicurezza', settings: 'Impostazioni' },
+    live: 'Aggiornamenti in tempo reale',
+    reconnecting: 'Riconnessione…'
+  },
+  en: {
+    connecting: 'Connecting to the node…',
+    nucleusLoading: 'Powering up the nucleus…',
+    nav: { nucleus: 'Nucleus', map: '2D map', memory: 'Memory', roots: 'Roots', inbox: 'Inbox', team: 'Team', dreams: 'Dreams', status: 'Status', private: 'Private log', security: 'Security', settings: 'Settings' },
+    live: 'Live updates',
+    reconnecting: 'Reconnecting…'
+  }
+})
+
 // Il Nucleo 3D porta con sé three.js: caricato solo quando serve (bundle separato).
 const Nucleus = lazy(() => import('./pages/nucleus/Nucleus'))
 
 export function App () {
   const live = useLiveEvents()
   const status = useQuery({ queryKey: ['status'], queryFn: api.status })
+  const s = useStrings(S)
 
   if (status.error) return <div className='centered'><ErrorBox error={status.error} /></div>
-  if (!status.data) return <div className='centered muted'>Connessione al nodo…</div>
+  if (!status.data) return <div className='centered muted'>{s.connecting}</div>
   if (!status.data.configured) return <Onboarding />
 
   return (
     <HashRouter>
         <Shell live={live} team={status.data.team?.name ?? ''} node={status.data.nodeName ?? ''}>
           <Routes>
-            <Route path='/' element={<Suspense fallback={<div className='hud hud-center'>Accensione del nucleo…</div>}><Nucleus /></Suspense>} />
+            <Route path='/' element={<Suspense fallback={<div className='hud hud-center'>{s.nucleusLoading}</div>}><Nucleus /></Suspense>} />
             <Route path='/mappa' element={<Constellation />} />
             <Route path='/stato' element={<Dashboard />} />
             <Route path='/memoria' element={<Memory />} />
@@ -79,26 +99,28 @@ function Sidebar ({ live, team, node }: { live: boolean, team: string, node: str
   const ingest = useQuery({ queryKey: ['ingest'], queryFn: api.ingestStatus })
   const inbox = ingest.data?.inbox ?? 0
   const link = ({ isActive }: { isActive: boolean }) => `nav-link ${isActive ? 'active' : ''}`
+  const s = useStrings(S)
+  const n = s.nav
   return (
     <nav className='sidebar'>
       <div className='brand'>
         <span aria-hidden>🍄</span>
         <div>Micelio<small>{team}</small></div>
       </div>
-      <NavLink to='/' end className={link}>Nucleo</NavLink>
-      <NavLink to='/mappa' className={link}>Mappa 2D</NavLink>
-      <NavLink to='/memoria' className={link}>Memoria</NavLink>
-      <NavLink to='/radici' className={link}>Radici</NavLink>
-      <NavLink to='/inbox' className={link}>Inbox {inbox > 0 && <span className='count'>{inbox}</span>}</NavLink>
-      <NavLink to='/team' className={link}>Team</NavLink>
-      <NavLink to='/sogni' className={link}>Sogni</NavLink>
-      <NavLink to='/stato' className={link}>Stato</NavLink>
-      <NavLink to='/privato' className={link}>Registro privato</NavLink>
-      <NavLink to='/sicurezza' className={link}>Sicurezza</NavLink>
-      <NavLink to='/impostazioni' className={link}>Impostazioni</NavLink>
+      <NavLink to='/' end className={link}>{n.nucleus}</NavLink>
+      <NavLink to='/mappa' className={link}>{n.map}</NavLink>
+      <NavLink to='/memoria' className={link}>{n.memory}</NavLink>
+      <NavLink to='/radici' className={link}>{n.roots}</NavLink>
+      <NavLink to='/inbox' className={link}>{n.inbox} {inbox > 0 && <span className='count'>{inbox}</span>}</NavLink>
+      <NavLink to='/team' className={link}>{n.team}</NavLink>
+      <NavLink to='/sogni' className={link}>{n.dreams}</NavLink>
+      <NavLink to='/stato' className={link}>{n.status}</NavLink>
+      <NavLink to='/privato' className={link}>{n.private}</NavLink>
+      <NavLink to='/sicurezza' className={link}>{n.security}</NavLink>
+      <NavLink to='/impostazioni' className={link}>{n.settings}</NavLink>
       <div className='sidebar-footer'>
-        <div className='row'><span className={`dot ${live ? 'on' : ''}`} />{live ? 'Aggiornamenti in tempo reale' : 'Riconnessione…'}</div>
-        <div>{node}</div>
+        <div className='row'><span className={`dot ${live ? 'on' : ''}`} />{live ? s.live : s.reconnecting}</div>
+        <div className='row'><span>{node}</span><span className='spacer' /><LangSwitch /></div>
       </div>
     </nav>
   )

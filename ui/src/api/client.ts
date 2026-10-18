@@ -16,6 +16,7 @@ import type { IngestStatus, NetworkSettings, NodeSettings, RootReviewResult, Roo
 import type { NetworkCheck } from '../../../src/net/diagnose'
 import type { Decision, InboxItem, SecurityLogEntry } from '../../../src/store/private-store'
 import { getToken } from './auth'
+import { currentLang } from '../i18n'
 
 export type { DistillQuality, Graph, GraphLink, GraphNode }
 export type { NetworkCheck, NetworkSettings, RootReviewResult, RootView, SecurityFinding, SecurityLogEntry, SecurityRules, SecurityTestResult, StorageReport }
@@ -45,7 +46,9 @@ export async function call<T> (method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: 
     // Rotta sconosciuta al daemon: l'interfaccia è più nuova del daemon in esecuzione (ricompilato
     // ma non riavviato). Al posto del "Cannot GET /api/…" di Express, diciamo cosa fare.
     if (res.status === 404 && /^Cannot (GET|POST|PUT|DELETE) \/api\//.test(msg)) {
-      throw new ApiError('Questa funzione richiede un daemon aggiornato: il daemon in esecuzione è una versione precedente dell\'app. Riavvialo (micelio stop && micelio start; per il team demo: Ctrl+C e npm run demo).', 404)
+      throw new ApiError(currentLang() === 'it'
+        ? 'Questa funzione richiede un daemon aggiornato: il daemon in esecuzione è una versione precedente dell\'app. Riavvialo (micelio stop && micelio start; per il team demo: Ctrl+C e npm run demo).'
+        : 'This feature needs an updated daemon: the running daemon is an older version of the app. Restart it (micelio stop && micelio start; for the demo team: Ctrl+C and npm run demo).', 404)
     }
     throw new ApiError(msg, res.status)
   }

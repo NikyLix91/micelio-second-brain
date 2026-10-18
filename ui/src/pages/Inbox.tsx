@@ -10,17 +10,45 @@ import { useState } from 'react'
 import { api, type InboxItem } from '../api/client'
 import { Card, Empty, ErrorBox, Markdown, PageHeader } from '../components/ui'
 import { dateTime } from '../format'
+import { defineStrings, useStrings } from '../i18n'
+
+const S = defineStrings({
+  it: {
+    title: 'Inbox',
+    subtitle: 'Ricordi in attesa di una tua decisione: solo i casi dubbi. Restano sul tuo PC e scadono dopo 14 giorni.',
+    empty: 'Nessun ricordo in attesa. 🎉',
+    meta: (source: string, expires: string) => `fonte: ${source} · scade il ${expires}`,
+    titleLabel: 'Titolo',
+    body: 'Contenuto',
+    publishEdited: 'Pubblica la versione corretta',
+    publish: 'Pubblica nel team',
+    cancelEdit: 'Annulla modifiche',
+    edit: 'Correggi',
+    reject: 'Scarta'
+  },
+  en: {
+    title: 'Inbox',
+    subtitle: 'Memories waiting for your decision: only the doubtful cases. They stay on your PC and expire after 14 days.',
+    empty: 'Nothing waiting. 🎉',
+    meta: (source: string, expires: string) => `source: ${source} · expires on ${expires}`,
+    titleLabel: 'Title',
+    body: 'Content',
+    publishEdited: 'Publish the corrected version',
+    publish: 'Publish to the team',
+    cancelEdit: 'Discard changes',
+    edit: 'Edit',
+    reject: 'Discard'
+  }
+})
 
 export function Inbox () {
+  const s = useStrings(S)
   const inbox = useQuery({ queryKey: ['inbox'], queryFn: api.inbox })
   return (
     <>
-      <PageHeader
-        title='Inbox'
-        subtitle='Ricordi in attesa di una tua decisione: solo i casi dubbi. Restano sul tuo PC e scadono dopo 14 giorni.'
-      />
+      <PageHeader title={s.title} subtitle={s.subtitle} />
       <ErrorBox error={inbox.error} />
-      {inbox.data?.length === 0 && <Card><Empty>Nessun ricordo in attesa. 🎉</Empty></Card>}
+      {inbox.data?.length === 0 && <Card><Empty>{s.empty}</Empty></Card>}
       <div className='stack'>
         {inbox.data?.map((item) => <InboxCard key={item.id} item={item} />)}
       </div>
@@ -31,6 +59,7 @@ export function Inbox () {
 /** Un elemento dell'inbox, con modalità di modifica. */
 export function InboxCard ({ item }: { item: InboxItem }) {
   const client = useQueryClient()
+  const s = useStrings(S)
   const [editing, setEditing] = useState(false)
   const [title, setTitle] = useState(item.memory.title)
   const [body, setBody] = useState(item.memory.body)
@@ -53,13 +82,13 @@ export function InboxCard ({ item }: { item: InboxItem }) {
       <div className='row' style={{ marginBottom: 8 }}>
         <span className='badge warn'>{item.reason}</span>
         <span className='spacer' />
-        <span className='muted small'>fonte: {item.source.type} · scade il {dateTime(item.expires)}</span>
+        <span className='muted small'>{s.meta(item.source.type, dateTime(item.expires))}</span>
       </div>
       {editing
         ? (
           <div className='stack'>
-            <div><label>Titolo</label><input value={title} onChange={(e) => setTitle(e.target.value)} /></div>
-            <div><label>Contenuto</label><textarea value={body} onChange={(e) => setBody(e.target.value)} /></div>
+            <div><label>{s.titleLabel}</label><input value={title} onChange={(e) => setTitle(e.target.value)} /></div>
+            <div><label>{s.body}</label><textarea value={body} onChange={(e) => setBody(e.target.value)} /></div>
           </div>
           )
         : (
@@ -71,11 +100,11 @@ export function InboxCard ({ item }: { item: InboxItem }) {
       <ErrorBox error={approve.error ?? reject.error} />
       <div className='row' style={{ marginTop: 12 }}>
         <button className='btn primary' disabled={busy} onClick={() => approve.mutate()}>
-          {editing ? 'Pubblica la versione corretta' : 'Pubblica nel team'}
+          {editing ? s.publishEdited : s.publish}
         </button>
-        <button className='btn' disabled={busy} onClick={() => setEditing(!editing)}>{editing ? 'Annulla modifiche' : 'Correggi'}</button>
+        <button className='btn' disabled={busy} onClick={() => setEditing(!editing)}>{editing ? s.cancelEdit : s.edit}</button>
         <span className='spacer' />
-        <button className='btn danger' disabled={busy} onClick={() => reject.mutate()}>Scarta</button>
+        <button className='btn danger' disabled={busy} onClick={() => reject.mutate()}>{s.reject}</button>
       </div>
     </Card>
   )

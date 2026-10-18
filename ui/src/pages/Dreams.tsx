@@ -10,6 +10,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { call } from '../api/client'
 import { Card, Empty, ErrorBox, PageHeader } from '../components/ui'
 import { dateTime, short } from '../format'
+import { defineStrings, useStrings } from '../i18n'
 
 interface DreamLog { epoch: string, by: string, ts: number, summary: string, stats: Record<string, number> }
 interface Archived { id: string, title: string, status: 'superseded' | 'archived', statusReason?: string, ts: number }
@@ -21,8 +22,46 @@ const dreamsApi = {
   restore: (id: string) => call<{ ok: true }>('POST', `/api/archive/${encodeURIComponent(id)}/restore`)
 }
 
+const S = defineStrings({
+  it: {
+    title: 'Sogni',
+    subtitle: 'Il consolidamento periodico del sapere: duplicati fusi, ricordi superati o non più usati archiviati, collegamenti nuovi. Un nodo al giorno sogna per tutto il team.',
+    running: 'Sogno in corso…',
+    run: 'Sogna ora',
+    done: (m: number, o: number, l: number, d: number) => `Sogno completato: ${m} fusi, ${o} superati, ${l} collegati, ${d} decaduti.`,
+    diary: 'Diario',
+    noDreams: 'Nessun sogno ancora. Il primo avverrà oggi dalle 13, o subito con «Sogna ora».',
+    by: 'da',
+    stat: { merged: 'fusi', obsolete: 'superati', linked: 'collegati', decayed: 'decaduti' } as Record<string, string>,
+    archive: 'Archivio',
+    archiveIntro: 'Ricordi usciti dalla ricerca. Restano consultabili e si possono ripristinare.',
+    archiveEmpty: 'Archivio vuoto.',
+    superseded: 'sostituito',
+    archived: 'archiviato',
+    restore: 'Ripristina'
+  },
+  en: {
+    title: 'Dreams',
+    subtitle: 'The periodic consolidation of knowledge: duplicates merged, outdated or unused memories archived, new links. One node a day dreams for the whole team.',
+    running: 'Dreaming…',
+    run: 'Dream now',
+    done: (m: number, o: number, l: number, d: number) => `Dream completed: ${m} merged, ${o} superseded, ${l} linked, ${d} decayed.`,
+    diary: 'Diary',
+    noDreams: 'No dreams yet. The first one will happen today from 1 pm, or right away with “Dream now”.',
+    by: 'by',
+    stat: { merged: 'merged', obsolete: 'superseded', linked: 'linked', decayed: 'decayed' } as Record<string, string>,
+    archive: 'Archive',
+    archiveIntro: 'Memories removed from search. They can still be read and restored.',
+    archiveEmpty: 'The archive is empty.',
+    superseded: 'superseded',
+    archived: 'archived',
+    restore: 'Restore'
+  }
+})
+
 export function Dreams () {
   const client = useQueryClient()
+  const s = useStrings(S)
   const log = useQuery({ queryKey: ['dreams'], queryFn: dreamsApi.log })
   const archive = useQuery({ queryKey: ['archive'], queryFn: dreamsApi.archive })
   const refresh = () => ['dreams', 'archive', 'memories', 'graph'].forEach((k) => void client.invalidateQueries({ queryKey: [k] }))
@@ -32,26 +71,26 @@ export function Dreams () {
   return (
     <>
       <PageHeader
-        title='Sogni'
-        subtitle='Il consolidamento periodico del sapere: duplicati fusi, ricordi superati o non più usati archiviati, collegamenti nuovi. Un nodo al giorno sogna per tutto il team.'
-        actions={<button className='btn primary' disabled={run.isPending} onClick={() => run.mutate()}>{run.isPending ? 'Sogno in corso…' : 'Sogna ora'}</button>}
+        title={s.title}
+        subtitle={s.subtitle}
+        actions={<button className='btn primary' disabled={run.isPending} onClick={() => run.mutate()}>{run.isPending ? s.running : s.run}</button>}
       />
       <div className='stack'>
         <ErrorBox error={run.error} />
-        {run.data && <div className='notice ok'>Sogno completato: {run.data.merged} fusi, {run.data.obsolete} superati, {run.data.linked} collegati, {run.data.decayed} decaduti.</div>}
+        {run.data && <div className='notice ok'>{s.done(run.data.merged, run.data.obsolete, run.data.linked, run.data.decayed)}</div>}
 
-        <Card title='Diario'>
+        <Card title={s.diary}>
           <ErrorBox error={log.error} />
-          {log.data?.length === 0 && <Empty>Nessun sogno ancora. Il primo avverrà oggi dalle 13, o subito con «Sogna ora».</Empty>}
+          {log.data?.length === 0 && <Empty>{s.noDreams}</Empty>}
           <div className='list'>
             {log.data?.map((d) => (
               <div key={d.epoch} className='list-item'>
                 <div className='row'>
                   <strong>{d.epoch}</strong>
-                  <span className='muted small'>{dateTime(d.ts)} · da <span className='mono'>{short(d.by)}</span></span>
+                  <span className='muted small'>{dateTime(d.ts)} · {s.by} <span className='mono'>{short(d.by)}</span></span>
                   <span className='spacer' />
                   {Object.entries(d.stats).filter(([k, v]) => v > 0 && k !== 'examined' && k !== 'calls').map(([k, v]) => (
-                    <span key={k} className='badge accent'>{({ merged: 'fusi', obsolete: 'superati', linked: 'collegati', decayed: 'decaduti' } as Record<string, string>)[k] ?? k}: {v}</span>
+                    <span key={k} className='badge accent'>{s.stat[k] ?? k}: {v}</span>
                   ))}
                 </div>
                 <div className='small' style={{ whiteSpace: 'pre-line', marginTop: 4 }}>{d.summary}</div>
@@ -60,19 +99,19 @@ export function Dreams () {
           </div>
         </Card>
 
-        <Card title='Archivio'>
-          <p className='muted' style={{ marginTop: 0 }}>Ricordi usciti dalla ricerca. Restano consultabili e si possono ripristinare.</p>
+        <Card title={s.archive}>
+          <p className='muted' style={{ marginTop: 0 }}>{s.archiveIntro}</p>
           <ErrorBox error={archive.error ?? restore.error} />
-          {archive.data?.length === 0 && <Empty>Archivio vuoto.</Empty>}
+          {archive.data?.length === 0 && <Empty>{s.archiveEmpty}</Empty>}
           <div className='list'>
             {archive.data?.map((m) => (
               <div key={m.id} className='list-item row'>
-                <span className={`badge ${m.status === 'superseded' ? 'accent' : 'warn'}`}>{m.status === 'superseded' ? 'sostituito' : 'archiviato'}</span>
+                <span className={`badge ${m.status === 'superseded' ? 'accent' : 'warn'}`}>{m.status === 'superseded' ? s.superseded : s.archived}</span>
                 <div style={{ flex: 1 }}>
                   <div>{m.title}</div>
                   <div className='small muted'>{m.statusReason}</div>
                 </div>
-                <button className='btn small' onClick={() => restore.mutate(m.id)}>Ripristina</button>
+                <button className='btn small' onClick={() => restore.mutate(m.id)}>{s.restore}</button>
               </div>
             ))}
           </div>

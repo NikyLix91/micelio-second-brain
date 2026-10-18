@@ -1,19 +1,24 @@
-/** @file Piccole funzioni di formattazione condivise dalle schermate. */
+/**
+ * @file Piccole funzioni di formattazione e tabelle di etichette condivise dalle schermate.
+ * Seguono la lingua scelta (i18n): date e numeri nel formato della lingua, etichette tradotte.
+ */
+import { byLang, currentLang, currentLocale } from './i18n'
 
 /** Prime 12 cifre di una chiave: abbastanza per riconoscerla, abbastanza corte da leggere. */
 export const short = (k: string | null | undefined): string => (k ? k.slice(0, 12) : '–')
 
-/** Data e ora locali leggibili, es. "17/10/2026, 12:53". */
+/** Data e ora leggibili, es. "17/10/2026, 12:53". */
 export const dateTime = (ts: number): string =>
-  new Date(ts).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+  new Date(ts).toLocaleString(currentLocale(), { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 
-/** Data relativa breve: "adesso", "5 min fa", "3 h fa", "2 g fa". */
+/** Data relativa breve: "adesso", "5 min fa", "3 h fa", "2 g fa" (o in inglese). */
 export function ago (ts: number, now = Date.now()): string {
   const s = Math.round((now - ts) / 1000)
-  if (s < 60) return 'adesso'
-  if (s < 3600) return `${Math.floor(s / 60)} min fa`
-  if (s < 86_400) return `${Math.floor(s / 3600)} h fa`
-  return `${Math.floor(s / 86_400)} g fa`
+  const it = currentLang() === 'it'
+  if (s < 60) return it ? 'adesso' : 'just now'
+  if (s < 3600) return `${Math.floor(s / 60)} min ${it ? 'fa' : 'ago'}`
+  if (s < 86_400) return `${Math.floor(s / 3600)} h ${it ? 'fa' : 'ago'}`
+  return `${Math.floor(s / 86_400)} ${it ? 'g fa' : 'd ago'}`
 }
 
 /** Dimensione leggibile: "512 B", "3,4 KB", "12,1 MB", "1,2 GB" (base 1024). */
@@ -23,29 +28,31 @@ export function bytes (n: number): string {
   let v = n / 1024
   let i = 0
   while (v >= 1024 && i < units.length - 1) { v /= 1024; i++ }
-  return `${v.toLocaleString('it-IT', { maximumFractionDigits: v < 10 ? 1 : 0 })} ${units[i]}`
+  return `${v.toLocaleString(currentLocale(), { maximumFractionDigits: v < 10 ? 1 : 0 })} ${units[i]}`
 }
 
 /** Percentuale leggibile da una quota 0..1: "42%", "0,4%", "<0,1%". */
 export function percent (share: number): string {
   const p = share * 100
-  if (p > 0 && p < 0.1) return '<0,1%'
-  return `${p.toLocaleString('it-IT', { maximumFractionDigits: p < 10 ? 1 : 0 })}%`
+  if (p > 0 && p < 0.1) return `<${(0.1).toLocaleString(currentLocale())}%`
+  return `${p.toLocaleString(currentLocale(), { maximumFractionDigits: p < 10 ? 1 : 0 })}%`
 }
 
-/** Categorie delle Radici (Fase 8), nell'ordine in cui si mostrano, con le etichette italiane. */
+/** Categorie delle Radici (Fase 8), nell'ordine in cui si mostrano, con le etichette. */
 export const ROOT_CATEGORY_ORDER = ['architecture', 'network', 'interface', 'domain', 'practice', 'policy', 'other'] as const
-export const ROOT_CATEGORY_LABEL: Record<string, string> = {
-  architecture: 'Architettura', network: 'Rete e infrastruttura', interface: 'Interfacce e contratti',
-  domain: 'Dominio', practice: 'Best practice', policy: 'Policy', other: 'Altro'
-}
+export const ROOT_CATEGORY_LABEL = byLang({
+  it: { architecture: 'Architettura', network: 'Rete e infrastruttura', interface: 'Interfacce e contratti', domain: 'Dominio', practice: 'Best practice', policy: 'Policy', other: 'Altro' },
+  en: { architecture: 'Architecture', network: 'Network and infrastructure', interface: 'Interfaces and contracts', domain: 'Domain', practice: 'Best practices', policy: 'Policies', other: 'Other' }
+})
 
-/** Etichette italiane dei tipi di ricordo. */
-export const KIND_LABEL: Record<string, string> = {
-  fact: 'fatto', howto: 'procedura', decision: 'decisione', gotcha: 'gotcha', snippet: 'snippet', reference: 'riferimento'
-}
+/** Tipi di ricordo. */
+export const KIND_LABEL = byLang({
+  it: { fact: 'fatto', howto: 'procedura', decision: 'decisione', gotcha: 'gotcha', snippet: 'snippet', reference: 'riferimento' },
+  en: { fact: 'fact', howto: 'how-to', decision: 'decision', gotcha: 'gotcha', snippet: 'snippet', reference: 'reference' }
+})
 
-/** Etichette degli esiti nel registro privato. */
-export const OUTCOME_LABEL: Record<string, string> = {
-  blocked: 'Bloccato dal filtro', private: 'Privato', discarded: 'Scartato', rejected: 'Rifiutato da te', expired: 'Scaduto'
-}
+/** Esiti nel registro privato. */
+export const OUTCOME_LABEL = byLang({
+  it: { blocked: 'Bloccato dal filtro', private: 'Privato', discarded: 'Scartato', rejected: 'Rifiutato da te', expired: 'Scaduto' },
+  en: { blocked: 'Blocked by the filter', private: 'Private', discarded: 'Discarded', rejected: 'Rejected by you', expired: 'Expired' }
+})
