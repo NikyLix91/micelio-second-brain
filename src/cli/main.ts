@@ -461,6 +461,20 @@ program.command('remember')
     printOutcome(await client().call<ExplicitOutcome>('POST', '/api/memories', { title, body, kind: o.kind, tags }))
   })
 
+// ── Ricordi e codice (B4) ─────────────────────────────────────────────────────────
+program.command('stale')
+  .description('ricordi il cui codice citato è cambiato dopo la scrittura (repository di questo PC)')
+  .option('--check', 'ricontrolla subito i repository prima di mostrare l\'elenco')
+  .action(async (o: { check?: boolean }) => {
+    if (o.check) {
+      const r = await client().call<{ checked: number, stale: number }>('POST', '/api/memories/stale/check')
+      console.log(`Controllati ${r.checked} ricordi con riferimenti al codice: ${r.stale} con codice cambiato.`)
+    }
+    const list = await client().call<RecallHit[]>('GET', '/api/memories/stale')
+    if (!list.length) return console.log('Nessun ricordo con codice cambiato (o nessun repository su questo PC).')
+    for (const h of list) printHit(h)
+  })
+
 // ── Ricordi personali (B4) ────────────────────────────────────────────────────────
 const personal = program.command('personal').description('ricordi personali: solo su questo PC (list | share | delete)')
 

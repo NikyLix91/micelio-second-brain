@@ -12,6 +12,8 @@
  * - distill:  un ricordo per ogni riga "LEZIONE: titolo | corpo [| rif: file, simbolo, commit, radice=categoria]";
  * - consolidate (dreaming): "[collega]" nel testo → link; altrimenti fonde il gruppo.
  * - root-review: un ricordo recente con "[contraddice]" nel testo → contradicts; altrimenti consistent.
+ * - write-update (B4): "[aggiorna]" nel ricordo nuovo → aggiorna il primo esistente non protetto;
+ *             "[duplicato]" → duplicato del primo esistente; altrimenti → nuovo.
  */
 import type { LlmAdapter, LlmTask } from './types'
 
@@ -75,6 +77,17 @@ export class FakeAdapter implements LlmAdapter {
         merged: { kind: 'fact', title: `${titles[0] ?? 'Ricordo'} (consolidato)`, body: `Sintesi di ${titles.length} ricordi: ${titles.join('; ')}`, tags: ['consolidato'] },
         reason: 'stesso contenuto (finto)'
       })
+    }
+    if (task.name === 'write-update') {
+      const [newPart, existing = ''] = task.input.split('\nESISTENTI:\n')
+      const first = existing.match(/^\[([0-9a-f]{64})\]( \[PROTETTO\])? (\S+) · (.+)$/m)
+      const firstFree = existing.match(/^\[([0-9a-f]{64})\] (?!\[PROTETTO\])(\S+) · (.+)$/m)
+      if (newPart.includes('[duplicato]') && first) return task.schema.parse({ action: 'duplicate', target: first[1], reason: 'duplicato (finto)' })
+      if (newPart.includes('[aggiorna]') && firstFree) {
+        const body = newPart.split('\n').slice(2).join('\n').trim()
+        return task.schema.parse({ action: 'update', target: firstFree[1], merged: { kind: 'fact', title: `${firstFree[3].trim()} (aggiornato)`, body, tags: ['aggiornato'] }, reason: 'aggiornamento (finto)' })
+      }
+      return task.schema.parse({ action: 'new', reason: 'diverso (finto)' })
     }
     throw new Error(`FakeAdapter: compito sconosciuto ${task.name}`)
   }

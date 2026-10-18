@@ -62,7 +62,11 @@ export interface PipelineDeps {
   /** Modelli da usare: è una funzione perché l'utente può cambiarli a caldo dalla UI. */
   models: () => { classify: string, distill: string }
   /** Pubblica un ricordo nel team (evento memory.add). */
-  publish: (memory: MemoryData) => Promise<{ id: string, duplicate: boolean }>
+  /**
+   * Pubblica nel team. `updated` = id del ricordo esistente che il nuovo ha aggiornato e
+   * sostituito (B4, src/ingest/write-update.ts); `duplicate` = già presente, nulla scritto.
+   */
+  publish: (memory: MemoryData) => Promise<{ id: string, duplicate: boolean, updated?: string }>
   /** Regole del filtro in vigore: default + quelle del team. */
   rules: () => Promise<FilterRules>
   /** Pattern dei percorsi bloccati per i documenti: default + quelli del team. */
@@ -88,7 +92,7 @@ export interface PipelineDeps {
 
 /** Esito di un salvataggio esplicito, restituito a CLI e MCP. */
 export type ExplicitOutcome =
-  | { outcome: 'team', id: string, duplicate: boolean, memory: MemoryData }
+  | { outcome: 'team', id: string, duplicate: boolean, memory: MemoryData, updated?: string }
   | { outcome: 'inbox', inboxId: string, reason: string, memory: MemoryData }
   | { outcome: 'private', reason: string }
 
@@ -285,7 +289,7 @@ export class IngestPipeline {
       const fm = filterMemory(parsed.data, rules)
       if (r === 'team' && !fm.blocked) {
         const res = await this.deps.publish(fm.memory)
-        log(`ricordo ${res.duplicate ? 'già presente' : 'pubblicato'} dalla sessione ${sessionId.slice(0, 8)}: ${fm.memory.title}`)
+        log(`ricordo ${res.duplicate ? 'già presente' : res.updated ? `che aggiorna ${res.updated.slice(0, 8)}` : 'pubblicato'} dalla sessione ${sessionId.slice(0, 8)}: ${fm.memory.title}`)
         if (raw.root !== 'none') this.deps.suggestRoot?.(res.id, raw.root, fm.memory.title)
       } else {
         const reason = fm.blocked ? `parole chiave: ${fm.reasons.join(', ')}` : `da verificare: ${c.reason}`
@@ -465,7 +469,7 @@ export class IngestPipeline {
     switch (route(c)) {
       case 'team': {
         const res = await this.deps.publish(fm.memory)
-        return { outcome: 'team', id: res.id, duplicate: res.duplicate, memory: fm.memory }
+        return { outcome: 'team', id: res.id, duplicate: res.duplicate, memory: fm.memory, ...(res.updated ? { updated: res.updated } : {}) }
       }
       case 'private':
         this.logDecision(source, 'private', c.reason, memory.title)

@@ -53,8 +53,10 @@ import { type Decision, type DocumentRecord, type InboxItem, PrivateStore, type 
 import { BOOTSTRAP_RE, canonicalPath, type Config, dhtBootstrap, isInsideWatched, loadConfig, loadState, networkMode, type NetworkMode, parseBootstrap, saveState, updateConfig } from './config'
 import { checkNetwork, type NetworkCheck } from '../net/diagnose'
 import { distillQuality, type DistillQuality, MAX_MEMORIES_RANGE, maxMemoriesOf } from '../ingest/quality'
-import { reviewRoots, type ReviewNote } from '../roots/review'
+import { localRepos, reviewRoots, type ReviewNote } from '../roots/review'
+import { computeStaleness, stalenessFactor } from '../rank/code-staleness'
 import { type Identity, signMembership } from '../core/identity'
+import { checkDecision, WRITE_CANDIDATES, WriteDecision, writeUpdateInput, writeUpdateSystem } from '../ingest/write-update'
 
 export interface MicelioNodeOptions {
   /** Nodi bootstrap DHT (test o rete privata); assente = DHT pubblica. */
@@ -261,6 +263,10 @@ function duplicateThreshold (model: string): number {
 /** Ogni quanto il nodo controlla se è il suo turno di sognare. */
 const DREAM_CHECK_MS = 10 * 60 * 1000
 
+/** Ricordi e codice (B4): primo controllo dopo l'avvio, poi ogni 6 ore. */
+const STALE_FIRST_CHECK_MS = 60 * 1000
+const STALE_CHECK_MS = 6 * 60 * 60 * 1000
+
 /** Dopo quanti giorni le copie scaricate escono dalla cache (decisione D11). */
 const SOURCE_CACHE_DAYS = 30
 
@@ -277,6 +283,9 @@ export class MicelioNode extends EventEmitter {
   /** Radici del team (Fase 8), dalla vista: id del ricordo → record. */
   private rootsById = new Map<string, RootRecord>()
   private nodeName: string | null = null
+  /** Ricordi il cui codice citato è cambiato (B4, src/rank/code-staleness.ts), da private.db. */
+  private staleness = new Map<string, { commits: number, missing: number, checked: number }>()
+  private staleTimer: NodeJS.Timeout | null = null
   /** Id dei ricordi PERSONALI presenti nell'indice (B4): restano su questo PC. */
   private personalIds = new Set<string>()
   /** Nome del team letto all'ultima materializzazione (vedi teamName). */
@@ -392,6 +401,13 @@ export class MicelioNode extends EventEmitter {
     // Controllo periodico del turno di sogno (Fase 6).
     this.dreamTimer = setInterval(() => { this.checkDreamTurn().catch((e) => this.log(`dreaming: ${e.message}`)) }, DREAM_CHECK_MS)
     this.dreamTimer.unref()
+    // B4: ricordi che invecchiano con il codice. Primo controllo poco dopo l'avvio (non lo rallenta),
+    // poi a intervalli: i repository cambiano con il lavoro di tutti i giorni.
+    this.staleness = this.privateStore.staleness()
+    const firstCheck = setTimeout(() => { this.checkStaleness() }, STALE_FIRST_CHECK_MS)
+    firstCheck.unref()
+    this.staleTimer = setInterval(() => { this.checkStaleness() }, STALE_CHECK_MS)
+    this.staleTimer.unref()
     const state = loadState(this.paths)
     if (!state) {
       this.log('nodo non ancora configurato: usa `micelio init` o `micelio join`')
@@ -413,6 +429,7 @@ export class MicelioNode extends EventEmitter {
     if (this.usageTimer) clearInterval(this.usageTimer)
     if (this.dreamTimer) clearInterval(this.dreamTimer)
     if (this.scanTimer) clearInterval(this.scanTimer)
+    if (this.staleTimer) clearInterval(this.staleTimer)
     while (this.dreamer.busy) await new Promise((r) => setTimeout(r, 200))
     await this.flushUsage().catch(() => {})
     await this.embedding.catch(() => {})
@@ -531,6 +548,9 @@ export class MicelioNode extends EventEmitter {
    */
   async setTeamConfig (key: string, value: unknown): Promise<void> {
     // Validazione delle chiavi note: un valore sbagliato vale per tutto il team
+    if (key === 'memory.updateOnWrite' && typeof value !== 'boolean') {
+      throw new UserError('memory.updateOnWrite: true oppure false', 'memory.updateOnWrite: true or false')
+    }
     if (key === 'distill.maxMemories' && maxMemoriesOf(value) !== value) {
       throw new UserError(`distill.maxMemories: un intero fra ${MAX_MEMORIES_RANGE.min} e ${MAX_MEMORIES_RANGE.max}`, `distill.maxMemories: an integer between ${MAX_MEMORIES_RANGE.min} and ${MAX_MEMORIES_RANGE.max}`)
     }
@@ -541,13 +561,15 @@ export class MicelioNode extends EventEmitter {
   }
 
   /** Configurazione condivisa del team (lingua, parole chiave del filtro), per la UI. */
-  async teamConfig (): Promise<{ language: string, blockKeywords: string[], maxMemories: number }> {
+  async teamConfig (): Promise<{ language: string, blockKeywords: string[], maxMemories: number, updateOnWrite: boolean }> {
     const team = this.requireTeam()
     const kw = await team.config<unknown>('filter.blockKeywords')
     return {
       language: (await team.config<string>('memory.language')) ?? 'it',
       blockKeywords: Array.isArray(kw) ? kw.filter((k): k is string => typeof k === 'string') : [],
-      maxMemories: maxMemoriesOf(await team.config('distill.maxMemories'))
+      maxMemories: maxMemoriesOf(await team.config('distill.maxMemories')),
+      // B4: aggiornare invece di aggiungere (attivo salvo scelta contraria dell'admin)
+      updateOnWrite: (await team.config('memory.updateOnWrite')) !== false
     }
   }
 
@@ -901,12 +923,44 @@ export class MicelioNode extends EventEmitter {
     this.privateStore.markUsageReported(counts)
   }
 
-  /** Attivazione 0..1 di un ricordo (vedi src/rank/activation.ts). */
+  /**
+   * Attivazione 0..1 di un ricordo (vedi src/rank/activation.ts), ridotta se il codice citato è
+   * cambiato dopo il ricordo (B4). Radici e ricordi fissati non si riducono: per le Radici c'è la
+   * revisione, i fissati sono una scelta esplicita del team.
+   */
   private activationOf (id: string, signals = this.index.signals()): number {
     const s = signals.get(id)
     const rec = this.index.get(id)
     if (!rec) return 0
-    return activation({ kind: rec.kind, createdAt: rec.ts, lastUsed: s?.lastUsed ?? undefined, uses: s?.uses ?? 0, votes: s?.votes ?? 0, degree: this.degrees.get(id) ?? 0, pinned: !!s?.pinned, root: this.rootsById.has(id) })
+    const root = this.rootsById.has(id)
+    const a = activation({ kind: rec.kind, createdAt: rec.ts, lastUsed: s?.lastUsed ?? undefined, uses: s?.uses ?? 0, votes: s?.votes ?? 0, degree: this.degrees.get(id) ?? 0, pinned: !!s?.pinned, root })
+    return root || s?.pinned ? a : a * stalenessFactor(this.staleness.get(id))
+  }
+
+  /**
+   * Controlla quanto è cambiato il codice citato dai ricordi del team (B4), sui repository di
+   * questo PC (cartelle abilitate e loro sotto-cartelle). Sincrono ma con UNA chiamata a git per
+   * repository. Chiamato all'avvio, ogni 6 ore e da `micelio stale --check`.
+   * @returns ricordi controllati e quanti risultano con codice cambiato
+   */
+  checkStaleness (): { checked: number, stale: number } {
+    if (!this.team) return { checked: 0, stale: 0 }
+    try {
+      const found = computeStaleness(this.teamMemories(), localRepos(this.config.watch.sessions))
+      for (const [id, st] of found) this.privateStore.setStaleness(id, st.commits, st.missing)
+      this.staleness = this.privateStore.staleness()
+      const stale = [...found.values()].filter((s) => s.commits || s.missing).length
+      if (found.size) this.changed('memories')
+      return { checked: found.size, stale }
+    } catch (err) {
+      this.log(`controllo del codice citato non riuscito: ${(err as Error).message}`)
+      return { checked: 0, stale: 0 }
+    }
+  }
+
+  /** Ricordi del team con il codice citato cambiato, dai più cambiati. */
+  staleMemories (): RecallHit[] {
+    return this.enrich(this.teamMemories()).filter((h) => h.stale).sort((a, b) => (b.stale!.commits + 5 * b.stale!.missing) - (a.stale!.commits + 5 * a.stale!.missing))
   }
 
   /** Aggiunge ai risultati attivazione, voti, usi e pin. */
@@ -921,7 +975,8 @@ export class MicelioNode extends EventEmitter {
         uses: s?.uses ?? 0,
         pinned: !!s?.pinned,
         ...(r ? { root: { category: r.category, status: r.status } } : {}),
-        ...(this.personalIds.has(h.id) ? { personal: true } : {})
+        ...(this.personalIds.has(h.id) ? { personal: true } : {}),
+        ...this.staleOf(h.id)
       }
     })
   }
@@ -987,6 +1042,13 @@ export class MicelioNode extends EventEmitter {
   }
 
   // ═══════════════════════════ Ricordi personali (B4) ═══════════════════════════
+
+  /** Campo `stale` di un risultato, se il codice citato è cambiato (le Radici hanno la revisione). */
+  private staleOf (id: string): { stale?: { commits: number, missing: number } } {
+    const st = this.staleness.get(id)
+    if (!st || (!st.commits && !st.missing) || this.rootsById.has(id)) return {}
+    return { stale: { commits: st.commits, missing: st.missing } }
+  }
 
   /** Ricordi del TEAM nell'indice (senza i personali): per costellazione, dreaming, metriche, export. */
   private teamMemories (): RecallHit[] {
@@ -1061,17 +1123,57 @@ export class MicelioNode extends EventEmitter {
    * Pubblica un ricordo nel team SENZA filtri: usato dalla pipeline dopo che ha deciso.
    * Non esposto all'esterno: tutto ciò che arriva da fuori passa da `remember`.
    */
-  private async publish (memory: MemoryData): Promise<{ id: string, duplicate: boolean }> {
+  private async publish (memory: MemoryData): Promise<{ id: string, duplicate: boolean, updated?: string }> {
     const team = this.requireTeam()
     const id = memoryId(memory)
     // Controllo locale dei duplicati: evita di scrivere nel log un evento che apply ignorerebbe.
     // Un ricordo personale con lo stesso contenuto non conta: è proprio quello che si sta condividendo
-    const duplicate = this.index.get(id)?.id === id && !this.personalIds.has(id)
-    if (!duplicate) {
-      await team.append({ type: 'memory.add', memory })
-      await this.sync()
+    if (this.index.get(id)?.id === id && !this.personalIds.has(id)) return { id, duplicate: true }
+    // B4: aggiornare invece di aggiungere (src/ingest/write-update.ts)
+    const d = await this.writeDecision(memory)
+    if (d?.action === 'duplicate' && d.target) {
+      this.log(`ricordo non aggiunto, duplica ${d.target.slice(0, 8)}: ${d.reason}`)
+      return { id: d.target, duplicate: true }
     }
-    return { id, duplicate }
+    if (d?.action === 'update' && d.target && d.merged) {
+      const merged = { ...d.merged, source: memory.source }
+      await team.append({ type: 'memory.supersede', old: [d.target], memory: merged, reason: `aggiornato alla scrittura: ${d.reason}` })
+      await this.sync()
+      this.log(`ricordo ${d.target.slice(0, 8)} aggiornato alla scrittura: ${d.reason}`)
+      return { id: memoryId({ kind: merged.kind, title: merged.title, body: merged.body }), duplicate: false, updated: d.target }
+    }
+    await team.append({ type: 'memory.add', memory })
+    await this.sync()
+    return { id, duplicate: false }
+  }
+
+  /**
+   * Decisione "aggiungi, duplicato o aggiorna" per un ricordo nuovo (B4). null = aggiungi e basta:
+   * nessun ricordo simile, nessun LLM o budget finito, o disattivata dal team
+   * (`memory.updateOnWrite` = false).
+   */
+  private async writeDecision (memory: MemoryData): Promise<WriteDecision | null> {
+    if (!this.embedder || !this.llm?.hasBudget() || (await this.team?.config('memory.updateOnWrite')) === false) return null
+    try {
+      const [vec] = await this.embedder.embed([`${memory.title}\n${memory.body}`], 'passage')
+      const vectors = this.index.vectors(this.embedder.model)
+      for (const id of this.personalIds) vectors.delete(id)
+      const near = nearest(vec, vectors, WRITE_CANDIDATES, semanticThreshold(this.embedder.model))
+      if (!near.length) return null
+      const pins = this.index.signals()
+      const candidates = near.flatMap((n) => {
+        const hit = this.index.get(n.id)
+        return hit ? [{ hit, score: n.score, protected: this.rootsById.has(n.id) || !!pins.get(n.id)?.pinned }] : []
+      })
+      if (!candidates.length) return null
+      const language = (await this.team?.config<string>('memory.language')) ?? 'it'
+      const d = await this.llm.run({ name: 'write-update', system: writeUpdateSystem(language), input: writeUpdateInput(memory, candidates), schema: WriteDecision, model: this.config.llm.classifyModel })
+      return checkDecision(d, candidates)
+    } catch (err) {
+      // Qualunque problema (modello, LLM, budget): si aggiunge come prima, nessun sapere va perso
+      this.log(`controllo dei ricordi simili non riuscito: ${(err as Error).message}`)
+      return null
+    }
   }
 
   // ═══════════════════════════ Ingestione automatica ═══════════════════════════

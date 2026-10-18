@@ -200,8 +200,14 @@ export function createMcpServer (node: MicelioNode): McpServer {
       }
       const r = await node.remember({ title, body, kind, tags, source: { type: 'mcp' } })
       switch (r.outcome) {
-        case 'team':
+        case 'team': {
+          // B4: il nuovo ricordo ha aggiornato uno esistente: si mostra la versione salvata davvero
+          if (r.updated) {
+            const saved = node.detail(r.id)
+            return text(`Aggiornato un ricordo esistente del team (id:${r.updated.slice(0, 12)} → id:${r.id.slice(0, 12)}): invece di un doppione c'è ora una versione unica. Testo salvato:\n\n### ${saved?.title ?? r.memory.title}\n${saved?.body ?? r.memory.body}`)
+          }
           return text(`${r.duplicate ? 'Già presente' : 'Pubblicato'} nella memoria del team (id:${r.id.slice(0, 12)}). Testo salvato:\n\n### ${r.memory.title}\n${r.memory.body}`)
+        }
         case 'inbox':
           return text(`NON pubblicato subito: è nell'inbox dell'utente in attesa di verifica (id inbox: ${r.inboxId}).\nMotivo: ${r.reason}\nL'utente può approvarlo con "micelio inbox approve ${r.inboxId}" o chiedendoti di usare inbox_decide.`)
         case 'private':

@@ -240,6 +240,19 @@ export class ApiController {
     return this.node.recent(Math.min(Math.max(Number(limit) || 20, 1), 200))
   }
 
+  /** Ricordi il cui codice citato è cambiato dopo la scrittura (B4). Prima di memories/:id. */
+  @Get('memories/stale')
+  staleMemories () {
+    return this.node.staleMemories()
+  }
+
+  /** Ricontrolla subito il codice citato dai ricordi (repository di questo PC). */
+  @Post('memories/stale/check')
+  @HttpCode(200)
+  checkStale () {
+    return this.node.checkStaleness()
+  }
+
   /** Ricerca ibrida (parole chiave + significato + attivazione, Fase 5). */
   @Get('memories/search')
   recall (@Query('q') q = '', @Query('limit') limit = '5') {
