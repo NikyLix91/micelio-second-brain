@@ -105,6 +105,15 @@ Il nodo a colpo d'occhio: ruolo, peer connessi, ricordi, LLM e budget di oggi, c
 - il totale su questo disco, diviso per componente;
 - la quota del log del team che viene da ciascun membro, con una barra a segmenti e una tabella. I colori dei membri sono gli stessi del Nucleo e della Mappa.
 
+### Sicurezza
+
+- **Banco di prova:** testo o nome di file, e cosa toglierebbe il filtro.
+- **Regole:**
+  - quelle fisse: 25 tipi di segreto e dato personale, 33 regole sui file sensibili;
+  - quelle del team: pattern, eccezioni, file sensibili, modificabili solo dall'admin.
+- **Ricordi da ripulire:** scansione dei ricordi pubblicati e *Ripulisci* (admin, con conferma).
+- **Registro di questo PC:** cosa è stato tolto e da dove, senza valori.
+
 ### Registro privato e Impostazioni
 
 - **Registro privato:** cosa non è andato al team e perché.

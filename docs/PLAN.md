@@ -286,7 +286,7 @@ Decisioni dell'utente (2026-10-18):
 
 ---
 
-## Fase 9 — Sicurezza dei segreti 🔄 (branch `feature/sicurezza-segreti`)
+## Fase 9 — Sicurezza dei segreti ✅ (branch `feature/sicurezza-segreti`)
 
 Richiesta dell'utente (2026-10-18): un meccanismo di sicurezza, nel backend e con una schermata dedicata, per le informazioni sensibili come password e file `.env`. Il punto di partenza è quello che c'è già: la redazione dei segreti nel testo e i percorsi bloccati per i documenti.
 
@@ -296,8 +296,8 @@ Richiesta dell'utente (2026-10-18): un meccanismo di sicurezza, nel backend e co
 | 9.2 | **File sensibili:** `.env*`, chiavi, `credentials`, kubeconfig, `.npmrc`… Nelle sessioni il contenuto letto o scritto da Claude viene tolto per intero (anche `cat .env` via Bash); nelle cartelle di documenti non si aprono; nel riassunto git si esclude il diff. Pattern aggiuntivi del team (`security.sensitiveFiles`) | ✅ |
 | 9.3 | **Registro di audit locale** (`private.db`): cosa è stato tolto, da dove, di che tipo. Mai il valore | ✅ |
 | 9.4 | **Scansione retroattiva** dei ricordi pubblicati e "ripulisci" (admin): versione redatta pubblicata, originale rimosso; una Radice resta Radice | ✅ |
-| 9.5 | **UI *Sicurezza*:** banco di prova (testo o nome di file), regole del team (modifica solo admin), registro, scansione. CLI `micelio security` | ⬜ |
-| 9.6 | Test e documentazione | ⬜ |
+| 9.5 | **UI *Sicurezza*:** banco di prova (testo o nome di file), regole fisse e del team (modifica solo admin, pattern validati), scansione con *Ripulisci*, registro di questo PC. CLI `micelio security test|scan|clean|log|rules`. Verificato con le catture dell'app | ✅ |
+| 9.6 | Test (unità: riconoscitori, entropia, idempotenza, file sensibili, trascrizioni; integrazione: regole, scansione, ripulitura, diff git; UI) e documentazione (guida §5-bis, app, DESIGN §6.3) | ✅ |
 
 ---
 
@@ -325,3 +325,4 @@ Richiesta dell'utente (2026-10-18): un meccanismo di sicurezza, nel backend e co
 | 2026-10-17 | Server del team (7.11) su richiesta: installazione separata per Linux, comandi `micelio network`. Dal PC di sviluppo: DHT pubblica raggiungibile, NAT non simmetrico |
 | 2026-10-18 | Rete configurabile dalla UI e spazio occupato per membro (7.12), su richiesta. Verificati con test d'integrazione (cambio di DHT a caldo fra due nodi, quote che sommano al 100%) e catture dell'app |
 | 2026-10-18 | Fase 8 completata sul branch `feature/radici`: Radici (sapere fondante mai dimenticato), revisione manuale, suggerimenti, cartelle di Radici, diagrammi, vista e marcatura grafica. Trovato con le catture e corretto un conflitto di rotte (`roots/review` preso per un id) |
+| 2026-10-18 | Fase 9 completata sul branch `feature/sicurezza-segreti`. Trovati e corretti due difetti: redazione non idempotente (i segnaposto venivano riconosciuti di nuovo come segreti) e riassunto git vuoto sul primo commit di un repository |

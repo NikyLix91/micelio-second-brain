@@ -49,6 +49,18 @@ describe('riconoscimento dei segreti', () => {
     expect(r.text).toContain('a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0')
   })
 
+  it('idempotente: un testo già redatto non contiene più segreti (nessun falso positivo sui segnaposto)', () => {
+    const sample = [
+      'postgres://app:Segreta123@staging:5432/app', 'Server=db;Password=Segreta123;', 'API_KEY=abcdef123456',
+      'Authorization: Bearer abcdefghijklmnopqrstuvwxyz0123456789', 'sig=AbCdEf1234567890xyzXYZ%3D', 'Zk3vQ9pL2mX8rT5wY7aB1cD4eF6gH0jN'
+    ].join('\n')
+    const once = applyFilter(sample, rules)
+    expect(Object.keys(once.redactions).length).toBeGreaterThan(4)
+    const twice = applyFilter(once.text, rules)
+    expect(twice.redactions).toEqual({})
+    expect(twice.text).toBe(once.text)
+  })
+
   it('pattern del team ed eccezioni (testo letterale o /regex/)', () => {
     const team = mergeRules([], [{ name: 'Codice cliente', regex: 'CLI-\\d{6}' }], ['demo-token-pubblico', '/^sk_test_/'])
     const r = applyFilter('cliente CLI-123456, API_KEY=demo-token-pubblico, STRIPE=sk_test_' + 'a1B2c3D4e5F6g7H8', team)

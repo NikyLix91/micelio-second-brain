@@ -11,13 +11,13 @@ import type { CodeRefs, MemoryData } from '../../../src/core/events'
 import type { InviteRecord, MemberRecord, NodeStatus, RecallHit } from '../../../src/core/model'
 import type { ExplicitOutcome } from '../../../src/ingest/pipeline'
 import type { Graph, GraphLink, GraphNode } from '../../../src/graph/constellation'
-import type { IngestStatus, NetworkSettings, NodeSettings, RootReviewResult, RootView, StorageReport } from '../../../src/node/micelio-node'
+import type { IngestStatus, NetworkSettings, NodeSettings, RootReviewResult, RootView, SecurityFinding, SecurityRules, SecurityTestResult, StorageReport } from '../../../src/node/micelio-node'
 import type { NetworkCheck } from '../../../src/net/diagnose'
-import type { Decision, InboxItem } from '../../../src/store/private-store'
+import type { Decision, InboxItem, SecurityLogEntry } from '../../../src/store/private-store'
 import { getToken } from './auth'
 
 export type { Graph, GraphLink, GraphNode }
-export type { NetworkCheck, NetworkSettings, RootReviewResult, RootView, StorageReport }
+export type { NetworkCheck, NetworkSettings, RootReviewResult, RootView, SecurityFinding, SecurityLogEntry, SecurityRules, SecurityTestResult, StorageReport }
 export type { CodeRefs, Decision, ExplicitOutcome, InboxItem, IngestStatus, InviteRecord, MemberRecord, MemoryData, NodeSettings, NodeStatus, RecallHit }
 
 /** Errore dell'API con il messaggio leggibile restituito dal daemon. */
@@ -86,6 +86,14 @@ export const api = {
   watchAdd: (path: string) => call<string[]>('POST', '/api/watch', { path }),
   watchRemove: (path: string) => call<string[]>('DELETE', '/api/watch', { path }),
   setupClaudeCode: (hook: boolean) => call<{ mcpUrl: string, hookFile: string | null }>('POST', '/api/setup/claude-code', { hook }),
+
+  // Sicurezza (Fase 9)
+  securityRules: () => call<SecurityRules>('GET', '/api/security/rules'),
+  setSecurityRules: (patch: Partial<SecurityRules['team']>) => call<SecurityRules>('PUT', '/api/security/rules', patch),
+  securityTest: (text: string, file?: string) => call<SecurityTestResult>('POST', '/api/security/test', { text, file }),
+  securityScan: () => call<SecurityFinding[]>('GET', '/api/security/scan'),
+  securityClean: (id: string) => call<{ id: string }>('POST', `/api/security/clean/${enc(id)}`),
+  securityLog: (limit = 100) => call<SecurityLogEntry[]>('GET', `/api/security/log?limit=${limit}`),
 
   // Radici (Fase 8)
   roots: (filter: { project?: string, category?: string, q?: string } = {}) => {

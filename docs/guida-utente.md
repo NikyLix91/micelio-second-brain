@@ -146,6 +146,31 @@ contenuto ─▶ filtro locale ─┬─▶ argomento HR/personale ────�
 
 Sui 22 casi del set di valutazione (`npm run eval:ingest`), tutti gli 8 casi sensibili sono rimasti fuori dal team, compreso un feedback HR scritto senza parole "sospette".
 
+### 5-bis. Segreti e file sensibili
+
+Password, token, chiavi e file come `.env` non entrano mai nel sapere del team.
+
+**Cosa viene tolto:**
+- **Segreti nel testo:**
+  - chiavi e token di Anthropic, OpenAI, AWS, Azure (chiavi degli account, firme SAS), Google, GitHub, GitLab, npm, PyPI, Slack, Stripe, SendGrid;
+  - JWT, header `Authorization`/`Bearer`, chiavi private;
+  - password nelle stringhe di connessione e negli URL;
+  - variabili come `API_KEY=…` o `"password": …`;
+  - stringhe casuali ad **alta entropia** che non hanno un formato noto. Gli hash esadecimali, come i commit, sono esclusi.
+- **Dati personali:** IBAN, codici fiscali, email, telefoni.
+- **File sensibili**, per intero: `.env` e varianti, chiavi (`*.pem`, `*.key`, `id_rsa`…), `credentials`, `secrets.*`, kubeconfig, `.npmrc`, `.netrc`, `*.tfvars`, `*.tfstate` e simili. Nelle sessioni, se Claude legge, scrive o modifica uno di questi file, anche con un comando come `cat .env`, il contenuto **sparisce dalla trascrizione** prima di qualunque elaborazione; resta solo la nota "contenuto omesso". Nelle cartelle di documenti non vengono aperti. Nel riassunto git compare solo il nome. I file di esempio (`.env.example`, `.env.sample`…) non sono considerati sensibili.
+
+**La schermata Sicurezza** (o `micelio security`) ha quattro parti:
+- **Banco di prova:** incolli un testo o scrivi un nome di file e vedi cosa verrebbe tolto, con le regole in vigore (`micelio security test "…"`, `--file <nome>`).
+- **Regole del team**, modificabili solo dall'admin e valide subito per tutti:
+  - **pattern** di segreti aggiuntivi, per esempio un "codice cliente" interno;
+  - **eccezioni** per i falsi positivi, come testo o `/regex/`;
+  - **file sensibili** aggiuntivi, come glob.
+
+  I pattern non validi o troppo generici vengono rifiutati.
+- **Ricordi da ripulire:** controlla i ricordi già pubblicati con le regole attuali, per esempio dopo aver aggiunto un pattern (`micelio security scan`). Un admin può **ripulirli** (`micelio security clean <id>`): viene pubblicata la versione redatta e l'originale sparisce dalla vista di tutti. Una Radice resta Radice. Limite: chi l'aveva già letto o esportato ne conserva una copia.
+- **Registro di questo PC:** cosa è stato tolto, da quale sessione o documento, di che tipo (`micelio security log`). Si registrano solo tipi e nomi dei file, **mai i valori**, e il registro non lascia il PC.
+
 ## 6. Salvare e cercare ricordi
 
 ```bash

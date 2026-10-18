@@ -174,10 +174,14 @@ export function applyFilter (input: string, rules: FilterRules = { blockKeywords
   for (const { type, re } of [...(rules.secretPatterns ?? []), ...SECRET_PATTERNS, ...PII_PATTERNS]) {
     text = text.replace(re, (...m: string[]) => {
       if (allowed(m[0])) return m[0]
-      count(type)
       // Per i pattern con gruppi di contesto (es. "password=") manteniamo il prefisso.
       const prefix = typeof m[1] === 'string' && m[0].startsWith(m[1]) ? m[1] : ''
       const suffix = typeof m[2] === 'string' && m[0].endsWith(m[2]) ? m[2] : ''
+      // IDEMPOTENZA: un valore già sostituito da un segnaposto non è un segreto. Senza questo
+      // controllo "postgres://app:[REDACTED:…]@host" verrebbe riconosciuto di nuovo, e la
+      // scansione dei ricordi segnalerebbe come sporchi ricordi già puliti.
+      if (m[0].slice(prefix.length, m[0].length - suffix.length).includes('[REDACTED')) return m[0]
+      count(type)
       return `${prefix}[REDACTED:${type.replace('secret:', '')}]${suffix}`
     })
   }

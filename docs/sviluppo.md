@@ -33,7 +33,8 @@ src/
 ├─ store/
 │  ├─ memory-index.ts indice di ricerca SQLite FTS5, derivato dalla vista
 │  └─ private-store.ts archivio privato: coda, inbox, decisioni, budget (mai replicato)
-├─ privacy/    filtro deterministico: blocco HR/personale, redazione di segreti e dati personali
+├─ privacy/    filtro deterministico: blocco HR/personale, redazione di segreti e dati personali,
+│              file sensibili (.env, chiavi…) esclusi per intero (sensitive-files.ts)
 ├─ llm/        adapter verso le CLI AI (Claude), adapter finto per i test, runner con budget
 ├─ ingest/     pipeline di ingestione: trascrizioni, prompt, instradamento, inbox
 ├─ export/     export Markdown in sola lettura

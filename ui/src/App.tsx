@@ -20,6 +20,7 @@ import { Dashboard } from './pages/Dashboard'
 import { Inbox } from './pages/Inbox'
 import { Memory } from './pages/Memory'
 import { Roots } from './pages/Roots'
+import { Security } from './pages/Security'
 import { Onboarding } from './pages/Onboarding'
 import { Private } from './pages/Private'
 import { Settings } from './pages/Settings'
@@ -50,6 +51,7 @@ export function App () {
             <Route path='/team' element={<Team />} />
             <Route path='/sogni' element={<Dreams />} />
             <Route path='/privato' element={<Private />} />
+            <Route path='/sicurezza' element={<Security />} />
             <Route path='/impostazioni' element={<Settings />} />
           </Routes>
         </Shell>
@@ -92,6 +94,7 @@ function Sidebar ({ live, team, node }: { live: boolean, team: string, node: str
       <NavLink to='/sogni' className={link}>Sogni</NavLink>
       <NavLink to='/stato' className={link}>Stato</NavLink>
       <NavLink to='/privato' className={link}>Registro privato</NavLink>
+      <NavLink to='/sicurezza' className={link}>Sicurezza</NavLink>
       <NavLink to='/impostazioni' className={link}>Impostazioni</NavLink>
       <div className='sidebar-footer'>
         <div className='row'><span className={`dot ${live ? 'on' : ''}`} />{live ? 'Aggiornamenti in tempo reale' : 'Riconnessione…'}</div>

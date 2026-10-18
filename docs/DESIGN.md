@@ -267,6 +267,23 @@ Il filtro esiste perché le CLI inviano il contenuto al provider cloud: ciò che
 
 Un contenuto bloccato finisce in `private` senza chiamate LLM. Le regole stanno nella config del nodo, con un default di team distribuito tramite `team.config`.
 
+**Fase 9: sicurezza dei segreti** (`src/privacy/filter.ts`, `src/privacy/sensitive-files.ts`).
+
+*Riconoscimento:*
+- formati noti, più le stringhe ad **alta entropia**: almeno 32 caratteri base64/url-safe con maiuscole, minuscole e cifre, entropia di Shannon ≥ 4 bit per carattere; gli esadecimali sono esclusi per non colpire commit e id;
+- regole del team in `team.config`: `security.secretPatterns` ({ nome, regex }, validate all'inserimento), `security.allow` (eccezioni letterali o `/regex/`), `security.sensitiveFiles` (glob);
+- la redazione è **idempotente**: un valore che è già un segnaposto non viene riconosciuto di nuovo.
+
+*File sensibili:*
+- sono esclusi **per intero**: nelle trascrizioni si tolgono input ed esito di ogni strumento che li tocca. Lo si riconosce dai campi `file_path`/`path` o dalle parole del `command` Bash, cercando l'id dello strumento in tutta la trascrizione;
+- nelle cartelle di documenti non si aprono;
+- nel riassunto git compare solo il nome.
+
+*Tracciabilità e rimedio:*
+- **registro** locale (`security_log` in `private.db`) con tipi e nomi dei file, mai valori;
+- **scansione** retroattiva dei ricordi;
+- **ripulitura** (admin): `memory.add` della versione redatta, `root.set` se era una Radice, `memory.redact` dell'originale.
+
 ### 6.4 Classificazione (LLM)
 
 Prompt dedicato. Output JSON validato con `zod`:
