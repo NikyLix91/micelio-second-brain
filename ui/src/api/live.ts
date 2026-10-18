@@ -19,7 +19,7 @@ import { getToken } from './auth'
  */
 export const TOPIC_QUERIES: Record<string, string[][]> = {
   status: [['status'], ['teamConfig']],
-  memories: [['memories'], ['graph'], ['dreams'], ['archive'], ['storage']],
+  memories: [['memories'], ['graph'], ['dreams'], ['archive'], ['storage'], ['roots']],
   members: [['members'], ['invites'], ['graph'], ['storage']],
   inbox: [['inbox'], ['ingest']],
   jobs: [['ingest'], ['documents']],

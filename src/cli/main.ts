@@ -16,7 +16,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { Command } from 'commander'
 import { formatCodeRefs } from '../core/code-refs'
-import { MEMORY_KINDS } from '../core/events'
+import { MEMORY_KINDS, ROOT_CATEGORIES } from '../core/events'
 import type { MemberRecord, NodeStatus, RecallHit } from '../core/model'
 import { nodePaths, type NodePaths } from '../core/paths'
 import type { ExplicitOutcome } from '../ingest/pipeline'
@@ -24,7 +24,7 @@ import { checkNetwork } from '../net/diagnose'
 import { autostartOff, autostartOn, autostartStatus } from '../node/autostart'
 import { BOOTSTRAP_RE, dhtBootstrap, loadConfig, networkMode, updateConfig } from '../node/config'
 import { claudeSettingsFile, hookCommand, IntegrationError, mcpAddArgs, setupClaudeCode } from '../node/integrations'
-import type { IngestStatus, NetworkSettings } from '../node/micelio-node'
+import type { IngestStatus, NetworkSettings, RootView } from '../node/micelio-node'
 import type { Decision, InboxItem } from '../store/private-store'
 import { DaemonClient, DaemonError } from './client'
 
@@ -408,6 +408,59 @@ program.command('pin').description('fissa un ricordo importante: non decade e no
   .action(async (id: string) => { await client().call('POST', `/api/memories/${encodeURIComponent(id)}/pin`); console.log('Ricordo fissato') })
 program.command('unpin').description('sblocca un ricordo fissato').argument('<id>')
   .action(async (id: string) => { await client().call('DELETE', `/api/memories/${encodeURIComponent(id)}/pin`); console.log('Ricordo sbloccato') })
+
+// ═══════════════════════════════ Radici (Fase 8) ═══════════════════════════════
+
+/** Etichette italiane delle categorie delle Radici. */
+const ROOT_LABEL: Record<string, string> = {
+  architecture: 'Architettura', network: 'Rete e infrastruttura', interface: 'Interfacce e contratti',
+  domain: 'Dominio', practice: 'Best practice', policy: 'Policy', other: 'Altro'
+}
+
+/**
+ * Radici: il sapere fondante del team, mai dimenticato (architettura, rete, interfacce, dominio,
+ * best practice, policy). Qualunque membro può promuovere, togliere e confermare.
+ */
+const roots = program.command('roots').alias('radici').description('Radici: sapere fondante che non viene mai dimenticato (list | add | remove | confirm | review)')
+
+roots.command('list', { isDefault: true })
+  .description('elenco delle Radici, raggruppate per categoria')
+  .option('-p, --project <progetto>', 'solo le Radici di un progetto')
+  .option('-c, --category <categoria>', `solo una categoria: ${ROOT_CATEGORIES.join(' | ')}`)
+  .option('-q, --query <testo>', 'ordina per pertinenza')
+  .action(async (o: { project?: string, category?: string, query?: string }) => {
+    const qs = new URLSearchParams(Object.entries({ project: o.project, category: o.category, q: o.query }).filter(([, v]) => v) as [string, string][])
+    const list = await client().call<RootView[]>('GET', `/api/roots${qs.size ? '?' + qs : ''}`)
+    if (list.length === 0) { console.log('Nessuna Radice. Promuovi un ricordo con: micelio roots add <id> <categoria>'); return }
+    let last = ''
+    for (const r of list) {
+      if (r.category !== last) { console.log(`\n${ROOT_LABEL[r.category] ?? r.category}`); last = r.category }
+      const flag = r.status === 'review' ? `  ⚠ da rivedere: ${r.flags.map((f) => f.reason).join(' · ')}` : ''
+      console.log(`  ■ ${r.memory.title}  (id:${r.id.slice(0, 12)}, rivista il ${date(r.reviewedAt)})${flag}`)
+    }
+  })
+
+roots.command('add')
+  .description('promuove un ricordo a Radice (o ne cambia la categoria)')
+  .argument('<id>', 'id del ricordo (anche abbreviato)')
+  .argument('<categoria>', ROOT_CATEGORIES.join(' | '))
+  .action(async (id: string, category: string) => {
+    const r = await client().call<RootView>('POST', `/api/roots/${encodeURIComponent(id)}`, { category })
+    console.log(`✔ «${r.memory.title}» ora è una Radice (${ROOT_LABEL[r.category]})`)
+  })
+
+roots.command('remove')
+  .description('il ricordo smette di essere una Radice (torna a decadere come gli altri)')
+  .argument('<id>')
+  .action(async (id: string) => { await client().call('DELETE', `/api/roots/${encodeURIComponent(id)}`); console.log('Non è più una Radice') })
+
+roots.command('confirm')
+  .description('Radice rivista e ancora valida: azzera le segnalazioni')
+  .argument('<id>')
+  .action(async (id: string) => {
+    const r = await client().call<RootView>('POST', `/api/roots/${encodeURIComponent(id)}/confirm`)
+    console.log(`✔ Confermata: «${r.memory.title}»`)
+  })
 
 program.command('get')
   .description('mostra un ricordo dato l\'id (anche abbreviato)')

@@ -81,7 +81,7 @@ describe('daemon', () => {
       requestInit: { headers: { authorization: `Bearer ${token}` } }
     }))
     const { tools } = await client.listTools()
-    expect(tools.map((t) => t.name).sort()).toEqual(['fetch_source', 'get', 'inbox_decide', 'inbox_review', 'recall', 'remember', 'vote'])
+    expect(tools.map((t) => t.name).sort()).toEqual(['architecture', 'fetch_source', 'get', 'inbox_decide', 'inbox_review', 'mark_root', 'recall', 'remember', 'vote'])
     expect(client.getInstructions()).toMatch(/memoria condivisa/)
 
     const saved = await client.callTool({ name: 'remember', arguments: { title: 'Drizzle come ORM standard', body: 'Niente motore binario.', kind: 'decision', tags: ['orm'] } })

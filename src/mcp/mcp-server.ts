@@ -11,9 +11,9 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import { formatCodeRefs } from '../core/code-refs'
-import { MEMORY_KINDS } from '../core/events'
+import { MEMORY_KINDS, ROOT_CATEGORIES } from '../core/events'
 import type { RecallHit } from '../core/model'
-import type { MicelioNode } from '../node/micelio-node'
+import type { MicelioNode, RootView } from '../node/micelio-node'
 
 const VERSION = '0.2.0'
 
@@ -27,6 +27,11 @@ const INSTRUCTIONS = `Micelio è la memoria condivisa del team di sviluppo: ogni
 - NON salvare mai dati personali, valutazioni di persone, questioni HR, credenziali, segreti o dati di clienti.
 - Alcuni ricordi finiscono nell'inbox dell'utente per una verifica: puoi proporgli di rivederli con "inbox_review".
 - Se un ricordo viene da un documento e serve approfondire, "fetch_source" scarica l'originale dal collega che lo possiede.
+- Le RADICI sono il sapere fondante del team (architettura, mappe di rete, interfacce, modello di dominio,
+  best practice, policy di sicurezza). PRIMA di progettare o modificare una parte dell'architettura, o per capire
+  come funziona un sistema, chiama "architecture" (con il progetto, cioè il nome della cartella del repository,
+  e se puoi i file che stai toccando) e rispetta ciò che dicono. Le Radici "da rivedere" potrebbero non essere
+  più aggiornate: segnalalo all'utente.
 - Se un ricordo ha riferimenti al codice (Progetto, File, Simboli, Commit) e stai lavorando nello stesso progetto,
   per approfondire apri quei file o usa "git show <commit>"; il codice attuale può essere cambiato dopo il ricordo.`
 
@@ -41,7 +46,30 @@ function formatHit (h: RecallHit, full = false): string {
   const doc = h.source?.type === 'document' ? `\nFonte: documento «${h.source.name ?? '?'}» (originale disponibile con fetch_source)` : ''
   // Ricordi distillati da una sessione di codice: dove guardare per approfondire.
   const code = formatCodeRefs(h.source?.code, full).map((l) => '\n' + l).join('')
-  return `### ${h.title}\n[${h.kind}] id:${h.id.slice(0, 12)} · ${who} · ${new Date(h.ts).toISOString().slice(0, 10)}${tags}${doc}${code}\n\n${h.body}`
+  return `### ${h.title}\n[${h.kind}] id:${h.id.slice(0, 12)} · ${who} · ${new Date(h.ts).toISOString().slice(0, 10)}${tags}${rootLine(h)}${doc}${code}\n\n${h.body}`
+}
+
+/** Lunghezza massima della risposta di `architecture` (le Radici sono testi lunghi). */
+const ARCHITECTURE_MAX_CHARS = 30_000
+
+/** Etichette italiane delle categorie delle Radici. */
+const ROOT_LABEL: Record<string, string> = {
+  architecture: 'Architettura', network: 'Rete e infrastruttura', interface: 'Interfacce e contratti',
+  domain: 'Dominio', practice: 'Best practice', policy: 'Policy', other: 'Altro'
+}
+
+/** Riga di stato di una Radice, aggiunta all'intestazione del ricordo. */
+function rootLine (h: RecallHit): string {
+  if (!h.root) return ''
+  return `\nRADICE · ${ROOT_LABEL[h.root.category] ?? h.root.category}${h.root.status === 'review' ? ' · ⚠ DA RIVEDERE: potrebbe non essere aggiornata' : ''}`
+}
+
+/** Una Radice completa (tool `architecture`), con le eventuali segnalazioni di revisione. */
+function formatRoot (r: RootView): string {
+  const flags = r.status === 'review' && r.flags.length
+    ? `\nSegnalazioni: ${r.flags.map((f) => f.reason + (f.refs.length ? ` (${f.refs.slice(0, 5).join(', ')})` : '')).join(' · ')}`
+    : ''
+  return formatHit(r.memory, true) + flags
 }
 
 /** Risposta testuale di un tool. */
@@ -67,8 +95,70 @@ export function createMcpServer (node: MicelioNode): McpServer {
     annotations: { readOnlyHint: true }
   }, async ({ query, limit }) => {
     const hits = await node.recallHybrid(query, limit ?? 5)
-    if (hits.length === 0) return text(`Nessun ricordo del team trovato per "${query}".`)
-    return text(hits.map((h) => formatHit(h)).join('\n\n---\n\n'))
+    // Radici pertinenti non già fra i risultati: il sapere fondante arriva anche se la ricerca
+    // non lo mette in cima (è il motivo per cui le Radici esistono).
+    const roots = await node.relatedRoots(query, hits.map((h) => h.id))
+    if (hits.length === 0 && roots.length === 0) return text(`Nessun ricordo del team trovato per "${query}".`)
+    const main = hits.length ? hits.map((h) => formatHit(h)).join('\n\n---\n\n') : `Nessun ricordo specifico trovato per "${query}".`
+    const extra = roots.length ? `\n\n=== RADICI PERTINENTI (sapere fondante del team: tienine conto) ===\n\n${roots.map((h) => formatHit(h)).join('\n\n---\n\n')}` : ''
+    return text(main + extra)
+  })
+
+  // ── architecture ────────────────────────────────────────────────────────────────────
+  // Le Radici di un progetto: da leggere prima di toccare l'architettura (Fase 8).
+  server.registerTool('architecture', {
+    title: 'Radici del team (architettura e regole fondanti)',
+    description: 'Restituisce le RADICI: il sapere fondante del team (paradigmi architetturali, mappe di rete, interfacce e contratti, ' +
+      'modello di dominio, best practice, policy di sicurezza). Chiamalo PRIMA di progettare o modificare una parte dell\'architettura ' +
+      'o per capire come funziona un sistema. Filtra per progetto (nome della cartella del repository), per categoria, per i file ' +
+      'che stai toccando, o ordina per pertinenza con query.',
+    inputSchema: {
+      project: z.string().max(200).optional().describe('Progetto: nome della cartella radice del repository'),
+      category: z.enum(ROOT_CATEGORIES).optional().describe('architecture | network | interface | domain | practice | policy | other'),
+      files: z.array(z.string().max(300)).max(50).optional().describe('File su cui stai lavorando (relativi alla radice del repository)'),
+      query: z.string().max(500).optional().describe('Argomento, per ordinare le Radici per pertinenza')
+    },
+    annotations: { readOnlyHint: true }
+  }, async ({ project, category, files, query }) => {
+    let roots = await node.roots({ project, category, files, query })
+    // Un progetto senza Radici proprie: valgono comunque quelle generali del team (best practice,
+    // policy…), cioè quelle che non appartengono a nessun progetto.
+    let note = ''
+    if (project && roots.length === 0) {
+      roots = (await node.roots({ category, query })).filter((r) => !r.memory.source?.code?.project)
+      note = `Nessuna Radice specifica per il progetto "${project}": ecco quelle generali del team.\n\n`
+    }
+    if (roots.length === 0) return text('Il team non ha ancora Radici' + (category ? ` di categoria ${category}` : '') + '.')
+    // Raggruppate per categoria; limite di lunghezza per non saturare il contesto dell'agente
+    const out: string[] = []
+    let size = 0
+    for (const r of roots) {
+      const block = `## ${ROOT_LABEL[r.category] ?? r.category}\n${formatRoot(r)}`
+      if (size + block.length > ARCHITECTURE_MAX_CHARS && out.length) { out.push(`(altre ${roots.length - out.length} Radici: restringi con project, category, files o query)`); break }
+      out.push(block)
+      size += block.length
+    }
+    return text(note + out.join('\n\n---\n\n'))
+  })
+
+  // ── mark_root ───────────────────────────────────────────────────────────────────────
+  // Qualunque membro può promuovere una Radice (decisione dell'utente); l'agente lo fa solo su
+  // richiesta esplicita, perché una Radice vale per tutto il team e non viene mai dimenticata.
+  server.registerTool('mark_root', {
+    title: 'Rendi un ricordo una Radice',
+    description: 'Promuove un ricordo del team a RADICE (sapere fondante che non viene mai dimenticato: architettura, rete, interfacce, ' +
+      'dominio, best practice, policy). Usalo SOLO quando l\'utente lo chiede esplicitamente.',
+    inputSchema: {
+      id: z.string().min(6).describe('Id del ricordo (come mostrato da recall)'),
+      category: z.enum(ROOT_CATEGORIES).describe('architecture | network | interface | domain | practice | policy | other')
+    }
+  }, async ({ id, category }) => {
+    try {
+      const r = await node.rootSet(id, category)
+      return text(`«${r.memory.title}» ora è una Radice (${ROOT_LABEL[r.category]}): non verrà dimenticata ed emergerà nelle ricerche pertinenti.`)
+    } catch (err) {
+      return error((err as Error).message)
+    }
   })
 
   // ── remember ────────────────────────────────────────────────────────────────────────

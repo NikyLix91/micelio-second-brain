@@ -264,6 +264,28 @@ La stessa UI funziona anche dal browser con `micelio ui`.
 
 ---
 
+## Fase 8 — Radici: il sapere fondante 🔄 (branch `feature/radici`)
+
+Alcuni ricordi sono **pilastri**: paradigmi architetturali, mappe di rete, interfacce applicative, modello di dominio, best practice (es. regole di coding con l'AI), policy di sicurezza. Si consultano di rado, ma non devono mai essere dimenticati. Possono nascere da codice, documentazione, PDF, schemi, diagrammi o vault.
+
+Decisioni dell'utente (2026-10-18):
+- **nome:** «Radici»;
+- **chi promuove:** qualunque membro può promuovere o togliere una Radice;
+- **pin:** resta separato;
+- **revisione:** niente promemoria periodici; si lancia a mano;
+- **viste grafiche:** le Radici sono marcate in modo distinto.
+
+| # | Attività | Stato |
+|---|---|---|
+| 8.1 | **Modello e permessi:** eventi `root.set/unset/flag/confirm`, record con categoria, stato di revisione e segnalazioni. Le Radici non si fondono e non si archiviano. Attivazione mai sotto 0,75 (`ROOT_FLOOR`); il dreaming le esclude | ✅ |
+| 8.2 | **Emergono quando servono:** "Radici pertinenti" in coda a ogni `recall` MCP; tool MCP `architecture` (filtri per progetto, categoria, file toccati, testo) e `mark_root`; API `/api/roots`; CLI `micelio roots` (alias `radici`) | ✅ |
+| 8.3 | **Revisione manuale:** segnala le Radici il cui codice (commit successivi sui file citati) o documento d'origine è cambiato, o che ricordi più recenti contraddicono (LLM) | ⬜ |
+| 8.4 | **Ingestione:** il distillatore *suggerisce* Radici (promozione con un clic); cartelle di documenti "di Radici"; testo estratto anche da diagrammi (draw.io, SVG, PlantUML, Mermaid) | ⬜ |
+| 8.5 | **UI:** vista *Radici* (per categoria e progetto, stato, conferma, revisione); promozione dal dettaglio del ricordo; marcatura distinta nel Nucleo 3D e nella Mappa 2D | ⬜ |
+| 8.6 | Documentazione (guida utente, MCP, DESIGN, app) | ⬜ |
+
+---
+
 ## Registro
 
 | Data | Evento |

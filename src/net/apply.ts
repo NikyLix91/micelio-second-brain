@@ -21,7 +21,7 @@
 import Hyperbee from 'hyperbee'
 import b4a from 'b4a'
 import { TeamEvent, memoryId } from '../core/events'
-import type { InviteRecord, MemberRecord, MemoryRecord, TeamRecord } from '../core/model'
+import type { InviteRecord, MemberRecord, MemoryRecord, RootRecord, TeamRecord } from '../core/model'
 
 /**
  * Chiavi della vista. Il prefisso raggruppa i record dello stesso tipo, così si possono
@@ -36,6 +36,8 @@ export const KEYS = {
   /** Voto di un nodo su un ricordo (uno per nodo: l'ultimo nell'ordine linearizzato vince). */
   vote: (id: string, node: string) => `vote/${id}/${node}`,
   pin: (id: string) => `pin/${id}`,
+  /** Radice (Fase 8): ricordo fondante, vedi RootRecord. */
+  root: (id: string) => `root/${id}`,
   /** Uso di un ricordo da parte di un nodo: contatore cumulativo e ultimo uso. */
   usage: (id: string, node: string) => `usage/${id}/${node}`,
   /** Collegamento esplicito fra ricordi (dreaming). */
@@ -56,6 +58,7 @@ export const RANGES = {
   invites: { gt: 'invite/', lt: 'invite0' },
   votes: { gt: 'vote/', lt: 'vote0' },
   pins: { gt: 'pin/', lt: 'pin0' },
+  roots: { gt: 'root/', lt: 'root0' },
   usage: { gt: 'usage/', lt: 'usage0' },
   links: { gt: 'link/', lt: 'link0' },
   dreamLogs: { gt: 'dreamlog/', lt: 'dreamlog0' }
@@ -236,6 +239,40 @@ async function applyEvent (ev: TeamEvent, author: string, view: any, host: any):
       return
     }
 
+    // ── Radici: root.set / root.unset / root.flag / root.confirm ───────────────────
+    // Qualunque membro. Una Radice esiste solo per un ricordo attivo; le segnalazioni si
+    // accumulano (al massimo 20, le più recenti) finché qualcuno non conferma la Radice.
+    case 'root.set': {
+      const mem = await get<MemoryRecord>(view, KEYS.memory(ev.id))
+      if (!mem || mem.status !== 'active') return
+      const prev = await get<RootRecord>(view, KEYS.root(ev.id))
+      const rec: RootRecord = prev
+        ? { ...prev, category: ev.category } // già Radice: cambia solo la categoria
+        : { id: ev.id, category: ev.category, by: author, ts: ev.ts, reviewedAt: ev.ts, reviewedBy: author, status: 'ok', flags: [] }
+      await view.put(KEYS.root(ev.id), rec)
+      return
+    }
+    case 'root.unset': {
+      if (await get(view, KEYS.root(ev.id))) await view.del(KEYS.root(ev.id))
+      return
+    }
+    case 'root.flag': {
+      const prev = await get<RootRecord>(view, KEYS.root(ev.id))
+      if (!prev) return
+      // La stessa segnalazione ripetuta (stesso motivo e riferimenti) non si duplica.
+      const same = prev.flags.some((f) => f.reason === ev.reason && f.refs.join(',') === ev.refs.join(','))
+      if (same) return
+      const flags = [...prev.flags, { reason: ev.reason, refs: ev.refs, by: author, ts: ev.ts }].slice(-20)
+      await view.put(KEYS.root(ev.id), { ...prev, status: 'review', flags } satisfies RootRecord)
+      return
+    }
+    case 'root.confirm': {
+      const prev = await get<RootRecord>(view, KEYS.root(ev.id))
+      if (!prev) return
+      await view.put(KEYS.root(ev.id), { ...prev, status: 'ok', flags: [], reviewedAt: ev.ts, reviewedBy: author } satisfies RootRecord)
+      return
+    }
+
     // ── usage.report ─────────────────────────────────────────────────────────────────
     // G-Counter: per ogni (ricordo, nodo autore del report) si tiene il MASSIMO dei contatori
     // cumulativi ricevuti. Report ripetuti o fuori ordine non alterano il totale.
@@ -258,7 +295,8 @@ async function applyEvent (ev: TeamEvent, author: string, view: any, host: any):
       const olds: MemoryRecord[] = []
       for (const id of ev.old) {
         const o = await get<MemoryRecord>(view, KEYS.memory(id))
-        if (!o || o.status !== 'active' || await get(view, KEYS.pin(id))) return
+        // Ricordi fissati e Radici non si fondono: il dreaming non li tocca.
+        if (!o || o.status !== 'active' || await get(view, KEYS.pin(id)) || await get(view, KEYS.root(id))) return
         olds.push(o)
       }
       const m = ev.memory
@@ -284,7 +322,7 @@ async function applyEvent (ev: TeamEvent, author: string, view: any, host: any):
     // Ripristinare: qualunque membro, da archiviato o sostituito.
     case 'memory.archive': {
       const m = await get<MemoryRecord>(view, KEYS.memory(ev.id))
-      if (!m || m.status !== 'active' || await get(view, KEYS.pin(ev.id))) return
+      if (!m || m.status !== 'active' || await get(view, KEYS.pin(ev.id)) || await get(view, KEYS.root(ev.id))) return
       await view.put(KEYS.memory(ev.id), { ...m, status: 'archived', statusReason: ev.reason })
       return
     }

@@ -27,7 +27,7 @@ import crypto from 'hypercore-crypto'
 import b4a from 'b4a'
 import z32 from 'z32'
 import { envelope, type EventPayload } from '../core/events'
-import type { InviteRecord, MemberRecord, MemoryRecord, TeamRecord } from '../core/model'
+import type { InviteRecord, MemberRecord, MemoryRecord, RootRecord, TeamRecord } from '../core/model'
 import { KEYS, RANGES, applyNodes, openView } from './apply'
 
 /**
@@ -466,6 +466,13 @@ export class TeamNode extends EventEmitter {
   async pins (): Promise<Set<string>> {
     const out = new Set<string>()
     for await (const { key } of this.base.view.createReadStream(RANGES.pins)) out.add(String(key).split('/')[1])
+    return out
+  }
+
+  /** Radici (Fase 8): id del ricordo → record (categoria, stato di revisione, segnalazioni). */
+  async roots (): Promise<Map<string, RootRecord>> {
+    const out = new Map<string, RootRecord>()
+    for await (const { value } of this.base.view.createReadStream(RANGES.roots)) out.set((value as RootRecord).id, value as RootRecord)
     return out
   }
 

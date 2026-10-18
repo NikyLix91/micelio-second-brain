@@ -23,8 +23,8 @@
 import { EventEmitter } from 'node:events'
 import fs from 'node:fs'
 import path from 'node:path'
-import { MemoryInput, memoryId, type MemoryData } from '../core/events'
-import type { InviteRecord, MemberRecord, NodeStatus, RecallHit } from '../core/model'
+import { MemoryInput, memoryId, type MemoryData, ROOT_CATEGORIES, type RootCategory } from '../core/events'
+import type { InviteRecord, MemberRecord, NodeStatus, RecallHit, RootRecord } from '../core/model'
 import type { NodePaths } from '../core/paths'
 import { writeExport } from '../export/markdown'
 import { buildGraph, type Graph, type GraphLink } from '../graph/constellation'
@@ -140,6 +140,28 @@ export interface StorageReport {
   }[]
 }
 
+/** Una Radice con il suo ricordo, come la mostrano UI, CLI e MCP. */
+export interface RootView extends RootRecord {
+  memory: RecallHit
+  /** Nome di chi l'ha promossa / confermata per ultimo (null se non più membro). */
+  byName: string | null
+  reviewedByName: string | null
+}
+
+/** Filtri per l'elenco delle Radici (tool MCP `architecture`, API, CLI). */
+export interface RootFilter {
+  /** Progetto: confrontato con `source.code.project` e con i tag (maiuscole indifferenti). */
+  project?: string
+  category?: RootCategory
+  /**
+   * File su cui si sta lavorando: restituisce le Radici che citano quei file o le loro cartelle
+   * (una Radice su "src/orders/" vale per "src/orders/order.service.ts").
+   */
+  files?: string[]
+  /** Testo: ordina le Radici per pertinenza (stessa ricerca ibrida di recall). */
+  query?: string
+}
+
 /** Esito del download di un documento originale. */
 export interface SourceFile {
   /** Percorso locale del file (copia in cache, o l'originale se il documento è di questo nodo). */
@@ -183,6 +205,8 @@ export interface IngestStatus {
 
 export class MicelioNode extends EventEmitter {
   private team: TeamNode | null = null
+  /** Radici del team (Fase 8), dalla vista: id del ricordo → record. */
+  private rootsById = new Map<string, RootRecord>()
   private nodeName: string | null = null
   private readonly index: MemoryIndex
   private readonly privateStore: PrivateStore
@@ -430,7 +454,13 @@ export class MicelioNode extends EventEmitter {
   graph (): Graph {
     const g = buildGraph(this.index.all(), [...this.semanticLinks(), ...this.explicitLinks()])
     const signals = this.index.signals()
-    return { ...g, nodes: g.nodes.map((n) => ({ ...n, activation: this.activationOf(n.id, signals) })) }
+    return {
+      ...g,
+      nodes: g.nodes.map((n) => {
+        const r = this.rootsById.get(n.id)
+        return { ...n, activation: this.activationOf(n.id, signals), ...(r ? { root: { category: r.category, status: r.status } } : {}) }
+      })
+    }
   }
 
   /** Un ricordo completo con i segnali di priorità (attivazione, voti, usi, pin). */
@@ -567,6 +597,110 @@ export class MicelioNode extends EventEmitter {
     await this.sync()
   }
 
+  // ═══════════════════════════ Radici (Fase 8) ═══════════════════════════
+
+  /**
+   * Promuove un ricordo a Radice (o ne cambia la categoria). Qualunque membro può farlo.
+   * @param category vedi ROOT_CATEGORIES in events.ts
+   */
+  async rootSet (id: string, category: RootCategory): Promise<RootView> {
+    if (!ROOT_CATEGORIES.includes(category)) throw new UserError(`Categoria sconosciuta: ${category} (${ROOT_CATEGORIES.join(', ')})`)
+    const rec = this.requireMemory(id)
+    await this.requireTeam().append({ type: 'root.set', id: rec.id, category })
+    await this.sync()
+    return this.requireRoot(rec.id)
+  }
+
+  /** Il ricordo smette di essere una Radice. */
+  async rootUnset (id: string): Promise<void> {
+    const r = this.requireRoot(id)
+    await this.requireTeam().append({ type: 'root.unset', id: r.id })
+    await this.sync()
+  }
+
+  /** Radice rivista e confermata: si azzerano le segnalazioni, la data di revisione riparte. */
+  async rootConfirm (id: string): Promise<RootView> {
+    const r = this.requireRoot(id)
+    await this.requireTeam().append({ type: 'root.confirm', id: r.id })
+    await this.sync()
+    return this.requireRoot(r.id)
+  }
+
+  /**
+   * Elenco delle Radici, filtrato e ordinato (vedi RootFilter). Senza `query`: per categoria,
+   * poi quelle da rivedere prima, poi per titolo.
+   */
+  async roots (filter: RootFilter = {}): Promise<RootView[]> {
+    const members = new Map((this.team ? await this.team.members() : []).map((m) => [m.key, m.name]))
+    let list = [...this.rootsById.values()]
+      .map((r) => {
+        const hit = this.index.get(r.id)
+        return hit ? { ...r, memory: this.enrich([hit])[0], byName: members.get(r.by) ?? null, reviewedByName: members.get(r.reviewedBy) ?? null } : null
+      })
+      .filter((r): r is RootView => r !== null)
+
+    if (filter.category) list = list.filter((r) => r.category === filter.category)
+    if (filter.project) {
+      const p = filter.project.toLowerCase()
+      list = list.filter((r) => r.memory.source?.code?.project?.toLowerCase() === p || r.memory.tags.some((t) => t === p))
+    }
+    if (filter.files?.length) {
+      const wanted = filter.files.map(normFile)
+      list = list.filter((r) => (r.memory.source?.code?.files ?? []).map(normFile).some((f) => wanted.some((w) => w === f || w.startsWith(f.endsWith('/') ? f : f + '/'))))
+    }
+    if (filter.query?.trim()) {
+      const order = await this.rankRoots(filter.query, list.map((r) => r.id))
+      const pos = new Map(order.map((id, i) => [id, i]))
+      return list.filter((r) => pos.has(r.id)).sort((a, b) => pos.get(a.id)! - pos.get(b.id)!)
+    }
+    const cat = (c: string) => ROOT_CATEGORIES.indexOf(c as RootCategory)
+    return list.sort((a, b) => cat(a.category) - cat(b.category) || (a.status === b.status ? 0 : a.status === 'review' ? -1 : 1) || a.memory.title.localeCompare(b.memory.title))
+  }
+
+  /**
+   * Radici pertinenti a una ricerca, ESCLUSE quelle già fra i risultati: è la sezione "Radici
+   * pertinenti" in coda a ogni recall. Così il sapere fondante arriva all'agente anche quando la
+   * ricerca non lo mette fra i primi risultati.
+   * @param exclude id già mostrati
+   * @param n quante al massimo
+   */
+  async relatedRoots (query: string, exclude: string[] = [], n = 3): Promise<RecallHit[]> {
+    const skip = new Set(exclude)
+    const candidates = [...this.rootsById.keys()].filter((id) => !skip.has(id))
+    if (!candidates.length || query.trim().length < 2) return []
+    const ids = (await this.rankRoots(query, candidates, true)).slice(0, n)
+    return this.enrich(this.index.getMany(ids))
+  }
+
+  /**
+   * Ordina un insieme di Radici per pertinenza a una query: parole chiave + significato, con
+   * una soglia semantica più bassa del normale (le Radici sono testi lunghi e generali).
+   * @param strict true = solo quelle con un minimo di pertinenza (per "Radici pertinenti")
+   */
+  private async rankRoots (query: string, ids: string[], strict = false): Promise<string[]> {
+    const allowed = new Set(ids)
+    const keyword = this.index.keywordIds(query, 200).filter((id) => allowed.has(id))
+    let semantic: string[] = []
+    if (this.embedder) {
+      try {
+        const [q] = await this.embedder.embed([query], 'query')
+        const vectors = new Map([...this.index.vectors(this.embedder.model)].filter(([id]) => allowed.has(id)))
+        semantic = nearest(q, vectors, ids.length, semanticThreshold(this.embedder.model) * ROOT_SEMANTIC_FACTOR).map((r) => r.id)
+      } catch { /* modello non disponibile: solo parole chiave */ }
+    }
+    const ranked = hybridRank(keyword, semantic, () => 0).map((r) => r.id)
+    if (strict) return ranked
+    // Elenco completo: prima le pertinenti, poi le altre nell'ordine dato
+    return [...ranked, ...ids.filter((id) => !ranked.includes(id))]
+  }
+
+  private requireRoot (id: string): RootView {
+    const rec = this.index.get(id)
+    const r = rec ? this.rootsById.get(rec.id) : undefined
+    if (!rec || !r) throw new UserError(`Il ricordo ${id} non è una Radice`)
+    return { ...r, memory: this.enrich([rec])[0], byName: rec.authorName, reviewedByName: null }
+  }
+
   /** Pubblica al team i contatori d'uso locali non ancora inviati (usage.report). */
   async flushUsage (): Promise<void> {
     if (!this.team?.writable) return
@@ -581,14 +715,15 @@ export class MicelioNode extends EventEmitter {
     const s = signals.get(id)
     const rec = this.index.get(id)
     if (!rec) return 0
-    return activation({ kind: rec.kind, createdAt: rec.ts, lastUsed: s?.lastUsed ?? undefined, uses: s?.uses ?? 0, votes: s?.votes ?? 0, degree: this.degrees.get(id) ?? 0, pinned: !!s?.pinned })
+    return activation({ kind: rec.kind, createdAt: rec.ts, lastUsed: s?.lastUsed ?? undefined, uses: s?.uses ?? 0, votes: s?.votes ?? 0, degree: this.degrees.get(id) ?? 0, pinned: !!s?.pinned, root: this.rootsById.has(id) })
   }
 
   /** Aggiunge ai risultati attivazione, voti, usi e pin. */
   private enrich (hits: RecallHit[], signals = this.index.signals()): RecallHit[] {
     return hits.map((h) => {
       const s = signals.get(h.id)
-      return { ...h, activation: this.activationOf(h.id, signals), votes: s?.votes ?? 0, uses: s?.uses ?? 0, pinned: !!s?.pinned }
+      const r = this.rootsById.get(h.id)
+      return { ...h, activation: this.activationOf(h.id, signals), votes: s?.votes ?? 0, uses: s?.uses ?? 0, pinned: !!s?.pinned, ...(r ? { root: { category: r.category, status: r.status } } : {}) }
     })
   }
 
@@ -1085,7 +1220,8 @@ export class MicelioNode extends EventEmitter {
     this.materializing = this.materializing.catch(() => {}).then(async () => {
       const team = this.team
       if (!team) return
-      const [all, members, votes, pins, usage, links] = await Promise.all([team.memories(), team.members(), team.votes(), team.pins(), team.usage(), team.links()])
+      const [all, members, votes, pins, usage, links, roots] = await Promise.all([team.memories(), team.members(), team.votes(), team.pins(), team.usage(), team.links(), team.roots()])
+      this.rootsById = roots
       // Solo i ricordi ATTIVI entrano in ricerca, costellazione ed export; gli altri sono storico.
       const memories = all.filter((m) => (m.status ?? 'active') === 'active')
       this.inactive = all.filter((m) => (m.status ?? 'active') !== 'active')
@@ -1170,4 +1306,15 @@ function dirSize (dir: string): number {
     n += e.isDirectory() ? dirSize(p) : fileSize(p)
   }
   return n
+}
+
+/**
+ * Le Radici sono testi lunghi e generali: per "Radici pertinenti" la soglia semantica è più bassa
+ * di quella delle ricerche normali (moltiplicata per questo fattore).
+ */
+const ROOT_SEMANTIC_FACTOR = 0.85
+
+/** Percorso di file confrontabile: barre "/", senza "./" iniziale, minuscolo. */
+function normFile (f: string): string {
+  return f.trim().replace(/\\/g, '/').replace(/^\.\//, '').toLowerCase()
 }

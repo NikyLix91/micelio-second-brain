@@ -27,6 +27,24 @@ export type MemoryKind = z.infer<typeof MemoryKind>
 const hexKey = z.string().regex(/^[0-9a-f]{64}$/, 'chiave esadecimale di 32 byte')
 
 /**
+ * Categorie delle RADICI (Fase 8): il sapere fondante del team, che non deve mai essere
+ * dimenticato anche se si consulta di rado. Vedi RootRecord in model.ts.
+ * - architecture: paradigmi e scelte architetturali
+ * - network:      mappe di rete e infrastruttura
+ * - interface:    interfacce applicative, contratti, API
+ * - domain:       modello di dominio
+ * - practice:     best practice e regole di sviluppo (es. regole di coding con l'AI)
+ * - policy:       policy di sicurezza e conformità
+ * - other:        tutto il resto
+ */
+export const ROOT_CATEGORIES = ['architecture', 'network', 'interface', 'domain', 'practice', 'policy', 'other'] as const
+export const RootCategory = z.enum(ROOT_CATEGORIES)
+export type RootCategory = z.infer<typeof RootCategory>
+
+/** Id di un ricordo: sha256 esadecimale. */
+const memoryIdHex = z.string().regex(/^[0-9a-f]{64}$/)
+
+/**
  * Riferimenti al codice di un ricordo distillato da una sessione di sviluppo: servono a chi legge
  * il ricordo (persona o agente) per decidere se e dove approfondire ("apri questi file, guarda
  * questo commit"). Tutti facoltativi: un ricordo può citare solo un file, o solo il progetto.
@@ -142,7 +160,22 @@ export const TeamEvent = z.discriminatedUnion('type', [
    */
   z.object({ ...base, type: z.literal('memory.redact'), id: z.string().regex(/^[0-9a-f]{64}$/), reason: z.string().max(500) }),
   /** Configurazione condivisa del team, es. `memory.language` (solo admin). */
-  z.object({ ...base, type: z.literal('team.config'), key: z.string().min(1).max(100), value: z.unknown() })
+  z.object({ ...base, type: z.literal('team.config'), key: z.string().min(1).max(100), value: z.unknown() }),
+  // ── Radici (Fase 8) ───────────────────────────────────────────────────────────────
+  // Qualunque membro può promuovere, togliere, segnalare e confermare (decisione dell'utente:
+  // sono best practice che ogni sviluppatore deve conoscere, non segreti). I nodi di versioni
+  // precedenti non conoscono questi eventi e li ignorano: per loro le Radici non esistono.
+  /** Promuove un ricordo a Radice, o ne cambia la categoria. */
+  z.object({ ...base, type: z.literal('root.set'), id: memoryIdHex, category: RootCategory }),
+  /** Il ricordo torna normale (decade e si archivia come gli altri). */
+  z.object({ ...base, type: z.literal('root.unset'), id: memoryIdHex }),
+  /**
+   * Segnala una Radice come "da rivedere" (revisione lanciata a mano): codice o documento
+   * d'origine cambiati, ricordi più recenti che la contraddicono. `refs`: commit, id di ricordi…
+   */
+  z.object({ ...base, type: z.literal('root.flag'), id: memoryIdHex, reason: z.string().min(1).max(500), refs: z.array(z.string().max(100)).max(20).default([]) }),
+  /** Radice rivista e confermata: le segnalazioni si azzerano e la data di revisione riparte. */
+  z.object({ ...base, type: z.literal('root.confirm'), id: memoryIdHex })
 ])
 export type TeamEvent = z.infer<typeof TeamEvent>
 

@@ -5,7 +5,7 @@
  * un Hyperbee gestito da Autobase, con chiavi del tipo `memory/<id>`, `member/<chiave>`… (vedi
  * KEYS in src/net/apply.ts). Sono gli stessi oggetti che la CLI e l'API ricevono in JSON.
  */
-import type { CodeRefs, MemoryKind } from './events'
+import type { CodeRefs, MemoryKind, RootCategory } from './events'
 
 /** Ruolo di un membro. Gli admin sono anche indexer di Autobase (decisione D3). */
 export type Role = 'admin' | 'member'
@@ -94,6 +94,38 @@ export interface RecallHit {
   uses?: number
   /** Fissato: non decade e non viene archiviato. */
   pinned?: boolean
+  /** Presente se il ricordo è una Radice: categoria e stato di revisione. */
+  root?: { category: RootCategory, status: 'ok' | 'review' }
+}
+
+/** Segnalazione su una Radice: perché andrebbe rivista. */
+export interface RootFlag {
+  reason: string
+  /** Riferimenti utili alla revisione: hash di commit, id di ricordi, nomi di documenti. */
+  refs: string[]
+  /** Nodo che l'ha segnalata e quando. */
+  by: string
+  ts: number
+}
+
+/**
+ * Una RADICE: ricordo fondante del team (architettura, rete, interfacce, best practice,
+ * policy…). Non decade, non viene archiviata né fusa dal dreaming, emerge sempre nelle ricerche
+ * pertinenti. Invece di dimenticarla la si RIVEDE: la revisione (lanciata a mano) la segnala se il
+ * codice o il documento d'origine sono cambiati, o se ricordi più recenti la contraddicono.
+ */
+export interface RootRecord {
+  id: string
+  category: RootCategory
+  /** Chi l'ha promossa e quando. */
+  by: string
+  ts: number
+  /** Ultima conferma (o promozione): le verifiche cercano cambiamenti successivi a questa data. */
+  reviewedAt: number
+  reviewedBy: string
+  /** "ok" = confermata; "review" = ci sono segnalazioni da guardare. */
+  status: 'ok' | 'review'
+  flags: RootFlag[]
 }
 
 /** Stato sintetico del nodo, mostrato da `micelio status` e dalla futura UI. */

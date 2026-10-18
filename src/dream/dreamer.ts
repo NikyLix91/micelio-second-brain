@@ -111,7 +111,8 @@ export function dreamOrder (epoch: string, members: string[]): string[] {
  * (union-find). Esclusi i ricordi fissati. Al massimo MAX_GROUPS gruppi da MAX_GROUP_SIZE.
  */
 export function duplicateGroups (memories: RecallHit[], vectors: Map<string, Float32Array>, threshold: number): string[][] {
-  const ids = memories.filter((m) => !m.pinned && vectors.has(m.id)).map((m) => m.id)
+  // Ricordi fissati e Radici sono esclusi: il dreaming non li fonde mai (apply lo impedirebbe comunque).
+  const ids = memories.filter((m) => !m.pinned && !m.root && vectors.has(m.id)).map((m) => m.id)
   const parent = new Map(ids.map((id) => [id, id]))
   const find = (x: string): string => { while (parent.get(x) !== x) x = parent.get(x)!; return x }
   for (let i = 0; i < ids.length; i++) {
@@ -128,7 +129,7 @@ export function duplicateGroups (memories: RecallHit[], vectors: Map<string, Flo
 export function decayCandidates (memories: RecallHit[], now = Date.now()): RecallHit[] {
   const minAge = DECAY_MIN_AGE_DAYS * 24 * 3600 * 1000
   return memories
-    .filter((m) => !m.pinned && (m.activation ?? 1) < DECAY_ACTIVATION && now - m.ts > minAge)
+    .filter((m) => !m.pinned && !m.root && (m.activation ?? 1) < DECAY_ACTIVATION && now - m.ts > minAge)
     .sort((a, b) => (a.activation ?? 0) - (b.activation ?? 0))
     .slice(0, MAX_DECAY)
 }

@@ -8,7 +8,9 @@
  * - uses:       quante volte il team l'ha usato (logaritmico: 100 usi non valgono 100 volte 1);
  * - votes:      somma dei voti di utilità;
  * - centrality: quanti collegamenti ha nella costellazione;
- * - pinned:     un ricordo fissato ha sempre attivazione massima.
+ * - pinned:     un ricordo fissato ha sempre attivazione massima;
+ * - root:       una Radice (sapere fondante) non scende mai sotto ROOT_FLOOR, anche se nessuno
+ *               la consulta da mesi; con l'uso sale come gli altri.
  *
  * Calcolata AL MOMENTO della query con l'orologio locale: la vista replicata contiene solo gli
  * ingredienti (usi, voti, pin), quindi resta deterministica su tutti i nodi.
@@ -36,7 +38,16 @@ export interface ActivationInput {
   /** Numero di collegamenti nella costellazione. */
   degree: number
   pinned: boolean
+  /** È una Radice (Fase 8): attivazione mai sotto ROOT_FLOOR. */
+  root?: boolean
 }
+
+/**
+ * Attivazione minima di una Radice. Abbastanza alta da non essere mai candidata al decadimento
+ * (soglia del dreaming: 0.15) e da restare in buona posizione nelle ricerche, ma sotto 1: una
+ * Radice non deve schiacciare i ricordi più pertinenti alla domanda.
+ */
+export const ROOT_FLOOR = 0.75
 
 const DAY = 24 * 3600 * 1000
 
@@ -49,5 +60,5 @@ export function activation (m: ActivationInput, now = Date.now()): number {
   const votes = 0.5 + Math.max(-0.5, Math.min(0.5, m.votes / 10)) // 0 voti = 0.5 (neutro)
   const centrality = Math.min(1, m.degree / 8)
   const a = WEIGHTS.recency * recency + WEIGHTS.uses * uses + WEIGHTS.votes * votes + WEIGHTS.centrality * centrality
-  return Math.max(0, Math.min(1, a))
+  return Math.max(m.root ? ROOT_FLOOR : 0, Math.min(1, a))
 }

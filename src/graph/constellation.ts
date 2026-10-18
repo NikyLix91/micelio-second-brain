@@ -27,6 +27,8 @@ export interface GraphNode {
   ts: number
   /** Attivazione 0..1 (Fase 5), aggiunta dal nodo: i ricordi più "vivi" brillano di più. */
   activation?: number
+  /** Presente se il ricordo è una Radice (Fase 8): le viste grafiche la marcano in modo distinto. */
+  root?: { category: string, status: 'ok' | 'review' }
 }
 
 export interface GraphLink {

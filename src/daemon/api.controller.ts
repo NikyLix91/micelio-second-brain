@@ -9,7 +9,7 @@
  */
 import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Post, Put, Query, SetMetadata } from '@nestjs/common'
 import { z } from 'zod'
-import { MEMORY_KINDS } from '../core/events'
+import { MEMORY_KINDS, ROOT_CATEGORIES } from '../core/events'
 import { IntegrationError, setupClaudeCode } from '../node/integrations'
 import { UserError } from '../node/micelio-node'
 import type { DaemonOptions } from './micelio.module'
@@ -45,7 +45,16 @@ const NetworkBody = z.object({
   bootstrap: z.array(z.string().max(300)).max(10).optional()
 })
 const NetworkCheckBody = NetworkBody.partial().default({})
-const RedactBody =z.object({ reason: z.string().max(500).default('') }).default({ reason: '' })
+/** Promozione a Radice (o cambio di categoria). */
+const RootBody = z.object({ category: z.enum(ROOT_CATEGORIES) })
+/** Filtri dell'elenco delle Radici (query string): `files` separati da virgola. */
+const RootQuery = z.object({
+  project: z.string().max(200).optional(),
+  category: z.enum(ROOT_CATEGORIES).optional(),
+  files: z.string().max(5000).optional(),
+  q: z.string().max(500).optional()
+})
+const RedactBody = z.object({ reason: z.string().max(500).default('') }).default({ reason: '' })
 const VoteBody = z.object({ delta: z.union([z.literal(-1), z.literal(0), z.literal(1)]) })
 const SetupBody = z.object({ hook: z.boolean().default(true) }).default({ hook: true })
 
@@ -183,6 +192,36 @@ export class ApiController {
   async unpin (@Param('id') id: string) {
     await this.node.pin(id, false)
     return this.node.detail(id)
+  }
+
+  // ═══════════════════════════════ Radici (Fase 8) ═══════════════════════════════
+
+  /** Elenco delle Radici, con filtri facoltativi (?project=&category=&files=a,b&q=). */
+  @Get('roots')
+  roots (@Query() query: unknown) {
+    const { project, category, files, q } = RootQuery.parse(query ?? {})
+    return this.node.roots({ project, category, files: files ? files.split(',').map((f) => f.trim()).filter(Boolean) : undefined, query: q })
+  }
+
+  /** Promuove un ricordo a Radice o ne cambia la categoria (qualunque membro). */
+  @Post('roots/:id')
+  @HttpCode(200)
+  rootSet (@Param('id') id: string, @Body() body: unknown) {
+    return this.node.rootSet(id, RootBody.parse(body).category)
+  }
+
+  /** Il ricordo smette di essere una Radice. */
+  @Delete('roots/:id')
+  async rootUnset (@Param('id') id: string) {
+    await this.node.rootUnset(id)
+    return { ok: true }
+  }
+
+  /** Radice rivista e confermata: segnalazioni azzerate. */
+  @Post('roots/:id/confirm')
+  @HttpCode(200)
+  rootConfirm (@Param('id') id: string) {
+    return this.node.rootConfirm(id)
   }
 
   /**
