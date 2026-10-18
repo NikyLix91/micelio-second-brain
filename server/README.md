@@ -75,6 +75,28 @@ Requisiti:
 - le porte aggiuntive vanno aperte nel firewall;
 - la macchina deve poter raggiungere **il proprio IP pubblico**. In alcune VM cloud non è possibile: in quel caso i nodi aggiuntivi non partono, e si torna a `0`.
 
+## Con Docker
+
+In alternativa a `install.sh` il server gira in un container (`server/Dockerfile`: Node 22 su Debian slim, solo `hyperdht`, utente senza privilegi, nessun dato da conservare).
+
+```bash
+# costruzione (dalla cartella server/)
+docker build -t <registry>/micelio-server:0.1.0 .
+
+# esecuzione sulla macchina del server
+docker run -d --name micelio-server --restart unless-stopped --network host \
+  -e MICELIO_SERVER_HOST=<IP pubblico della macchina> \
+  <registry>/micelio-server:0.1.0
+
+docker logs -f micelio-server     # deve comparire "pronto. Sui PC del team: micelio network set <IP>:49737"
+```
+
+- **Porta**: va aperta in ingresso **UDP 49737** (firewall della macchina e, se c'è, del router o del provider cloud). Niente TCP.
+- `--network host` (Linux) è la scelta più semplice per un nodo DHT: il container usa direttamente la porta della macchina. In alternativa: `-p 49737:49737/udp`.
+- Variabili: `MICELIO_SERVER_HOST` (obbligatoria: l'IP pubblico con cui i PC lo raggiungono), `MICELIO_SERVER_PORT` (default 49737), `MICELIO_SERVER_EXTRA_NODES` (nodi aggiuntivi sulle porte successive, da aprire anch'esse).
+- Base Debian e non Alpine: `udx-native` (il modulo di rete di hyperdht) non ha binari per musl e su Alpine il server non parte.
+- Registry senza HTTPS: la macchina che scarica l'immagine deve averlo fra gli `insecure-registries` di Docker (`/etc/docker/daemon.json`, poi `systemctl restart docker`); `localhost:<porta>` è consentito di default.
+
 ## Sui PC del team
 
 Tutti i membri devono usare **lo stesso** server, altrimenti stanno in DHT diverse e non si trovano:

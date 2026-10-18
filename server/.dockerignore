@@ -1,0 +1,7 @@
+# Si ricostruiscono dentro l'immagine
+node_modules
+dist
+# Non servono all'immagine
+*.md
+install.sh
+uninstall.sh
