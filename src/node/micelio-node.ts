@@ -54,6 +54,7 @@ import { BOOTSTRAP_RE, canonicalPath, type Config, dhtBootstrap, isInsideWatched
 import { checkNetwork, type NetworkCheck } from '../net/diagnose'
 import { distillQuality, type DistillQuality, MAX_MEMORIES_RANGE, maxMemoriesOf } from '../ingest/quality'
 import { reviewRoots, type ReviewNote } from '../roots/review'
+import { type Identity, signMembership } from '../core/identity'
 
 export interface MicelioNodeOptions {
   /** Nodi bootstrap DHT (test o rete privata); assente = DHT pubblica. */
@@ -66,8 +67,29 @@ export interface MicelioNodeOptions {
    * Se omesso si usa `llm.adapter` di config.json.
    */
   llm?: LlmAdapter | null
-  /** Embedder da usare al posto di quello configurato (test). `null` = nessuna ricerca semantica. */
+  /**
+   * Embedder da usare al posto di quello configurato (test, o quello CONDIVISO fra i team di
+   * MicelioHost). `null` = nessuna ricerca semantica. Se arriva da fuori, lo chiude chi l'ha creato.
+   */
   embedder?: Embedder | null
+  /**
+   * Esecutore LLM CONDIVISO (B3): con più team le chiamate a Claude devono restare una alla volta
+   * e il budget giornaliero è uno solo per macchina. Ha la precedenza su `llm`.
+   */
+  llmRunner?: LlmRunner | null
+  /** Identità personale da legare a questo team (B3, src/core/identity.ts); assente = nessuna. */
+  identity?: () => Identity | null
+  /**
+   * Con più team: true se una cartella di lavoro appartiene a QUESTO team. Una sessione in una
+   * cartella abilitata in due team (es. `C:\work` nel team A e `C:\work\clienteX` nel team B)
+   * va solo al team con la cartella più specifica. Assente = tutte le cartelle abilitate.
+   */
+  owns?: (dir: string) => boolean
+  /**
+   * Con più team: controlla che una cartella si possa abilitare in QUESTO team, e lancia un
+   * UserError se un altro team la usa già (vedi MicelioHost.claimFolder).
+   */
+  claimFolder?: (dir: string, kind: 'sessions' | 'documents') => void
 }
 
 /** Errore causato dall'utente o dallo stato del nodo: messaggio pensato per essere mostrato. */
@@ -255,6 +277,8 @@ export class MicelioNode extends EventEmitter {
   /** Radici del team (Fase 8), dalla vista: id del ricordo → record. */
   private rootsById = new Map<string, RootRecord>()
   private nodeName: string | null = null
+  /** Nome del team letto all'ultima materializzazione (vedi teamName). */
+  private teamNameCache: string | null = null
   private readonly index: MemoryIndex
   private readonly privateStore: PrivateStore
   private readonly pipeline: IngestPipeline
@@ -291,10 +315,15 @@ export class MicelioNode extends EventEmitter {
     this.index = new MemoryIndex(paths.index)
     this.privateStore = new PrivateStore(paths.private)
 
-    // Scelta dell'adapter: override dei test > configurazione.
-    const adapter = opts.llm !== undefined ? opts.llm : createAdapter(this.config)
-    // Budget e modelli si leggono da this.config a ogni uso: la UI può cambiarli senza riavvio.
-    this.llm = adapter ? new LlmRunner(adapter, this.privateStore, { dailyBudget: () => this.config.llm.dailyBudget, log: this.log }) : null
+    if (opts.llmRunner !== undefined) {
+      // Esecutore condiviso da MicelioHost: una sola coda e un solo budget per tutti i team.
+      this.llm = opts.llmRunner
+    } else {
+      // Scelta dell'adapter: override dei test > configurazione.
+      const adapter = opts.llm !== undefined ? opts.llm : createAdapter(this.config)
+      // Budget e modelli si leggono da this.config a ogni uso: la UI può cambiarli senza riavvio.
+      this.llm = adapter ? new LlmRunner(adapter, this.privateStore, { dailyBudget: () => this.config.llm.dailyBudget, log: this.log }) : null
+    }
 
     this.pipeline = new IngestPipeline({
       store: this.privateStore,
@@ -371,6 +400,7 @@ export class MicelioNode extends EventEmitter {
     await team.open(state)
     this.attach(team)
     await this.materialize()
+    await this.linkIdentity()
     await this.documents.start(this.config.watch.documents)
     // Recupero: sessioni lavorate mentre il daemon era spento (o parti nuove di sessioni lunghe).
     this.scanSessions()
@@ -384,7 +414,8 @@ export class MicelioNode extends EventEmitter {
     while (this.dreamer.busy) await new Promise((r) => setTimeout(r, 200))
     await this.flushUsage().catch(() => {})
     await this.embedding.catch(() => {})
-    await this.embedder?.close()
+    // Si chiude solo l'embedder creato qui: quello passato da fuori è condiviso con altri team.
+    if (this.opts.embedder === undefined) await this.embedder?.close()
     await this.documents.stop()
     await this.pipeline.stop()
     if (this.timer) clearTimeout(this.timer)
@@ -396,6 +427,24 @@ export class MicelioNode extends EventEmitter {
   }
 
   // ═══════════════════════════════════ Team ════════════════════════════════════
+
+  /** Nome del team, dall'ultima lettura della vista (null prima della prima sincronizzazione). */
+  get teamName (): string | null {
+    return this.teamNameCache
+  }
+
+  /**
+   * Rilegge la configurazione dal disco. Con più team (B3) la parte della macchina (modelli LLM,
+   * budget) è condivisa: quando un team la cambia, MicelioHost fa rileggere gli altri.
+   */
+  reloadConfig (): void {
+    this.config = loadConfig(this.paths)
+  }
+
+  /** true se il nodo appartiene a un team (state.json presente). */
+  get configured (): boolean {
+    return this.team !== null || loadState(this.paths) !== null
+  }
 
   /** Crea un nuovo team con questo nodo come fondatore. */
   async init (teamName: string, nodeName: string): Promise<NodeStatus> {
@@ -411,6 +460,7 @@ export class MicelioNode extends EventEmitter {
     this.nodeName = nodeName
     this.attach(team)
     await this.materialize()
+    await this.linkIdentity()
     await this.documents.start(this.config.watch.documents)
     this.changed('status')
     return this.status()
@@ -430,6 +480,7 @@ export class MicelioNode extends EventEmitter {
     this.nodeName = nodeName
     this.attach(team)
     await this.materialize()
+    await this.linkIdentity()
     await this.documents.start(this.config.watch.documents)
     this.changed('status')
     return this.status()
@@ -948,7 +999,7 @@ export class MicelioNode extends EventEmitter {
    */
   ingestSession (payload: { sessionId: string, transcriptPath: string, cwd: string }): { queued: boolean, reason?: string, jobId?: number } {
     if (!this.team) return { queued: false, reason: 'nodo non configurato' }
-    if (!isInsideWatched(payload.cwd, this.config.watch.sessions)) {
+    if (!isInsideWatched(payload.cwd, this.config.watch.sessions) || !this.ownsFolder(payload.cwd)) {
       // Riga di log volutamente presente: senza, una sessione ignorata sparisce senza lasciare traccia.
       this.log(`sessione ${payload.sessionId.slice(0, 8)} ignorata: ${payload.cwd} non è una cartella abilitata`)
       return { queued: false, reason: 'cartella non abilitata (micelio watch add)' }
@@ -967,7 +1018,8 @@ export class MicelioNode extends EventEmitter {
     const s = this.config.watch.sessionScan
     if (!this.team || !s.enabled) return 0
     try {
-      const found = this.scanner.scan({ projectsDir: claudeProjectsDir(), watched: this.config.watch.sessions, ...s })
+      // Con più team si tengono solo le sessioni delle cartelle che appartengono a questo team
+      const found = this.scanner.scan({ projectsDir: claudeProjectsDir(), watched: this.config.watch.sessions, ...s }).filter((c) => this.ownsFolder(c.cwd))
       for (const c of found) this.pipeline.enqueueSession(c)
       if (found.length) this.log(`raccolta periodica: ${found.length} sessioni con parti nuove accodate`)
       return found.length
@@ -987,6 +1039,7 @@ export class MicelioNode extends EventEmitter {
     if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) throw new UserError(`Cartella inesistente: ${path.resolve(dir)}`, `Folder not found: ${path.resolve(dir)}`)
     // Salviamo la forma canonica (nome lungo, link risolti): è quella che si vede nell'elenco.
     const abs = canonicalPath(dir)
+    this.opts.claimFolder?.(abs, 'sessions')
     this.config = updateConfig(this.paths, (c) => {
       if (!isInsideWatched(abs, c.watch.sessions)) c.watch.sessions.push(abs)
     })
@@ -1255,6 +1308,7 @@ export class MicelioNode extends EventEmitter {
   async documentsAdd (dir: string, shareable: boolean, roots = false): Promise<NodeSettings['documents']> {
     if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) throw new UserError(`Cartella inesistente: ${path.resolve(dir)}`, `Folder not found: ${path.resolve(dir)}`)
     const abs = canonicalPath(dir)
+    this.opts.claimFolder?.(abs, 'documents')
     this.config = updateConfig(this.paths, (c) => {
       c.watch.documents = [...c.watch.documents.filter((d) => canonicalPath(d.path) !== abs), { path: abs, shareable, roots }]
     })
@@ -1464,6 +1518,7 @@ export class MicelioNode extends EventEmitter {
       if (!team) return
       const [all, members, votes, pins, usage, links, roots] = await Promise.all([team.memories(), team.members(), team.votes(), team.pins(), team.usage(), team.links(), team.roots()])
       this.rootsById = roots
+      this.teamNameCache = (await team.team())?.name ?? this.teamNameCache
       // Solo i ricordi ATTIVI entrano in ricerca, costellazione ed export; gli altri sono storico.
       const memories = all.filter((m) => (m.status ?? 'active') === 'active')
       this.inactive = all.filter((m) => (m.status ?? 'active') !== 'active')
@@ -1478,6 +1533,30 @@ export class MicelioNode extends EventEmitter {
       this.changed('memories', 'members', 'status')
     })
     return this.materializing
+  }
+
+  /** true se la cartella di lavoro va a questo team (vedi MicelioNodeOptions.owns). */
+  private ownsFolder (dir: string): boolean {
+    return this.opts.owns ? this.opts.owns(dir) : true
+  }
+
+  /**
+   * Lega il feed di questo nodo all'identità personale (B3), se non è già fatto: pubblica
+   * `member.identity` con la firma. Serve anche ai team creati prima di B3, che al primo avvio
+   * ricevono il legame. Errori solo nel log: il team funziona anche senza.
+   */
+  private async linkIdentity (): Promise<void> {
+    const identity = this.opts.identity?.()
+    const team = this.team
+    if (!identity || !team?.writable || !team.localKey) return
+    try {
+      const me = (await team.members()).find((m) => m.key === team.localKey)
+      if (!me || me.person === identity.publicKey) return
+      await team.append({ type: 'member.identity', person: identity.publicKey, sig: signMembership(identity, team.localKey) })
+      this.log('identità personale collegata al team')
+    } catch (err) {
+      this.log(`identità non collegata: ${(err as Error).message}`)
+    }
   }
 
   private requireTeam (): TeamNode {
@@ -1516,7 +1595,7 @@ export class MicelioNode extends EventEmitter {
 }
 
 /** Crea l'embedder indicato in configurazione; null se "none". Il modello è condiviso da tutti i nodi della macchina. */
-function createEmbedder (config: Config): Embedder | null {
+export function createEmbedder (config: Config): Embedder | null {
   switch (config.embeddings.adapter) {
     case 'local': return new LocalEmbedder(config.embeddings.model, path.join(os.homedir(), '.cache', 'micelio-models'))
     case 'hash': return new HashEmbedder()
@@ -1525,7 +1604,7 @@ function createEmbedder (config: Config): Embedder | null {
 }
 
 /** Crea l'adapter LLM indicato in configurazione; null se "none". */
-function createAdapter (config: Config): LlmAdapter | null {
+export function createAdapter (config: Config): LlmAdapter | null {
   switch (config.llm.adapter) {
     case 'claude': return new ClaudeCliAdapter(config.llm.command)
     case 'fake': return new FakeAdapter()

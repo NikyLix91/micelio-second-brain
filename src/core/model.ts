@@ -49,6 +49,11 @@ export interface MemberRecord {
   invitedBy: string | null
   removed: boolean
   joinedAt: number
+  /**
+   * Chiave pubblica della PERSONA (B3), uguale in tutti i team in cui è entrata dallo stesso PC.
+   * Assente finché il membro non ha pubblicato `member.identity` (es. versioni precedenti).
+   */
+  person?: string
 }
 
 /** Un invito non ancora usato. Il segreto NON è qui: lo conosce solo chi ha il codice. */

@@ -99,3 +99,25 @@ export function setupClaudeCode (opts: { mcpUrl: string, token: string, home: st
   const hookFile = opts.hook ? installSessionEndHook(opts.home) : null
   return { mcpUrl: opts.mcpUrl, hookFile }
 }
+
+/**
+ * Registra Micelio come server MCP di Claude Code SOLO per una cartella di progetto (B3), con
+ * l'endpoint di un team preciso (`/mcp/<team>`). Ambito "local" di Claude Code: la registrazione
+ * vale quando Claude Code è avviato in quella cartella, prevale su quella utente (il team
+ * predefinito) e resta nella configurazione personale (~/.claude.json), non nel repository:
+ * il token non finisce mai in un file che si potrebbe committare.
+ * @param dir cartella da cui si avvia Claude Code (di solito la radice del repository)
+ * @throws IntegrationError se la cartella non esiste o `claude` non è disponibile
+ */
+export function registerProjectMcp (dir: string, mcpUrl: string, token: string): { dir: string, mcpUrl: string } {
+  if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) throw new IntegrationError(`Cartella inesistente: ${dir}`, `Folder not found: ${dir}`)
+  const opts = { cwd: dir, windowsHide: true }
+  spawnSync('claude', ['mcp', 'remove', '--scope', 'local', 'micelio'], { ...opts, stdio: 'ignore' })
+  const args = ['mcp', 'add', '--transport', 'http', '--scope', 'local', 'micelio', mcpUrl, '--header', `Authorization: Bearer ${token}`]
+  const r = spawnSync('claude', args, { ...opts, encoding: 'utf8' })
+  if (r.error || r.status !== 0) {
+    const detail = (r.error?.message ?? r.stderr ?? '').toString().trim()
+    throw new IntegrationError(`Registrazione MCP non riuscita: ${detail || 'claude non disponibile'}`, `MCP registration failed: ${detail || 'claude not available'}`)
+  }
+  return { dir, mcpUrl }
+}

@@ -21,6 +21,7 @@
 import Hyperbee from 'hyperbee'
 import b4a from 'b4a'
 import { TeamEvent, memoryId } from '../core/events'
+import { verifyMembership } from '../core/identity'
 import type { InviteRecord, MemberRecord, MemoryRecord, RootRecord, TeamRecord } from '../core/model'
 
 /**
@@ -202,6 +203,18 @@ async function applyEvent (ev: TeamEvent, author: string, view: any, host: any):
       await host.removeWriter(buf(ev.key))
       // Il record resta, marcato `removed`: serve allo storico e all'albero degli inviti.
       await view.put(KEYS.member(ev.key), { ...target, removed: true })
+      return
+    }
+
+    // ── member.identity ──────────────────────────────────────────────────────────────
+    // Ognuno lega solo il PROPRIO feed (author) alla sua persona, e solo con una firma valida
+    // della persona su quel feed: nessuno può spacciarsi per un altro (src/core/identity.ts).
+    // La verifica è puro calcolo, quindi deterministica come richiede apply.
+    case 'member.identity': {
+      // `me` = record dell'autore, già verificato come membro attivo qui sopra
+      if (me.person === ev.person) return
+      if (!verifyMembership(ev.person, author, ev.sig)) return
+      await view.put(KEYS.member(author), { ...me, person: ev.person })
       return
     }
 

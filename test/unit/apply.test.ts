@@ -2,6 +2,10 @@
 import { describe, expect, it } from 'vitest'
 import { applyNodes, KEYS } from '../../src/net/apply'
 import { envelope, type EventPayload } from '../../src/core/events'
+import { ensureIdentity, signMembership, verifyMembership } from '../../src/core/identity'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 
 // Vista finta in memoria con la stessa interfaccia minima di Hyperbee usata da apply.
 function fakeView () {
@@ -109,5 +113,32 @@ describe('apply', () => {
     await applyNodes(events, v1, fakeHost())
     await applyNodes(events, v2, fakeHost())
     expect([...v1.data.entries()]).toEqual([...v2.data.entries()])
+  })
+
+  it('member.identity: ognuno lega solo il PROPRIO feed, con una firma valida della persona', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'micelio-identity-'))
+    const ada = ensureIdentity(path.join(dir, 'ada.json'), 'Ada')
+    const bo = ensureIdentity(path.join(dir, 'bo.json'), 'Bo')
+    // la seconda chiamata non crea una nuova identità e non cambia il nome
+    expect(ensureIdentity(path.join(dir, 'ada.json'), 'Altro nome')).toEqual(ada)
+    const view = fakeView(); const host = fakeHost()
+    const inv = 'd'.repeat(64)
+    await applyNodes([
+      node(A, { type: 'team.init', name: 'T', founderName: 'ada' }),
+      node(A, { type: 'invite.add', id: inv, publicKey: 'e'.repeat(64), expires: 0 }),
+      node(A, { type: 'member.add', key: B, name: 'bo', inviteId: inv }),
+      // B prova ad attribuirsi l'identità di Ada: la firma di Ada copre il feed A, non B
+      node(B, { type: 'member.identity', person: ada.publicKey, sig: signMembership(ada, A) }),
+      // firma di Bo, ma dichiarata come persona di Ada: non verifica
+      node(B, { type: 'member.identity', person: ada.publicKey, sig: signMembership(bo, B) }),
+      node(A, { type: 'member.identity', person: ada.publicKey, sig: signMembership(ada, A) }),
+      node(B, { type: 'member.identity', person: bo.publicKey, sig: signMembership(bo, B) })
+    ], view, host)
+    expect((view.data.get(KEYS.member(A)) as any).person).toBe(ada.publicKey)
+    expect((view.data.get(KEYS.member(B)) as any).person).toBe(bo.publicKey)
+    // una firma fatta per un altro feed (es. lo stesso evento copiato da un altro team) non vale
+    expect(verifyMembership(ada.publicKey, C, signMembership(ada, A))).toBe(false)
+    expect(verifyMembership(ada.publicKey, A, 'zz')).toBe(false)
+    fs.rmSync(dir, { recursive: true, force: true })
   })
 })

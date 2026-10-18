@@ -136,6 +136,11 @@ export const TeamEvent = z.discriminatedUnion('type', [
   z.object({ ...base, type: z.literal('member.remove'), key: hexKey }),
   /** Promozione ad admin e indexer (solo admin). */
   z.object({ ...base, type: z.literal('member.promote'), key: hexKey }),
+  /**
+   * Identità personale (B3): il membro che scrive lega il PROPRIO feed alla sua persona (chiave
+   * pubblica Ed25519), con una firma verificata in apply. Vedi src/core/identity.ts.
+   */
+  z.object({ ...base, type: z.literal('member.identity'), person: hexKey, sig: z.string().regex(/^[0-9a-f]{128}$/) }),
   /** Voto di utilità su un ricordo (Fase 5): +1 utile, -1 non utile, 0 ritira il voto. Uno per nodo. */
   z.object({ ...base, type: z.literal('memory.vote'), id: z.string().regex(/^[0-9a-f]{64}$/), delta: z.union([z.literal(-1), z.literal(0), z.literal(1)]) }),
   /** Ricordo fissato: non decade e non viene archiviato dal dreaming (Fase 5–6). */

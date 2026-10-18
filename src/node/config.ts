@@ -127,9 +127,38 @@ const Config = z.object({
   watch: WatchConfig,
   embeddings: EmbeddingsConfig,
   dream: DreamConfig,
-  network: NetworkConfig
+  network: NetworkConfig,
+  /**
+   * Team usato quando una richiesta non ne indica uno (B3): id locale della cartella `teams/<id>`.
+   * Assente = il primo team in ordine di creazione.
+   */
+  defaultTeam: z.string().optional()
 })
 export type Config = z.infer<typeof Config>
+
+/**
+ * Sezioni che appartengono al TEAM e non alla macchina (B3): con più team ognuno ha le sue
+ * cartelle, la sua DHT e il suo orario di sogno, in `teams/<id>/settings.json`.
+ * Il resto (porta, token, LLM, embedding) resta in config.json: è uno per macchina.
+ */
+const TEAM_SECTIONS = ['watch', 'network', 'dream'] as const
+
+/** true se configurazione e impostazioni del team stanno nello stesso file (struttura a un team). */
+const singleFile = (paths: NodePaths) => path.resolve(paths.config) === path.resolve(paths.settings)
+
+/**
+ * Unisce il file della macchina e quello del team in un unico oggetto grezzo da validare.
+ * Le sezioni del team si prendono SOLO da settings.json: eventuali copie rimaste in config.json
+ * (struttura precedente a B3) non devono finire in tutti i team.
+ */
+function readRaw (paths: NodePaths): Record<string, unknown> {
+  const machine = (readJson(paths.config) ?? {}) as Record<string, unknown>
+  if (singleFile(paths)) return machine
+  const team = (readJson(paths.settings) ?? {}) as Record<string, unknown>
+  const out: Record<string, unknown> = { ...machine }
+  for (const k of TEAM_SECTIONS) { if (k in team) out[k] = team[k]; else delete out[k] }
+  return out
+}
 
 /** Contenuto di state.json: chi è questo nodo e a quale team appartiene. */
 const State = z.object({
@@ -162,12 +191,14 @@ function writePrivate (file: string, data: unknown): void {
  * - MICELIO_LLM_ADAPTER: claude | none | fake
  */
 export function loadConfig (paths: NodePaths): Config {
-  const raw = (readJson(paths.config) ?? {}) as Record<string, unknown>
-  if (typeof raw.token !== 'string') {
-    raw.token = randomBytes(24).toString('hex')
-    writePrivate(paths.config, Config.parse(raw))
+  const machine = (readJson(paths.config) ?? {}) as Record<string, unknown>
+  if (typeof machine.token !== 'string') {
+    // Primo avvio: si crea config.json con il token (solo la parte della macchina, se il team ha il suo file)
+    machine.token = randomBytes(24).toString('hex')
+    const full = Config.parse(machine)
+    writePrivate(paths.config, singleFile(paths) ? full : omitTeamSections(full))
   }
-  const cfg = Config.parse(raw)
+  const cfg = Config.parse(readRaw(paths))
   if (process.env.MICELIO_HOST) cfg.host = process.env.MICELIO_HOST
   if (process.env.MICELIO_PORT) cfg.port = Number(process.env.MICELIO_PORT)
   const adapter = process.env.MICELIO_LLM_ADAPTER
@@ -186,10 +217,45 @@ export function loadConfig (paths: NodePaths): Config {
  */
 export function updateConfig (paths: NodePaths, mutate: (cfg: Config) => void): Config {
   loadConfig(paths) // garantisce che il file esista
-  const onDisk = Config.parse(readJson(paths.config))
+  const onDisk = Config.parse(readRaw(paths))
   mutate(onDisk)
-  writePrivate(paths.config, Config.parse(onDisk))
+  const next = Config.parse(onDisk)
+  if (singleFile(paths)) {
+    writePrivate(paths.config, next)
+  } else {
+    // Ogni sezione torna nel suo file: macchina in config.json, team in settings.json.
+    writePrivate(paths.config, omitTeamSections(next))
+    writePrivate(paths.settings, Object.fromEntries(TEAM_SECTIONS.map((k) => [k, next[k]])))
+  }
   return loadConfig(paths)
+}
+
+/** La configurazione senza le sezioni del team: ciò che va in config.json con più team. */
+function omitTeamSections (cfg: Config): Partial<Config> {
+  const out: Partial<Config> = { ...cfg }
+  for (const k of TEAM_SECTIONS) delete out[k]
+  return out
+}
+
+/**
+ * Modifica SOLO config.json (la macchina), senza toccare le impostazioni di un team.
+ * Usata da MicelioHost per il team predefinito e dalla migrazione alla struttura a più team.
+ * @param mutate riceve il contenuto grezzo del file (anche le chiavi sconosciute restano)
+ */
+export function updateMachineConfig (configFile: string, mutate: (raw: Record<string, unknown>) => void): void {
+  const raw = (readJson(configFile) ?? {}) as Record<string, unknown>
+  mutate(raw)
+  writePrivate(configFile, raw)
+}
+
+/** Legge il contenuto grezzo di un file di configurazione ({} se manca): per la migrazione. */
+export function readConfigFile (file: string): Record<string, unknown> {
+  return (readJson(file) ?? {}) as Record<string, unknown>
+}
+
+/** Scrive un file di impostazioni con permessi ristretti (vedi writePrivate): per la migrazione. */
+export function writeConfigFile (file: string, data: unknown): void {
+  writePrivate(file, data)
 }
 
 /** Stato del team, o null se il nodo non ha ancora fatto `init` / `join`. */
@@ -236,13 +302,19 @@ export function networkMode (n: NetworkConfig): 'public' | 'private' {
  * (es. `C:\Users\MARIOR~1.ROS` → `C:\Users\mario.rossi`). Bug reale trovato in Fase 2:
  * Claude Code riporta la cartella di lavoro con il nome lungo, mentre la cartella abilitata
  * poteva essere salvata con quello corto, e il confronto falliva in silenzio.
- * Se il percorso non esiste (cartella cancellata) si ripiega su `path.resolve`.
+ * Se il percorso non esiste (cartella cancellata, o non ancora creata) si canonicalizza la
+ * cartella esistente più vicina e si riattacca il resto: altrimenti un nome corto nella parte
+ * esistente (es. la cartella utente) farebbe fallire il confronto.
  */
 export function canonicalPath (p: string): string {
+  const abs = path.resolve(p)
   try {
-    return fs.realpathSync.native(path.resolve(p))
+    return fs.realpathSync.native(abs)
   } catch {
-    return path.resolve(p)
+    const parent = path.dirname(abs)
+    // Arrivati alla radice del disco senza trovare nulla: si lascia il percorso com'è
+    if (parent === abs) return abs
+    return path.join(canonicalPath(parent), path.basename(abs))
   }
 }
 

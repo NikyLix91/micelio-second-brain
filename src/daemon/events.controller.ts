@@ -14,22 +14,23 @@
  *   e non `EventSource`, che non permette di impostare header. Così il token non finisce mai
  *   in un URL;
  * - ogni 25 s inviamo un commento (`: ping`) per tenere viva la connessione attraverso
- *   eventuali proxy e per accorgerci dei client che se ne sono andati.
+ *   eventuali proxy e per accorgerci dei client che se ne sono andati;
+ * - con più team (B3) lo stream riguarda il team della richiesta (intestazione x-micelio-team):
+ *   arrivano solo i suoi eventi, più `teams` quando cambia l'elenco dei team (nome, ruolo,
+ *   team aggiunto o tolto), che serve al selettore dei team.
  */
 import { Controller, Get, Req, Res } from '@nestjs/common'
 import type { Request, Response } from 'express'
-import type { ChangeTopic } from '../node/micelio-node'
+import type { HostChange } from '../node/micelio-host'
+import type { MicelioNode } from '../node/micelio-node'
 import { MicelioService } from './micelio.service'
+import { teamContext } from './team-context'
 
 const PING_INTERVAL_MS = 25_000
 
 @Controller('api')
 export class EventsController {
-  constructor (private readonly micelio: MicelioService) {
-    // Ogni client SSE aggiunge un listener: alziamo il limite che fa scattare l'avviso di
-    // "possibile memory leak" di EventEmitter (10 di default).
-    this.micelio.node.setMaxListeners(100)
-  }
+  constructor (private readonly micelio: MicelioService) {}
 
   /** Apre lo stream. Resta aperto finché il client non si disconnette. */
   @Get('events')
@@ -42,14 +43,20 @@ export class EventsController {
     // Primo evento: conferma al client che lo stream è attivo.
     res.write('event: hello\ndata: {}\n\n')
 
-    const onChange = (topic: ChangeTopic) => res.write(`event: change\ndata: ${JSON.stringify({ topic })}\n\n`)
-    this.micelio.node.on('change', onChange)
+    // Il team dello stream si risolve a ogni evento: il predefinito può cambiare mentre è aperto.
+    const ref = teamContext.getStore()
+    const nodeOf = (team?: string | null): MicelioNode | null => { try { return this.micelio.host.node(team) } catch { return null } }
+    const onChange = ({ team, topic }: HostChange) => {
+      if (team !== null && nodeOf(team) !== nodeOf(ref)) return
+      res.write(`event: change\ndata: ${JSON.stringify({ topic })}\n\n`)
+    }
+    this.micelio.host.on('change', onChange)
     const ping = setInterval(() => res.write(': ping\n\n'), PING_INTERVAL_MS)
 
     // Alla disconnessione del client togliamo listener e timer.
     req.on('close', () => {
       clearInterval(ping)
-      this.micelio.node.off('change', onChange)
+      this.micelio.host.off('change', onChange)
     })
   }
 }

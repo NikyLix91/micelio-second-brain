@@ -224,4 +224,42 @@ describe('daemon', () => {
     expect(s.data.memories).toBe(4) // 1 API + 1 MCP + 1 sessione + 1 inbox approvato
     expect((await api('GET', '/api/memories/search?q=drizzle')).data).toHaveLength(1)
   })
+
+  it('più team (B3): un secondo team, intestazione x-micelio-team, MCP per team', async () => {
+    // il secondo team si aggiunge al primo; il nome viene dall'identità personale
+    const created = await api('POST', '/api/team/init', { team: 'Secondo' })
+    expect(created.status).toBe(201)
+    expect(created.data).toMatchObject({ nodeName: 'nodo-test', role: 'admin' })
+    const second = created.data.teamId as string
+    const list = await api('GET', '/api/teams')
+    expect(list.data.teams.map((t: any) => [t.name, t.isDefault])).toEqual([['Team Test', true], ['Secondo', false]])
+    expect(list.data.identity).toMatchObject({ name: 'nodo-test' })
+    expect(list.data.identity.secretKey).toBeUndefined() // la chiave segreta non esce mai
+
+    // senza intestazione: il predefinito; con l'intestazione (id o nome): l'altro team
+    const inTeam = (team: string) => ({ authorization: `Bearer ${token}`, 'x-micelio-team': team })
+    expect((await api('GET', '/api/status')).data.team.name).toBe('Team Test')
+    const st = await fetch(`${base}/api/status`, { headers: inTeam('secondo') })
+    expect(((await st.json()) as any).team.name).toBe('Secondo')
+    const hits = await fetch(`${base}/api/memories/search?q=drizzle`, { headers: inTeam(second) })
+    expect(await hits.json()).toEqual([]) // il sapere del primo team non si vede dal secondo
+    const unknown = await fetch(`${base}/api/status`, { headers: inTeam('gamma') })
+    expect(unknown.status).toBe(400)
+
+    // MCP del secondo team: salva e cerca solo lì
+    const client = new Client({ name: 'test', version: '1.0.0' })
+    await client.connect(new StreamableHTTPClientTransport(new URL(`${base}/mcp/${second}`), {
+      requestInit: { headers: { authorization: `Bearer ${token}` } }
+    }))
+    await client.callTool({ name: 'remember', arguments: { title: 'Solo nel secondo team', body: 'Le demo si fanno il venerdì.', kind: 'fact' } })
+    expect(((await client.callTool({ name: 'recall', arguments: { query: 'drizzle orm' } })).content as any)[0].text).toMatch(/Nessun ricordo/)
+    await client.close()
+    expect((await api('GET', '/api/memories/search?q=venerdì demo')).data).toEqual([])
+    expect((await api('POST', '/mcp/gamma', { jsonrpc: '2.0', id: 1, method: 'tools/list' })).status).toBe(404)
+
+    // il predefinito si cambia, poi si toglie il secondo team da questo PC
+    expect((await api('POST', `/api/teams/${second}/default`)).data.find((t: any) => t.isDefault).name).toBe('Secondo')
+    expect((await api('DELETE', '/api/teams/Secondo')).data.map((t: any) => t.name)).toEqual(['Team Test'])
+    expect((await api('GET', '/api/status')).data.team.name).toBe('Team Test')
+  })
 })

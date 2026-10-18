@@ -10,7 +10,7 @@
 import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Post, Put, Query, SetMetadata } from '@nestjs/common'
 import { z } from 'zod'
 import { MEMORY_KINDS, ROOT_CATEGORIES } from '../core/events'
-import { IntegrationError, setupClaudeCode } from '../node/integrations'
+import { IntegrationError, registerProjectMcp, setupClaudeCode } from '../node/integrations'
 import { UserError } from '../node/micelio-node'
 import type { DaemonOptions } from './micelio.module'
 import { MicelioService } from './micelio.service'
@@ -18,8 +18,11 @@ import { shutdownSignal } from './shutdown'
 import { DAEMON_OPTIONS, PUBLIC_ROUTE } from './tokens'
 
 // ── Schemi dei body ───────────────────────────────────────────────────────────────────
-const InitBody = z.object({ team: z.string().trim().min(1).max(100), name: z.string().trim().min(1).max(100) })
-const JoinBody = z.object({ code: z.string().trim().min(10), name: z.string().trim().min(1).max(100) })
+/** Nome facoltativo: dal secondo team in poi si usa quello dell'identità personale (B3). */
+const InitBody = z.object({ team: z.string().trim().min(1).max(100), name: z.string().trim().min(1).max(100).optional() })
+const JoinBody = z.object({ code: z.string().trim().min(10), name: z.string().trim().min(1).max(100).optional() })
+/** Registrazione MCP per una cartella di progetto, sul team della richiesta (B3). */
+const ProjectBody = z.object({ path: z.string().min(1) })
 /** Payload dell'hook SessionEnd di Claude Code, inoltrato da `micelio hook session-end`. */
 const SessionBody = z.object({ session_id: z.string().min(1), transcript_path: z.string().min(1), cwd: z.string().min(1) })
 const WatchBody = z.object({ path: z.string().min(1) })
@@ -100,17 +103,45 @@ export class ApiController {
 
   // ═════════════════════════════════ Team ═════════════════════════════════
 
+  /**
+   * Crea un team. Con B3 si AGGIUNGE a quelli già presenti su questo PC (non serve più che il
+   * nodo sia vuoto). Risponde con lo stato del nuovo team e il suo id locale.
+   */
   @Post('team/init')
-  init (@Body() body: unknown) {
+  async init (@Body() body: unknown) {
     const { team, name } = InitBody.parse(body)
-    return this.node.init(team, name)
+    const { id, status } = await this.micelio.host.createTeam(team, name)
+    return { ...status, teamId: id }
   }
 
-  /** Può durare fino a 2 minuti: attende che un membro online accolga la richiesta. */
+  /** Entra in un altro team. Può durare fino a 2 minuti: attende che un membro online accolga la richiesta. */
   @Post('team/join')
-  join (@Body() body: unknown) {
+  async join (@Body() body: unknown) {
     const { code, name } = JoinBody.parse(body)
-    return this.node.join(code, name)
+    const { id, status } = await this.micelio.host.joinTeam(code, name)
+    return { ...status, teamId: id }
+  }
+
+  // ═══════════════════════════════ Più team (B3) ═══════════════════════════════
+
+  /** I team di questo PC e l'identità personale (senza la chiave segreta). */
+  @Get('teams')
+  async teams () {
+    const id = this.micelio.host.identity()
+    return { teams: await this.micelio.host.teams(), identity: id ? { name: id.name, publicKey: id.publicKey } : null }
+  }
+
+  /** Sceglie il team predefinito (quello delle richieste senza intestazione x-micelio-team). */
+  @Post('teams/:ref/default')
+  @HttpCode(200)
+  setDefaultTeam (@Param('ref') ref: string) {
+    return this.micelio.host.setDefault(ref)
+  }
+
+  /** Toglie un team da questo PC, cancellandone i dati locali (la UI chiede conferma). */
+  @Delete('teams/:ref')
+  leaveTeam (@Param('ref') ref: string) {
+    return this.micelio.host.leaveTeam(ref)
   }
 
   /** Configurazione condivisa del team (solo admin), es. { key: "memory.language", value: "en" }. */
@@ -323,7 +354,8 @@ export class ApiController {
   @HttpCode(200)
   ingestSession (@Body() body: unknown) {
     const s = SessionBody.parse(body)
-    return this.node.ingestSession({ sessionId: s.session_id, transcriptPath: s.transcript_path, cwd: s.cwd })
+    // Con più team la sessione va al team della sua cartella, non a quello della richiesta
+    return this.micelio.host.ingestSession({ sessionId: s.session_id, transcriptPath: s.transcript_path, cwd: s.cwd })
   }
 
   @Get('ingest/status')
@@ -517,6 +549,24 @@ export class ApiController {
       return setupClaudeCode({ mcpUrl: `http://${h}:${port}/mcp`, token, home: this.options.paths.home, hook })
     } catch (err) {
       // Errori di configurazione (claude assente, settings.json non valido) → 400 leggibile.
+      throw err instanceof IntegrationError ? new UserError(err.message, err.en) : err
+    }
+  }
+
+  /**
+   * Registra l'MCP del team della richiesta per una cartella di progetto (B3): Claude Code avviato
+   * lì parla con questo team invece che con il predefinito. Vedi registerProjectMcp.
+   */
+  @Post('setup/project')
+  @HttpCode(200)
+  setupProject (@Body() body: unknown) {
+    const { path: dir } = ProjectBody.parse(body)
+    const { host, port, token } = this.options.config
+    const h = host === '0.0.0.0' ? '127.0.0.1' : host
+    const team = this.micelio.host.idOf(this.node)
+    try {
+      return registerProjectMcp(dir, `http://${h}:${port}/mcp/${team}`, token)
+    } catch (err) {
       throw err instanceof IntegrationError ? new UserError(err.message, err.en) : err
     }
   }

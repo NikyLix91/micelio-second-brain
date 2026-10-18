@@ -15,7 +15,7 @@
  */
 import fs from 'node:fs'
 import path from 'node:path'
-import { type DynamicModule, Module } from '@nestjs/common'
+import { type DynamicModule, type MiddlewareConsumer, Module, type NestModule } from '@nestjs/common'
 import { APP_FILTER, APP_GUARD } from '@nestjs/core'
 import { ServeStaticModule } from '@nestjs/serve-static'
 import type { NodePaths } from '../core/paths'
@@ -26,6 +26,7 @@ import { ErrorFilter } from './error.filter'
 import { EventsController } from './events.controller'
 import { McpController } from './mcp.controller'
 import { MicelioService } from './micelio.service'
+import { teamMiddleware } from './team-context'
 import { DAEMON_OPTIONS } from './tokens'
 import { UiController } from './ui.controller'
 import { UiLinkService } from './ui-link.service'
@@ -34,7 +35,10 @@ import { UiLinkService } from './ui-link.service'
 export interface DaemonOptions {
   paths: NodePaths
   config: Config
-  /** Nodi bootstrap DHT (test o rete privata). */
+  /**
+   * Nodi bootstrap DHT per TUTTI i team (test). Assente = ognuno usa la rete scelta nelle sue
+   * impostazioni (o MICELIO_DHT_BOOTSTRAP).
+   */
   bootstrap?: { host: string, port: number }[]
 }
 
@@ -42,7 +46,12 @@ export interface DaemonOptions {
 export const UI_DIR = path.join(__dirname, '..', 'ui')
 
 @Module({})
-export class MicelioModule {
+export class MicelioModule implements NestModule {
+  /** Team della richiesta (intestazione x-micelio-team) per tutte le rotte: vedi team-context.ts. */
+  configure (consumer: MiddlewareConsumer): void {
+    consumer.apply(teamMiddleware).forRoutes('*')
+  }
+
   static forRoot (options: DaemonOptions): DynamicModule {
     const hasUi = fs.existsSync(path.join(UI_DIR, 'index.html'))
     return {
