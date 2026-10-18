@@ -19,6 +19,8 @@ Il server invia agli agenti delle **istruzioni**:
 | `recall` | `query` (parole chiave), `limit?` (1–20, default 5) | Ricerca full-text nella memoria del team, ordinata per rilevanza (BM25: il titolo pesa più dei tag, i tag più del corpo). Ignora gli accenti e accetta prefissi. Sola lettura |
 | `remember` | `title`, `body` (Markdown), `kind?`, `tags?` | **Propone** un ricordo. Passa dal filtro privacy e dalla classificazione, poi risponde con l'esito: *Pubblicato* (con il testo esatto salvato), *in inbox* (con l'id e il motivo) o *trattenuto come privato* (con il motivo) |
 | `get` | `id` (anche abbreviato, min 6 caratteri) | Ricordo completo, con tutti i riferimenti al codice (progetto, branch, file, simboli, commit). Sola lettura |
+| `architecture` | `project?`, `category?`, `files?`, `query?` | Le **Radici** (sapere fondante): per progetto (nome della cartella del repository), categoria, file che si stanno toccando (vale anche la cartella), o ordinate per pertinenza. Senza Radici di progetto restituisce quelle generali del team. Le Radici "da rivedere" sono segnalate con i motivi. Sola lettura |
+| `mark_root` | `id`, `category` | Promuove un ricordo a Radice. Solo su richiesta esplicita dell'utente |
 | `vote` | `id`, `useful` (true/false) | Segnala se un ricordo è stato utile o è fuorviante/obsoleto. I voti alzano o abbassano l'attivazione del ricordo per tutto il team |
 | `fetch_source` | `id` del ricordo | Per un ricordo distillato da un documento, scarica l'**originale** dal collega che lo possiede (deve essere online e condividere la cartella). Restituisce il percorso locale e il testo estratto (primi 20.000 caratteri) |
 | `inbox_review` | nessuno | Elenca i ricordi dubbi in attesa di decisione nell'inbox locale dell'utente. Sola lettura |
@@ -30,6 +32,8 @@ Dalla Fase 5 `recall` è una **ricerca ibrida**:
 - a parità di pertinenza premia i ricordi con attivazione più alta, cioè usati di recente, votati utili, molto collegati o fissati.
 
 Ogni risultato restituito conta come un "uso" del ricordo.
+
+**Radici (Fase 8).** In coda ai risultati di `recall` arrivano fino a 3 **Radici pertinenti** che non sono già fra i risultati, nella sezione «RADICI PERTINENTI». Così il sapere fondante raggiunge l'agente anche quando la domanda non lo nomina. Le istruzioni del server chiedono all'agente di chiamare `architecture` prima di progettare o modificare una parte dell'architettura.
 
 ## Configurazione dei client
 

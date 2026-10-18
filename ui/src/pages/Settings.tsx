@@ -157,8 +157,9 @@ function DocumentsCard () {
   const docs = useQuery({ queryKey: ['documents'], queryFn: api.documents })
   const [path, setPath] = useState('')
   const [shareable, setShareable] = useState(false)
+  const [rootsFolder, setRootsFolder] = useState(false)
   const refresh = () => void client.invalidateQueries({ queryKey: ['documents'] })
-  const add = useMutation({ mutationFn: (p: string) => api.documentsAdd(p, shareable), onSuccess: () => { setPath(''); refresh() } })
+  const add = useMutation({ mutationFn: (p: string) => api.documentsAdd(p, shareable, rootsFolder), onSuccess: () => { setPath(''); refresh() } })
   const remove = useMutation({ mutationFn: (p: string) => api.documentsRemove(p), onSuccess: refresh })
   const pick = async () => {
     const chosen = await window.micelio?.pickFolder?.()
@@ -171,6 +172,7 @@ function DocumentsCard () {
       <p className='muted' style={{ marginTop: 0 }}>
         PDF, Word, Excel, PowerPoint, OpenDocument e Markdown vengono distillati in ricordi (filtro privacy incluso; le cartelle come «HR» o «contratti» non vengono nemmeno lette).
         Al team arriva solo il distillato: l'originale resta qui e, se la cartella è <strong>condivisibile</strong>, i colleghi possono scaricarlo su richiesta.
+        Una cartella <strong>di Radici</strong> (architettura, policy, regole di sviluppo…) trasforma i suoi ricordi in Radici; si leggono anche i diagrammi (draw.io, SVG, PlantUML, Mermaid).
       </p>
       {docs.data?.folders.length === 0 && <Empty>Nessuna cartella di documenti.</Empty>}
       <div className='list'>
@@ -178,6 +180,7 @@ function DocumentsCard () {
           <div key={f.path} className='list-item row'>
             <span className='mono small' style={{ overflowWrap: 'anywhere' }}>{f.path}</span>
             <span className={`badge ${f.shareable ? 'accent' : ''}`}>{f.shareable ? 'originali scaricabili' : 'solo distillato'}</span>
+            {f.roots && <span className='badge accent'>◆ di Radici</span>}
             <span className='spacer' />
             <button className='btn small' onClick={() => remove.mutate(f.path)}>Rimuovi</button>
           </div>
@@ -193,6 +196,9 @@ function DocumentsCard () {
         <input style={{ flex: 1 }} value={path} onChange={(e) => setPath(e.target.value)} placeholder='C:\\documenti\\architettura' />
         <label className='row' style={{ margin: 0, color: 'var(--text)' }}>
           <input type='checkbox' style={{ width: 'auto' }} checked={shareable} onChange={(e) => setShareable(e.target.checked)} /> originali scaricabili
+        </label>
+        <label className='row' style={{ margin: 0, color: 'var(--text)' }} title='I ricordi distillati dai documenti di questa cartella diventano Radici (architettura, policy, regole…)'>
+          <input type='checkbox' style={{ width: 'auto' }} checked={rootsFolder} onChange={(e) => setRootsFolder(e.target.checked)} /> ◆ di Radici
         </label>
         <button className='btn primary' disabled={!path.trim() || add.isPending} onClick={() => add.mutate(path.trim())}>Aggiungi</button>
       </div>

@@ -444,6 +444,39 @@ Fase futura: **astrazione**, cioè ricavare principi generali da più ricordi sp
 
 ---
 
+## 10-bis. Radici: il sapere fondante (Fase 8)
+
+**Problema.** La priorità basata sull'uso (attivazione, §8.2) fa decadere ciò che non si consulta. Alcuni ricordi però sono pilastri consultati di rado: architettura, rete, interfacce, dominio, best practice, policy. Non devono mai essere dimenticati.
+
+**Modello.** Una Radice è un record della vista (`root/<id>`) legato a un ricordo attivo, con questi campi:
+- `category`;
+- `by`/`ts`: chi l'ha promossa e quando;
+- `reviewedAt`/`reviewedBy`: ultima revisione;
+- `status` (`ok` | `review`) e `flags` (motivi e riferimenti).
+
+Gli eventi sono `root.set`, `root.unset`, `root.flag` e `root.confirm`, e li può emettere **qualunque membro** (decisione dell'utente). I nodi di versioni precedenti li ignorano.
+
+**Garanzie** (in `apply`, quindi uguali su tutti i nodi):
+- una Radice non si fonde (`memory.supersede`) e non si archivia, come un ricordo fissato;
+- l'attivazione non scende mai sotto `ROOT_FLOOR` = 0,75, quindi non è mai candidata al decadimento (soglia 0,15);
+- il dreaming esclude le Radici da fusioni e decadimento.
+
+**Emergere al momento giusto.**
+- `recall` (MCP) aggiunge fino a 3 Radici pertinenti non già fra i risultati. La soglia semantica è più bassa del normale (×0,85), perché le Radici sono testi lunghi e generali.
+- Il tool `architecture` filtra per progetto (`source.code.project` o tag), categoria, file toccati (con corrispondenza per cartella) e testo.
+
+**Revisione invece di oblio** (`src/roots/review.ts`, lanciata a mano). Produce segnalazioni (`root.flag`) da tre fonti:
+- commit successivi a `reviewedAt` sui file citati e file scomparsi, cercando il repository fra le cartelle abilitate del PC (remote uguale, o nome del progetto);
+- documento d'origine modificato o rimosso, solo sul PC proprietario;
+- contraddizioni: collegamenti `contradicts` del dreaming, più un LLM che confronta la Radice con al massimo 3 ricordi più recenti e simili (massimo 30 confronti per revisione).
+
+Nessuna modifica automatica: una persona conferma (`root.confirm`), corregge o toglie.
+
+**Ingresso.**
+- Il distillatore propone una categoria (`root`, oppure `none`). Per le sessioni diventa un **suggerimento** privato (`root_suggestions` in `private.db`).
+- Per le cartelle di documenti marcate `roots: true` la promozione è diretta.
+- Dai diagrammi si estrae il testo delle etichette (`src/ingest/diagrams.ts`).
+
 ## 11. Server MCP
 
 Il daemon (NestJS) espone MCP su **Streamable HTTP locale** (`127.0.0.1`, con token Bearer), in modalità **stateless**: ogni richiesta crea server e trasporto nuovi. La **shim stdio** per i client che supportano solo stdio è rinviata alla Fase 7, perché tutti i client previsti supportano HTTP. Nella Fase 1 sono implementati `recall`, `remember` e `get` (riferimento: [mcp.md](mcp.md)).

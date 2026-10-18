@@ -3,9 +3,10 @@
  * Il corpo si carica al momento dell'apertura (il grafo contiene solo titolo e metadati).
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, type CodeRefs, type GraphNode } from '../api/client'
-import { dateTime, KIND_LABEL, short } from '../format'
+import { dateTime, KIND_LABEL, ROOT_CATEGORY_LABEL, ROOT_CATEGORY_ORDER, short } from '../format'
 import { authorColor } from '../pages/colors'
 import { Card, Empty, ErrorBox, Markdown, Meter } from './ui'
 
@@ -29,6 +30,60 @@ function SourceBox ({ id, name, size }: { id: string, name: string, size?: numbe
           {window.micelio?.showInFolder && <button className='btn small' onClick={() => void window.micelio!.showInFolder!(fetchIt.data!.path)}>Mostra</button>}
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * Riquadro "Radice" (Fase 8). Per una Radice: categoria, stato di revisione con i motivi, e le
+ * azioni (confermare dopo averla rivista, cambiare categoria, togliere). Per un ricordo normale:
+ * "Rendi Radice" con la scelta della categoria. Qualunque membro può farlo.
+ */
+function RootBox ({ id, root }: { id: string, root?: { category: string, status: 'ok' | 'review' } }) {
+  const client = useQueryClient()
+  const [category, setCategory] = useState<string>(root?.category ?? 'architecture')
+  const refresh = () => {
+    for (const k of [['memories'], ['roots'], ['graph'], ['rootSuggestions']]) void client.invalidateQueries({ queryKey: k })
+  }
+  const detail = useQuery({ queryKey: ['roots', 'one', id], queryFn: async () => (await api.roots()).find((r) => r.id === id) ?? null, enabled: !!root })
+  const set = useMutation({ mutationFn: (c: string) => api.rootSet(id, c), onSuccess: refresh })
+  const unset = useMutation({ mutationFn: () => api.rootUnset(id), onSuccess: refresh })
+  const confirm = useMutation({ mutationFn: () => api.rootConfirm(id), onSuccess: refresh })
+  const select = (
+    <select style={{ width: 200 }} value={category} onChange={(e) => setCategory(e.target.value)}>
+      {ROOT_CATEGORY_ORDER.map((c) => <option key={c} value={c}>{ROOT_CATEGORY_LABEL[c]}</option>)}
+    </select>
+  )
+
+  if (!root) {
+    return (
+      <div className='notice small' style={{ marginTop: 12 }}>
+        <div style={{ marginBottom: 6 }}>◆ È sapere fondante (architettura, rete, interfacce, best practice, policy…)? Rendilo una <strong>Radice</strong>: non verrà mai dimenticato.</div>
+        <div className='row'>
+          {select}
+          <button className='btn small primary' disabled={set.isPending} onClick={() => set.mutate(category)}>Rendi Radice</button>
+        </div>
+        <ErrorBox error={set.error} />
+      </div>
+    )
+  }
+  const flags = detail.data?.flags ?? []
+  return (
+    <div className={`notice small ${root.status === 'review' ? 'warn' : ''}`} style={{ marginTop: 12 }}>
+      <div className='row'>
+        <span className={`root-mark ${root.status}`} aria-hidden>◆</span>
+        <strong>Radice · {ROOT_CATEGORY_LABEL[root.category] ?? root.category}</strong>
+        {root.status === 'review' && <span className='badge danger'>da rivedere</span>}
+        {detail.data && <span className='muted'>rivista il {dateTime(detail.data.reviewedAt)}</span>}
+      </div>
+      {flags.length > 0 && <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>{flags.map((f, i) => <li key={i}>{f.reason}{f.refs.length ? <span className='muted mono'> ({f.refs.slice(0, 4).join(', ')})</span> : null}</li>)}</ul>}
+      <div className='row' style={{ marginTop: 8 }}>
+        {root.status === 'review' && <button className='btn small primary' disabled={confirm.isPending} onClick={() => confirm.mutate()}>Rivista: è ancora valida</button>}
+        {select}
+        <button className='btn small' disabled={set.isPending || category === root.category} onClick={() => set.mutate(category)}>Cambia categoria</button>
+        <button className='btn small' disabled={unset.isPending} onClick={() => unset.mutate()}>Non è più una Radice</button>
+      </div>
+      <ErrorBox error={set.error ?? unset.error ?? confirm.error} />
     </div>
   )
 }
@@ -111,6 +166,7 @@ export function MemoryPanel ({ node, onClose }: { node: GraphNode, onClose: () =
         <dt>Scritto il</dt><dd>{dateTime(node.ts)}</dd>
       </dl>
       {full.data && <Signals id={node.id} activation={full.data.activation ?? 0} votes={full.data.votes ?? 0} uses={full.data.uses ?? 0} pinned={!!full.data.pinned} />}
+      {full.data && <RootBox key={`${node.id}-${full.data.root?.category ?? ''}`} id={node.id} root={full.data.root} />}
       {full.data?.source?.code && <CodeBox code={full.data.source.code} />}
       {full.data?.source?.type === 'document' && <SourceBox id={node.id} name={full.data.source.name ?? 'documento'} size={full.data.source.size} />}
       <p className='small' style={{ marginBottom: 0 }}><Link to='/memoria'>Apri nella ricerca →</Link></p>

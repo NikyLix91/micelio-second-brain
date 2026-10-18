@@ -11,13 +11,13 @@ import type { CodeRefs, MemoryData } from '../../../src/core/events'
 import type { InviteRecord, MemberRecord, NodeStatus, RecallHit } from '../../../src/core/model'
 import type { ExplicitOutcome } from '../../../src/ingest/pipeline'
 import type { Graph, GraphLink, GraphNode } from '../../../src/graph/constellation'
-import type { IngestStatus, NetworkSettings, NodeSettings, StorageReport } from '../../../src/node/micelio-node'
+import type { IngestStatus, NetworkSettings, NodeSettings, RootReviewResult, RootView, StorageReport } from '../../../src/node/micelio-node'
 import type { NetworkCheck } from '../../../src/net/diagnose'
 import type { Decision, InboxItem } from '../../../src/store/private-store'
 import { getToken } from './auth'
 
 export type { Graph, GraphLink, GraphNode }
-export type { NetworkCheck, NetworkSettings, StorageReport }
+export type { NetworkCheck, NetworkSettings, RootReviewResult, RootView, StorageReport }
 export type { CodeRefs, Decision, ExplicitOutcome, InboxItem, IngestStatus, InviteRecord, MemberRecord, MemoryData, NodeSettings, NodeStatus, RecallHit }
 
 /** Errore dell'API con il messaggio leggibile restituito dal daemon. */
@@ -77,8 +77,8 @@ export const api = {
   ingestRun: () => call<{ processed: boolean }>('POST', '/api/ingest/run'),
   settings: () => call<NodeSettings>('GET', '/api/settings'),
   updateLlm: (patch: { classifyModel?: string, distillModel?: string, dailyBudget?: number }) => call<NodeSettings>('PUT', '/api/settings/llm', patch),
-  documents: () => call<{ folders: { path: string, shareable: boolean }[], stats: Record<string, number> }>('GET', '/api/documents'),
-  documentsAdd: (path: string, shareable: boolean) => call<{ path: string, shareable: boolean }[]>('POST', '/api/documents/folders', { path, shareable }),
+  documents: () => call<{ folders: { path: string, shareable: boolean, roots?: boolean }[], stats: Record<string, number> }>('GET', '/api/documents'),
+  documentsAdd: (path: string, shareable: boolean, roots = false) => call<{ path: string, shareable: boolean, roots: boolean }[]>('POST', '/api/documents/folders', { path, shareable, roots }),
   documentsRemove: (path: string) => call<unknown>('DELETE', '/api/documents/folders', { path }),
   vote: (id: string, delta: -1 | 0 | 1) => call<RecallHit>('POST', `/api/memories/${enc(id)}/vote`, { delta }),
   pin: (id: string, pinned: boolean) => call<RecallHit>(pinned ? 'POST' : 'DELETE', `/api/memories/${enc(id)}/pin`),
@@ -86,6 +86,18 @@ export const api = {
   watchAdd: (path: string) => call<string[]>('POST', '/api/watch', { path }),
   watchRemove: (path: string) => call<string[]>('DELETE', '/api/watch', { path }),
   setupClaudeCode: (hook: boolean) => call<{ mcpUrl: string, hookFile: string | null }>('POST', '/api/setup/claude-code', { hook }),
+
+  // Radici (Fase 8)
+  roots: (filter: { project?: string, category?: string, q?: string } = {}) => {
+    const qs = new URLSearchParams(Object.entries(filter).filter(([, v]) => v) as [string, string][]).toString()
+    return call<RootView[]>('GET', `/api/roots${qs ? '?' + qs : ''}`)
+  },
+  rootSet: (id: string, category: string) => call<RootView>('POST', `/api/roots/${enc(id)}`, { category }),
+  rootUnset: (id: string) => call<{ ok: true }>('DELETE', `/api/roots/${enc(id)}`),
+  rootConfirm: (id: string) => call<RootView>('POST', `/api/roots/${enc(id)}/confirm`),
+  rootReview: (ids?: string[]) => call<RootReviewResult>('POST', '/api/roots/review', { ids }),
+  rootSuggestions: () => call<{ id: string, category: string, title: string, created: number }[]>('GET', '/api/roots/suggestions'),
+  dismissRootSuggestion: (id: string) => call<{ ok: true }>('DELETE', `/api/roots/suggestions/${enc(id)}`),
 
   // Rete P2P e spazio occupato
   network: () => call<NetworkSettings>('GET', '/api/network'),

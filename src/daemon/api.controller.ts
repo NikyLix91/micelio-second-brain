@@ -203,6 +203,18 @@ export class ApiController {
     return this.node.roots({ project, category, files: files ? files.split(',').map((f) => f.trim()).filter(Boolean) : undefined, query: q })
   }
 
+  /**
+   * Revisione manuale delle Radici (tutte, o quelle in `ids`).
+   * ATTENZIONE: dichiarata PRIMA di `roots/:id`, altrimenti "review" verrebbe preso per un id. Può richiedere tempo: usa git e,
+   * per le contraddizioni, l'LLM (al massimo 30 confronti).
+   */
+  @Post('roots/review')
+  @HttpCode(200)
+  rootReview (@Body() body: unknown) {
+    const { ids } = z.object({ ids: z.array(z.string().max(64)).max(500).optional() }).default({}).parse(body ?? {})
+    return this.node.rootReview(ids)
+  }
+
   /** Radici suggerite dal distillatore su questo nodo, da promuovere o ignorare. */
   @Get('roots/suggestions')
   rootSuggestions () {
@@ -228,17 +240,6 @@ export class ApiController {
   async rootUnset (@Param('id') id: string) {
     await this.node.rootUnset(id)
     return { ok: true }
-  }
-
-  /**
-   * Revisione manuale delle Radici (tutte, o quelle in `ids`). Può richiedere tempo: usa git e,
-   * per le contraddizioni, l'LLM (al massimo 30 confronti).
-   */
-  @Post('roots/review')
-  @HttpCode(200)
-  rootReview (@Body() body: unknown) {
-    const { ids } = z.object({ ids: z.array(z.string().max(64)).max(500).optional() }).default({}).parse(body ?? {})
-    return this.node.rootReview(ids)
   }
 
   /** Radice rivista e confermata: segnalazioni azzerate. */

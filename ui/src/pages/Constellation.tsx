@@ -9,6 +9,9 @@
  *   Cliccando una voce della legenda si spengono tutte le altre (filtro).
  * - Ricerca: le stelle pertinenti si accendono, le altre si spengono.
  *
+ * - Radici (Fase 8): disegnate come ROMBI con contorno bianco (rosso se "da rivedere");
+ *   "◆ Radici" isola solo le Radici.
+ *
  * Il disegno usa react-force-graph-2d (simulazione a forze su canvas). Le stelle sono disegnate
  * a mano (nodeCanvasObject) per avere l'alone luminoso.
  */
@@ -19,7 +22,7 @@ import { api, type GraphNode } from '../api/client'
 import { MemoryPanel } from '../components/MemoryPanel'
 import { ErrorBox } from '../components/ui'
 import { KIND_LABEL, short } from '../format'
-import { authorColor, DIM, KIND_COLOR, registerAuthors } from './colors'
+import { authorColor, DIM, KIND_COLOR, registerAuthors, rootRing } from './colors'
 
 type ColorMode = 'author' | 'kind'
 
@@ -41,6 +44,7 @@ export function Constellation () {
   const [focus, setFocus] = useState<string | null>(null) // voce della legenda selezionata
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<GraphNode | null>(null)
+  const [rootsOnly, setRootsOnly] = useState(false)
   const boxRef = useRef<HTMLDivElement>(null)
   const fgRef = useRef<any>(null)
   const { width, height } = useSize(boxRef)
@@ -67,7 +71,8 @@ export function Constellation () {
   /** Colore "acceso" del nodo secondo la modalità corrente. */
   const baseColor = (n: GraphNode) => (mode === 'author' ? authorColor(n.author) : KIND_COLOR[n.kind] ?? '#ccc')
   /** Un nodo è acceso se passa sia il filtro della legenda sia la ricerca. */
-  const isLit = (n: GraphNode) => (!focus || (mode === 'author' ? n.author : n.kind) === focus) && (!hits || hits.has(n.id))
+  const isLit = (n: GraphNode) => (!focus || (mode === 'author' ? n.author : n.kind) === focus) && (!hits || hits.has(n.id)) && (!rootsOnly || !!n.root)
+  const rootCount = (graph.data?.nodes ?? []).filter((n) => n.root).length
 
   // Il grafo va passato come oggetto stabile: la libreria lo modifica (aggiunge x, y, vx…).
   // Lo ricreiamo solo quando cambiano i dati dal daemon.
@@ -111,6 +116,9 @@ export function Constellation () {
               <span className='dot' style={{ background: l.color, marginRight: 6 }} />{l.label} · {l.count}
             </button>
           ))}
+          <button className={`btn small ${rootsOnly ? 'primary' : ''}`} disabled={rootCount === 0} onClick={() => setRootsOnly(!rootsOnly)} title='Mostra solo le Radici: il sapere fondante del team'>
+            ◆ Radici · {rootCount}
+          </button>
           {hits && <span className='badge accent'>{hits.size} pertinenti a «{q}»</span>}
         </div>
         <div ref={boxRef} style={{ flex: 1, minHeight: 300, borderRadius: 12, overflow: 'hidden', background: '#0b100d', position: 'relative' }}>
@@ -140,13 +148,24 @@ export function Constellation () {
               const lit = isLit(n)
               const r = n.id === selected?.id ? 7 : 4.5
               ctx.beginPath()
-              ctx.arc(n.x, n.y, r, 0, 2 * Math.PI)
+              if (n.root) {
+                // Radice: rombo un po' più grande, con contorno (disegnato dopo il riempimento)
+                const d = r * 1.5
+                ctx.moveTo(n.x, n.y - d); ctx.lineTo(n.x + d, n.y); ctx.lineTo(n.x, n.y + d); ctx.lineTo(n.x - d, n.y); ctx.closePath()
+              } else {
+                ctx.arc(n.x, n.y, r, 0, 2 * Math.PI)
+              }
               ctx.fillStyle = lit ? baseColor(n) : DIM
               // Alone luminoso: solo per i nodi accesi.
               ctx.shadowColor = lit ? baseColor(n) : 'transparent'
               ctx.shadowBlur = lit ? 14 : 0
               ctx.fill()
               ctx.shadowBlur = 0
+              if (n.root) {
+                ctx.lineWidth = 1.6
+                ctx.strokeStyle = lit ? rootRing(n.root.status) : DIM
+                ctx.stroke()
+              }
               // Etichette solo quando si è abbastanza vicini, per non coprire la mappa.
               if (lit && scale > 3.2) {
                 ctx.font = `${11 / scale}px system-ui`

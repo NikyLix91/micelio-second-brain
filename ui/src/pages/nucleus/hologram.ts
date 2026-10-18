@@ -6,7 +6,9 @@
  * - createHologram: anelli orbitali sottili, meridiani tratteggiati e un pulviscolo di
  *   particelle sulla superficie della sfera. Il gruppo ruota lentamente (animateHologram);
  * - sphericalForce: forza per la simulazione d3 che dispone i ricordi dentro un guscio
- *   sferico, invece della classica "nuvola" informe di un grafo a forze.
+ *   sferico, invece della classica "nuvola" informe di un grafo a forze. Le RADICI (Fase 8)
+ *   stanno invece al centro: sono letteralmente il nucleo del sapere;
+ * - rootMarker: stella + anello luminoso, il segno distintivo delle Radici.
  *
  * Il bagliore vero e proprio (bloom) lo aggiunge Nucleus.tsx con UnrealBloomPass.
  */
@@ -63,6 +65,49 @@ export function starSprite (color: string, size: number, opacity = 1): THREE.Spr
   const sprite = new THREE.Sprite(material)
   sprite.scale.set(size, size, 1)
   return sprite
+}
+
+let cachedRing: THREE.Texture | null = null
+
+/** Texture di un anello luminoso (centro trasparente): il segno delle Radici. */
+function ringTexture (): THREE.Texture {
+  if (cachedRing) return cachedRing
+  const size = 128
+  const canvas = document.createElement('canvas')
+  canvas.width = canvas.height = size
+  const ctx = canvas.getContext('2d')!
+  const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2)
+  g.addColorStop(0, 'rgba(255,255,255,0)')
+  g.addColorStop(0.62, 'rgba(255,255,255,0)')
+  g.addColorStop(0.72, 'rgba(255,255,255,1)')
+  g.addColorStop(0.8, 'rgba(255,255,255,0.35)')
+  g.addColorStop(1, 'rgba(255,255,255,0)')
+  ctx.fillStyle = g
+  ctx.fillRect(0, 0, size, size)
+  cachedRing = new THREE.CanvasTexture(canvas)
+  return cachedRing
+}
+
+/**
+ * Una Radice: la stella del ricordo circondata da un anello luminoso.
+ * @param starColor colore della stella
+ * @param ringColor colore dell'anello (bianco ghiaccio, rosso se "da rivedere")
+ * @param size      dimensione della stella; l'anello è circa il doppio
+ */
+export function rootMarker (starColor: string, ringColor: string, size: number, opacity = 1): THREE.Group {
+  const group = new THREE.Group()
+  group.add(starSprite(starColor, size, opacity))
+  const ring = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: ringTexture(),
+    color: new THREE.Color(ringColor),
+    transparent: true,
+    opacity: opacity * 0.9,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending
+  }))
+  ring.scale.set(size * 2.3, size * 2.3, 1)
+  group.add(ring)
+  return group
 }
 
 /** Materiale per linee olografiche sottili. */
@@ -170,6 +215,7 @@ export function animateHologram (group: THREE.Object3D): void {
  * Forza d3 che spinge ogni nodo verso il proprio raggio "preferito" dentro la sfera, tra il
  * 45% e il 100% di `radius`. Il raggio preferito dipende dall'id del nodo (stabile fra un
  * avvio e l'altro), così i ricordi riempiono un guscio spesso invece di ammassarsi al centro.
+ * Le Radici invece hanno un raggio fra l'8% e il 28%: formano il nucleo al centro della sfera.
  */
 export function sphericalForce (radius = SPHERE_RADIUS, strength = 0.08) {
   let nodes: any[] = []
@@ -189,7 +235,9 @@ export function sphericalForce (radius = SPHERE_RADIUS, strength = 0.08) {
     for (const n of ns) {
       let h = 0
       for (let i = 0; i < n.id.length; i++) h = (h * 31 + n.id.charCodeAt(i)) >>> 0
-      preferred.set(n.id, radius * (0.45 + ((h % 1000) / 1000) * 0.55))
+      const f = (h % 1000) / 1000
+      // Radici: nel cuore della sfera (8–28% del raggio); gli altri ricordi nel guscio (45–100%).
+      preferred.set(n.id, radius * (n.root ? 0.08 + f * 0.2 : 0.45 + f * 0.55))
     }
   }
   return force

@@ -51,7 +51,7 @@ export function Memory () {
             <div className='list'>
               {list.data?.map((h) => (
                 <div key={h.id} className={`list-item clickable ${selected?.id === h.id ? 'selected' : ''}`} onClick={() => setSelected(h)}>
-                  <div style={{ fontWeight: 600 }}>{h.title}</div>
+                  <div style={{ fontWeight: 600 }}>{h.root && <span className={`root-mark ${h.root.status}`} title='Radice'>◆ </span>}{h.title}</div>
                   <div className='row small muted'>
                     <span className='badge'>{KIND_LABEL[h.kind] ?? h.kind}</span>
                     <span>{h.authorName ?? short(h.author)}</span>

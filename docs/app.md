@@ -70,6 +70,17 @@ Vista bidimensionale per **analisi mirate**:
 
 Ricerca full-text, ultimi ricordi arrivati, dettaglio con autore e data. "Nuovo ricordo" propone un ricordo al team; passa dal filtro privacy come da CLI e da Claude.
 
+### Radici
+
+Il sapere fondante del team, per categoria: architettura, rete, interfacce, dominio, best practice, policy.
+- Filtro per progetto e per testo.
+- Le Radici **da rivedere** sono in evidenza, con i motivi.
+- **Rivedi le Radici** lancia la revisione e mostra il resoconto.
+- **Suggerite da Micelio:** proposte del distillatore, da promuovere (scegliendo la categoria) o ignorare.
+- Nel dettaglio di un ricordo: *Rendi Radice*, *Rivista: è ancora valida*, *Cambia categoria*, *Non è più una Radice*.
+
+Nel **Nucleo** le Radici sono al centro della sfera con un anello bianco (rosso se da rivedere). Nella **Mappa 2D** sono rombi con contorno. In entrambe le viste **◆ Radici** isola solo le Radici.
+
 ### Inbox
 
 ![Inbox](img/inbox.png)

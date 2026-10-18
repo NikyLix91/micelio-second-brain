@@ -38,7 +38,8 @@ src/
 ├─ ingest/     pipeline di ingestione: trascrizioni, prompt, instradamento, inbox
 ├─ export/     export Markdown in sola lettura
 ├─ node/       MicelioNode: orchestratore senza framework + config/stato
-├─ mcp/        server MCP (recall, remember, get, inbox_review, inbox_decide)
+├─ roots/      Radici (Fase 8): revisione manuale (codice, documenti, contraddizioni)
+├─ mcp/        server MCP (recall, remember, get, architecture, mark_root, inbox_review, inbox_decide…)
 ├─ daemon/     app NestJS: API REST locale, endpoint MCP, guard del token
 └─ cli/        comando `micelio` (commander), client HTTP verso il daemon, hook di Claude Code
 src/graph/     costellazione: ricordi come nodi, correlazioni come collegamenti pesati
@@ -146,7 +147,8 @@ I prompt ([src/ingest/prompts.ts](../src/ingest/prompts.ts)) e le regole del fil
 - Gli aggiornamenti in tempo reale passano da `GET /api/events` (SSE). Ogni argomento invalida precise query di TanStack Query (`ui/src/api/live.ts`, `TOPIC_QUERIES`). Una nuova schermata deve usare chiavi coerenti con quella mappa.
 - **Verifica visiva senza tester:** `npm run screenshots -w desktop -- <cartella>` apre l'app nascosta, cattura ogni schermata in PNG ed esce.
   - `MICELIO_SCREENSHOT_ONLY=nucleo,team` limita le catture ad alcune schermate.
-  - `MICELIO_SCREENSHOT_EXTRA="/?bloom=0|/?tour=1"` aggiunge rotte da catturare.
+  - `MICELIO_SCREENSHOT_EXTRA="/?bloom=0|/?tour=1"` aggiunge rotte da catturare. **Da Git Bash** serve `MSYS_NO_PATHCONV=1`, altrimenti le rotte che iniziano con `/` diventano percorsi Windows e la cattura mostra una pagina vuota.
+  - Gli errori della pagina finiscono nel log delle catture (`pagina: …`).
   - Le immagini in `docs/img/` sono state prodotte così, sul team demo.
 - **Nucleo 3D e colori:** con la catena di post-processing (bloom) ogni colore di fondo diverso dal nero viene schiarito (grigio-blu). Lo sfondo resta quindi nero puro, e il bloom va inserito prima dell'eventuale `OutputPass` (vedi commenti in `Nucleus.tsx`).
 - **Electron dal terminale di VS Code:** la variabile `ELECTRON_RUN_AS_NODE` ereditata fa partire Electron senza finestre. `desktop/launch.js` la rimuove: usare sempre `npm run desktop`.

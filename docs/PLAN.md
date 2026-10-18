@@ -264,7 +264,7 @@ La stessa UI funziona anche dal browser con `micelio ui`.
 
 ---
 
-## Fase 8 — Radici: il sapere fondante 🔄 (branch `feature/radici`)
+## Fase 8 — Radici: il sapere fondante ✅ (branch `feature/radici`)
 
 Alcuni ricordi sono **pilastri**: paradigmi architetturali, mappe di rete, interfacce applicative, modello di dominio, best practice (es. regole di coding con l'AI), policy di sicurezza. Si consultano di rado, ma non devono mai essere dimenticati. Possono nascere da codice, documentazione, PDF, schemi, diagrammi o vault.
 
@@ -281,8 +281,8 @@ Decisioni dell'utente (2026-10-18):
 | 8.2 | **Emergono quando servono:** "Radici pertinenti" in coda a ogni `recall` MCP; tool MCP `architecture` (filtri per progetto, categoria, file toccati, testo) e `mark_root`; API `/api/roots`; CLI `micelio roots` (alias `radici`) | ✅ |
 | 8.3 | **Revisione manuale** (`micelio roots review`, `POST /api/roots/review`): segnala le Radici il cui codice (commit successivi alla revisione sui file citati, file scomparsi) o documento d’origine è cambiato, o che ricordi più recenti contraddicono (collegamenti del dreaming + LLM, max 30 confronti). I repository si cercano nelle cartelle abilitate su questo PC | ✅ |
 | 8.4 | **Ingestione:** il distillatore *suggerisce* Radici (archivio privato; promozione o "ignora" da UI/CLI `micelio roots suggested`); cartelle di documenti "di Radici" (`micelio docs add --roots`): i loro ricordi diventano Radici da soli; testo dai diagrammi: draw.io (anche compresso), SVG, PlantUML, Mermaid | ✅ |
-| 8.5 | **UI:** vista *Radici* (per categoria e progetto, stato, conferma, revisione); promozione dal dettaglio del ricordo; marcatura distinta nel Nucleo 3D e nella Mappa 2D | ⬜ |
-| 8.6 | Documentazione (guida utente, MCP, DESIGN, app) | ⬜ |
+| 8.5 | **UI:** vista *Radici* (per categoria, filtro per progetto e testo, stato e motivi, revisione con resoconto, suggerimenti da promuovere o ignorare); riquadro Radice nel dettaglio del ricordo; cartelle «di Radici» nelle Impostazioni; nel **Nucleo 3D** le Radici stanno al centro della sfera con un anello (rosso se da rivedere), nella **Mappa 2D** sono rombi; «◆ Radici» le isola. Verificato con le catture dell'app | ✅ |
+| 8.6 | Documentazione: guida utente §7-ter-bis, MCP, app, DESIGN §10-bis, sviluppo | ✅ |
 
 ---
 
@@ -309,3 +309,4 @@ Decisioni dell'utente (2026-10-18):
 | 2026-10-17 | Riferimenti al codice nei ricordi (`source.code`), su richiesta: servono a decidere se approfondire un ricordo. Commit verificati su git, percorsi relativi, remote senza credenziali |
 | 2026-10-17 | Server del team (7.11) su richiesta: installazione separata per Linux, comandi `micelio network`. Dal PC di sviluppo: DHT pubblica raggiungibile, NAT non simmetrico |
 | 2026-10-18 | Rete configurabile dalla UI e spazio occupato per membro (7.12), su richiesta. Verificati con test d'integrazione (cambio di DHT a caldo fra due nodi, quote che sommano al 100%) e catture dell'app |
+| 2026-10-18 | Fase 8 completata sul branch `feature/radici`: Radici (sapere fondante mai dimenticato), revisione manuale, suggerimenti, cartelle di Radici, diagrammi, vista e marcatura grafica. Trovato con le catture e corretto un conflitto di rotte (`roots/review` preso per un id) |

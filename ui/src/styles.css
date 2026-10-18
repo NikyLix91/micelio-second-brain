@@ -143,6 +143,10 @@ th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .storage-bar > div { height: 100%; min-width: 2px; }
 .storage-bar > div + div { border-left: 1px solid var(--bg, #000); }
 
+/* Radici (Fase 8): il rombo accanto ai titoli; rosso se "da rivedere" */
+.root-mark { color: var(--accent); font-size: 12px; }
+.root-mark.review { color: var(--danger); }
+
 /* Scelta della rete (Impostazioni) */
 .choice { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; color: var(--text); margin: 0; }
 .choice.selected { border-color: var(--accent); background: var(--accent-soft); }

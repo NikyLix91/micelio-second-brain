@@ -18,6 +18,9 @@
  * a colori la LEGENDA è cliccabile: un clic isola un autore (o un tipo), un secondo clic mostra di
  * nuovo tutti. Il filtro si combina con la ricerca. `#/?colori=autore|tipo` apre già in quella modalità.
  *
+ * RADICI (Fase 8): stanno al centro della sfera, con un anello luminoso attorno alla stella (rosso
+ * se "da rivedere"); in modalità olografica la stella è ciano. "◆ Radici" isola solo le Radici.
+ *
  * Questa pagina è caricata in modo pigro (React.lazy in App.tsx): three.js pesa, e le altre
  * schermate non devono pagarne il costo.
  */
@@ -31,8 +34,8 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { api, type GraphNode } from '../../api/client'
 import { MemoryPanel } from '../../components/MemoryPanel'
 import { KIND_LABEL } from '../../format'
-import { authorColor, KIND_COLOR, registerAuthors } from '../colors'
-import { animateHologram, createHologram, HOLO, SPHERE_RADIUS, sphericalForce, starSprite } from './hologram'
+import { authorColor, KIND_COLOR, registerAuthors, ROOT_STAR, rootRing } from '../colors'
+import { animateHologram, createHologram, HOLO, rootMarker, SPHERE_RADIUS, sphericalForce, starSprite } from './hologram'
 import { cameraFor, caption, centroid, computeTourStops, type TourStop } from './tour'
 
 type ColorMode = 'holo' | 'author' | 'kind'
@@ -61,6 +64,8 @@ export default function Nucleus () {
   const [selected, setSelected] = useState<GraphNode | null>(null)
   const [tourIndex, setTourIndex] = useState<number | null>(null)
   const [paused, setPaused] = useState(false)
+  /** "◆ Radici": mostra accese solo le Radici. */
+  const [rootsOnly, setRootsOnly] = useState(false)
 
   // ── Dati ────────────────────────────────────────────────────────────────────────────
   // Oggetto stabile: la libreria aggiunge x/y/z/vx… ai nodi, va ricreato solo con dati nuovi.
@@ -106,8 +111,12 @@ export default function Nucleus () {
       const match = (graph.data?.nodes ?? []).filter((n) => (mode === 'author' ? n.author : n.kind) === focus).map((n) => n.id)
       set = set ? new Set(match.filter((id) => set!.has(id))) : new Set(match)
     }
+    if (rootsOnly) {
+      const roots = (graph.data?.nodes ?? []).filter((n) => n.root).map((n) => n.id)
+      set = set ? new Set(roots.filter((id) => set!.has(id))) : new Set(roots)
+    }
     return set
-  }, [stop, q, search.data, focus, mode, graph.data])
+  }, [stop, q, search.data, focus, mode, graph.data, rootsOnly])
 
   // Nelle modalità a colori il bagliore pieno satura tutto in bianco e la tinta non si vede:
   // lo attenuiamo; in "olografico" torna pieno.
@@ -242,12 +251,18 @@ export default function Nucleus () {
     // I ricordi esclusi da tour/ricerca restano visibili ma tenui: danno il contesto.
     // Nelle modalità a colori stelle un po' più piccole e non sature: la tinta resta leggibile.
     const colored = mode !== 'holo'
+    if (n.root) {
+      // Radice: stella ciano in olografico (colore di modalità altrimenti) + anello luminoso
+      const star = on ? (colored ? colorOf(n) : ROOT_STAR) : '#5a6a6a'
+      return rootMarker(star, rootRing(n.root.status), (colored ? size * 0.85 : size) * 1.15, on ? 1 : 0.4)
+    }
     return starSprite(on ? colorOf(n) : '#8a6a3a', colored ? size * 0.85 : size, on ? (colored ? 0.9 : 1) : 0.4)
   }, [lit, degree, selected, colorOf, mode])
 
   const linkOn = (l: any) => !lit || (lit.has(l.source.id ?? l.source) && lit.has(l.target.id ?? l.target))
 
-  const stats = `${data.nodes.length} RICORDI · ${new Set(data.nodes.map((n) => n.author)).size} AUTORI · ${data.links.length} SINAPSI`
+  const rootCount = data.nodes.filter((n) => n.root).length
+  const stats = `${data.nodes.length} RICORDI · ${rootCount} RADICI · ${new Set(data.nodes.map((n) => n.author)).size} AUTORI · ${data.links.length} SINAPSI`
 
   return (
     <div className='nucleus' ref={boxRef}>
@@ -298,6 +313,9 @@ export default function Nucleus () {
               {m === 'holo' ? 'Olografico' : m === 'author' ? 'Per autore' : 'Per tipo'}
             </button>
           ))}
+          <button className={`hud-btn ${rootsOnly ? 'on' : ''}`} disabled={rootCount === 0} title='Mostra solo le Radici: il sapere fondante del team' onClick={() => { setTourIndex(null); setRootsOnly(!rootsOnly) }}>
+            ◆ Radici {rootCount}
+          </button>
         </div>
         {tourIndex === null
           ? <button className='hud-btn primary' disabled={stops.length === 0} onClick={startTour}>▶ Avvia esplorazione guidata</button>
@@ -325,6 +343,7 @@ export default function Nucleus () {
           <div className='hud-topic'>{lit.size} ricordi {q.length >= 2 ? 'pertinenti' : ''}</div>
           <div>
             {q.length >= 2 && <>a «{q}»</>}
+            {rootsOnly && <>{q.length >= 2 || focus ? ' · ' : ''}solo Radici</>}
             {focus && <>{q.length >= 2 ? ' · ' : ''}{mode === 'author' ? 'di ' + (graph.data?.nodes.find((n) => n.author === focus)?.authorName ?? focus.slice(0, 8)) : 'di tipo ' + (KIND_LABEL[focus] ?? focus)}</>}
           </div>
         </div>

@@ -19,6 +19,7 @@ import { Constellation } from './pages/Constellation'
 import { Dashboard } from './pages/Dashboard'
 import { Inbox } from './pages/Inbox'
 import { Memory } from './pages/Memory'
+import { Roots } from './pages/Roots'
 import { Onboarding } from './pages/Onboarding'
 import { Private } from './pages/Private'
 import { Settings } from './pages/Settings'
@@ -44,6 +45,7 @@ export function App () {
             <Route path='/mappa' element={<Constellation />} />
             <Route path='/stato' element={<Dashboard />} />
             <Route path='/memoria' element={<Memory />} />
+            <Route path='/radici' element={<Roots />} />
             <Route path='/inbox' element={<Inbox />} />
             <Route path='/team' element={<Team />} />
             <Route path='/sogni' element={<Dreams />} />
@@ -84,6 +86,7 @@ function Sidebar ({ live, team, node }: { live: boolean, team: string, node: str
       <NavLink to='/' end className={link}>Nucleo</NavLink>
       <NavLink to='/mappa' className={link}>Mappa 2D</NavLink>
       <NavLink to='/memoria' className={link}>Memoria</NavLink>
+      <NavLink to='/radici' className={link}>Radici</NavLink>
       <NavLink to='/inbox' className={link}>Inbox {inbox > 0 && <span className='count'>{inbox}</span>}</NavLink>
       <NavLink to='/team' className={link}>Team</NavLink>
       <NavLink to='/sogni' className={link}>Sogni</NavLink>

@@ -51,3 +51,15 @@ export const KIND_COLOR: Record<string, string> = {
 
 /** Colore "spento" per i nodi esclusi da un filtro o da una ricerca. */
 export const DIM = 'rgba(160, 170, 160, 0.18)'
+
+/**
+ * Marcatura delle RADICI (Fase 8) in tutte le viste grafiche. L'anello è bianco ghiaccio perché
+ * deve distinguersi in ogni modalità di colore (la palette degli autori usa già ciano, rosso…);
+ * diventa rosso se la Radice è "da rivedere". La stella della Radice è ciano solo nella modalità
+ * olografica (dove tutto il resto è ambra); nelle altre mantiene il colore di autore o tipo.
+ */
+export const ROOT_RING = '#f4fbff'
+export const ROOT_REVIEW = '#ff4d4d'
+export const ROOT_STAR = '#7ef9ff'
+/** Colore dell'anello di una Radice secondo il suo stato. */
+export const rootRing = (status: 'ok' | 'review'): string => (status === 'review' ? ROOT_REVIEW : ROOT_RING)

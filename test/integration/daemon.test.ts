@@ -184,6 +184,21 @@ describe('daemon', () => {
     expect((await api('POST', `/api/archive/${r.data.id}/restore`)).status).toBe(400)
   })
 
+  it('Radici via API: promozione, elenco, revisione, conferma, rimozione (rotte senza conflitti)', async () => {
+    const id = (await api('GET', '/api/memories/search?q=sftp')).data[0].id
+    expect((await api('POST', `/api/roots/${id}`, { category: 'practice' })).data.category).toBe('practice')
+    expect((await api('POST', `/api/roots/${id}`, { category: 'inventata' })).status).toBe(400)
+    expect((await api('GET', '/api/roots?category=practice')).data.map((r: any) => r.id)).toEqual([id])
+    // "review" e "suggestions" non devono essere scambiati per l'id di un ricordo
+    const review = await api('POST', '/api/roots/review', {})
+    expect(review.status).toBe(200)
+    expect(review.data).toMatchObject({ checked: 1, flagged: [] })
+    expect((await api('GET', '/api/roots/suggestions')).data).toEqual([])
+    expect((await api('POST', `/api/roots/${id}/confirm`)).data.status).toBe('ok')
+    expect((await api('DELETE', `/api/roots/${id}`)).status).toBe(200)
+    expect((await api('GET', '/api/roots')).data).toEqual([])
+  })
+
   it('dopo un riavvio il nodo ritrova team e ricordi', async () => {
     await app.close()
     await start()

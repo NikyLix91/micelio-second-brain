@@ -119,6 +119,11 @@ function createTray (info: DaemonInfo): void {
  */
 async function takeScreenshots (dir: string): Promise<void> {
   fs.mkdirSync(dir, { recursive: true })
+  // Errori della pagina nel log: una schermata vuota senza spiegazione non aiuta nessuno.
+  win!.webContents.on('console-message', (e: any) => {
+    const level = e.level ?? ''
+    if (level === 'error' || level === 3) log(`pagina: ${e.message ?? ''}`)
+  })
   const routes: [string, string, number][] = [
     ['nucleo', '/', 9000], ['nucleo-tour', '/?tour=1', 11000], ['nucleo-autori', '/?colori=autore', 9000], ['mappa-2d', '/mappa', 6000], ['memoria', '/memoria', 2000], ['inbox', '/inbox', 2000],
     ['team', '/team', 2000], ['sogni', '/sogni', 2000], ['stato', '/stato', 2000], ['privato', '/privato', 2000], ['impostazioni', '/impostazioni', 2000]

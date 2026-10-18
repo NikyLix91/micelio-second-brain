@@ -290,6 +290,47 @@ Il calcolo dei significati (embedding) avviene sul tuo PC, senza servizi esterni
 
 Nell'app: attivazione, usi, 👍 👎 e 📌 nel dettaglio di ogni ricordo. Nel Nucleo i ricordi più vivi sono le stelle più grandi e dorate.
 
+## 7-ter-bis. Radici: il sapere che non si dimentica
+
+Alcuni ricordi sono **pilastri** del team: paradigmi architetturali, mappe di rete, interfacce e contratti fra sistemi, modello di dominio, best practice (per esempio le regole di sviluppo con l'AI), policy di sicurezza. Si consultano di rado, magari ogni volta che si progetta un pezzo nuovo, e poi non si riaprono per mesi. Con la sola priorità basata sull'uso finirebbero dimenticati. Per questo esistono le **Radici**.
+
+**Cosa cambia per una Radice:**
+- **Non si dimentica:** non decade mai, il dreaming non la archivia e non la fonde, e la sua priorità non scende sotto una soglia minima.
+- **Arriva quando serve:** ogni ricerca degli agenti (`recall`) riceve in coda le **Radici pertinenti**, anche quando non sono fra i primi risultati. Il tool MCP `architecture` dà le Radici di un progetto, di una categoria o dei file che si stanno toccando, e gli agenti sono istruiti a chiamarlo prima di modificare l'architettura.
+- **Si rivede invece di dimenticarla:** vedi sotto.
+
+**Categorie:** architettura, rete e infrastruttura, interfacce e contratti, dominio, best practice, policy, altro.
+
+**Come nasce una Radice.** **Chiunque** nel team può promuovere o togliere una Radice:
+- **dall'app:** nel dettaglio di un ricordo (Memoria, Nucleo, Mappa) scegli la categoria e premi **Rendi Radice**;
+- **da terminale:**
+
+```bash
+micelio roots add <id> architecture
+micelio roots remove <id>
+micelio roots                              # elenco per categoria (anche: --project, --category, --query)
+```
+
+- **dalla CLI di Claude:** chiedendolo all'agente, che usa il tool `mark_root`;
+- **suggerite da Micelio:** il distillatore segnala i ricordi che sembrano sapere fondante. Restano solo **suggerimenti**, nella vista Radici o con `micelio roots suggested`: le promuovi tu con un clic o le ignori;
+- **cartelle "di Radici":** marcando una cartella di documenti come *di Radici* (Impostazioni, o `micelio docs add <cartella> --roots`), i ricordi dei suoi documenti diventano Radici da soli. Va bene per la cartella dell'architettura, delle policy o il vault delle regole. Da quelle cartelle si leggono anche i **diagrammi**: draw.io, SVG, PlantUML e Mermaid.
+
+**Revisione (lanciata a mano, nessun promemoria automatico).** Una Radice che non decade può diventare *falsa* senza che nessuno se ne accorga. Con **Rivedi le Radici** (vista Radici) o `micelio roots review`, Micelio cerca tre tipi di indizi:
+- **codice cambiato:** commit successivi all'ultima revisione sui file citati dalla Radice, o file non più presenti. Il repository del progetto viene cercato fra le cartelle abilitate su **questo** PC e le loro sotto-cartelle;
+- **documento d'origine cambiato o rimosso:** si verifica solo sul PC che possiede il documento;
+- **contraddizioni:** ricordi più recenti e simili che la contraddicono o la superano. Le cerca Claude, con al massimo 30 confronti per revisione ed entro il budget.
+
+Le Radici con indizi diventano **"da rivedere"** per tutto il team, con i motivi. Dopo averle controllate:
+- se è ancora valida, **Rivista: è ancora valida** (`micelio roots confirm <id>`);
+- se non lo è, correggi il ricordo o togli la Radice.
+
+Nulla cambia da solo. Il resoconto dice anche cosa non è stato possibile verificare da questo PC.
+
+**Nelle viste grafiche:**
+- **Nucleo 3D:** le Radici stanno **al centro della sfera**, con un **anello** bianco (rosso se da rivedere).
+- **Mappa 2D:** sono **rombi** con contorno.
+- **In entrambe:** **◆ Radici** isola solo le Radici.
+
 ## 7-quater. Dreaming: il sapere si riordina da solo
 
 Una volta al giorno **un** nodo del team "sogna" per tutti. Di default dalle 13; se quel nodo è spento o non ha Claude, tocca al successivo 30 minuti dopo, e così via. Il sogno:

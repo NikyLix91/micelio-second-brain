@@ -33,6 +33,13 @@ export function percent (share: number): string {
   return `${p.toLocaleString('it-IT', { maximumFractionDigits: p < 10 ? 1 : 0 })}%`
 }
 
+/** Categorie delle Radici (Fase 8), nell'ordine in cui si mostrano, con le etichette italiane. */
+export const ROOT_CATEGORY_ORDER = ['architecture', 'network', 'interface', 'domain', 'practice', 'policy', 'other'] as const
+export const ROOT_CATEGORY_LABEL: Record<string, string> = {
+  architecture: 'Architettura', network: 'Rete e infrastruttura', interface: 'Interfacce e contratti',
+  domain: 'Dominio', practice: 'Best practice', policy: 'Policy', other: 'Altro'
+}
+
 /** Etichette italiane dei tipi di ricordo. */
 export const KIND_LABEL: Record<string, string> = {
   fact: 'fatto', howto: 'procedura', decision: 'decisione', gotcha: 'gotcha', snippet: 'snippet', reference: 'riferimento'
