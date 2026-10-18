@@ -58,10 +58,36 @@ export function renderMemory (m: MemoryRecord, authorName: string | null): strin
  * Scrive un file solo se il contenuto è cambiato, così gli strumenti che osservano la cartella
  * (Obsidian, sincronizzatori) non vedono modifiche inutili a ogni aggiornamento.
  */
+/**
+ * Cosa contiene ogni file dell'export, per cartella: si rilegge dal disco solo la PRIMA volta.
+ * Prima ogni aggiornamento rileggeva tutti i file per vedere se erano cambiati: con 1 300 ricordi
+ * mezzo secondo a ogni scrittura. Ora si scrivono e si cancellano solo i file davvero cambiati.
+ */
+const written = new Map<string, Map<string, string>>()
+
+/** Contenuto attuale dei file dell'export (dal disco, una volta per cartella e per processo). */
+function knownFiles (teamDir: string): Map<string, string> {
+  let known = written.get(teamDir)
+  if (known) return known
+  known = new Map()
+  if (fs.existsSync(teamDir)) {
+    for (const kind of fs.readdirSync(teamDir)) {
+      const kindDir = path.join(teamDir, kind)
+      if (!fs.statSync(kindDir).isDirectory()) continue
+      for (const f of fs.readdirSync(kindDir)) known.set(path.join(kindDir, f), fs.readFileSync(path.join(kindDir, f), 'utf8'))
+    }
+  }
+  written.set(teamDir, known)
+  return known
+}
+
 export function writeExport (dir: string, memories: MemoryRecord[], members: MemberRecord[]): void {
   const teamDir = path.join(dir, 'team')
-  fs.mkdirSync(teamDir, { recursive: true })
-  fs.writeFileSync(path.join(dir, 'README.md'), README)
+  const known = knownFiles(teamDir)
+  if (!known.size) {
+    fs.mkdirSync(teamDir, { recursive: true })
+    fs.writeFileSync(path.join(dir, 'README.md'), README)
+  }
 
   const names = new Map(members.map((u) => [u.key, u.name]))
   const wanted = new Set<string>()
@@ -69,18 +95,17 @@ export function writeExport (dir: string, memories: MemoryRecord[], members: Mem
     const file = path.join(teamDir, m.kind, `${slugify(m.title)}-${m.id.slice(0, 8)}.md`)
     wanted.add(file)
     const content = renderMemory(m, names.get(m.author) ?? null)
+    if (known.get(file) === content) continue
     fs.mkdirSync(path.dirname(file), { recursive: true })
-    if (!fs.existsSync(file) || fs.readFileSync(file, 'utf8') !== content) fs.writeFileSync(file, content)
+    fs.writeFileSync(file, content)
+    known.set(file, content)
   }
 
-  // Pulizia: elimina i file che non corrispondono più a un ricordo (es. dopo una redazione,
-  // in futuro, o se cambia lo slug di un titolo).
-  for (const kind of fs.readdirSync(teamDir)) {
-    const kindDir = path.join(teamDir, kind)
-    if (!fs.statSync(kindDir).isDirectory()) continue
-    for (const f of fs.readdirSync(kindDir)) {
-      const file = path.join(kindDir, f)
-      if (!wanted.has(file)) fs.rmSync(file)
-    }
+  // Pulizia: elimina i file che non corrispondono più a un ricordo (archiviato, sostituito,
+  // redatto, o titolo cambiato).
+  for (const file of [...known.keys()]) {
+    if (wanted.has(file)) continue
+    fs.rmSync(file, { force: true })
+    known.delete(file)
   }
 }

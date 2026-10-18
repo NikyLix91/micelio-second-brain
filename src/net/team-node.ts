@@ -353,6 +353,8 @@ export class TeamNode extends EventEmitter {
 
   /** true quando la base è aperta (dopo create/open/join). */
   get ready (): boolean { return this.base !== null }
+  /** Versione della vista (cresce a ogni modifica): serve a non ricalcolare ciò che non è cambiato. */
+  get viewVersion (): number { return this.base?.view?.version ?? 0 }
   get writable (): boolean { return !!this.base?.writable }
   get isIndexer (): boolean { return !!this.base?.isIndexer }
   /** Chiave del feed locale (hex): è l'identità di questo nodo nel team. */

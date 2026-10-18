@@ -55,6 +55,7 @@ import { checkNetwork, type NetworkCheck } from '../net/diagnose'
 import { distillQuality, type DistillQuality, MAX_MEMORIES_RANGE, maxMemoriesOf } from '../ingest/quality'
 import { localRepos, reviewRoots, type ReviewNote } from '../roots/review'
 import { computeStaleness, stalenessFactor } from '../rank/code-staleness'
+import { SemanticNeighbors } from '../rank/semantic-neighbors'
 import { promptContext, sessionContext } from '../context/agent-context'
 import { computeDigest, type Digest } from '../insight/digest'
 import { gapId, gapKey } from '../insight/gaps'
@@ -308,6 +309,25 @@ const CONTEXT_MEMORIES = 6
 const CONTEXT_PER_PROMPT = 4
 const CONTEXT_MIN_PROMPT = 15
 
+/** Ritardo del ricalcolo del grado dei nodi dopo un aggiornamento (raggruppa le scritture vicine). */
+const DEGREES_DELAY_MS = 2000
+
+/** Oltre questa durata l'aggiornamento della vista finisce nel log con i tempi per fase. */
+const SLOW_MATERIALIZE_MS = 300
+
+/**
+ * Cronometro per fasi: `lap('nome')` chiude la fase corrente; `report(soglia)` restituisce
+ * "vista 120 ms · indice 80 ms · …" se il totale supera la soglia, altrimenti null.
+ */
+function phaseTimer (): ((name: string) => void) & { report: (thresholdMs: number) => string | null } {
+  const t0 = Date.now()
+  let last = t0
+  const phases: string[] = []
+  const lap = ((name: string) => { const now = Date.now(); phases.push(`${name} ${now - last} ms`); last = now }) as ((name: string) => void) & { report: (t: number) => string | null }
+  lap.report = (threshold) => (Date.now() - t0 >= threshold ? `${phases.join(' · ')} (totale ${Date.now() - t0} ms)` : null)
+  return lap
+}
+
 /** Progetto di una cartella: il repository git che la contiene, altrimenti il nome della cartella. */
 function projectOf (dir: string): string {
   return repoInfo(dir)?.project ?? path.basename(dir)
@@ -333,6 +353,8 @@ export class MicelioNode extends EventEmitter {
   /** Radici del team (Fase 8), dalla vista: id del ricordo → record. */
   private rootsById = new Map<string, RootRecord>()
   private nodeName: string | null = null
+  /** Vicini per significato di ogni ricordo, aggiornati in modo incrementale (src/rank/semantic-neighbors.ts). */
+  private semantic = new SemanticNeighbors(2)
   /** Ricordi il cui codice citato è cambiato (B4, src/rank/code-staleness.ts), da private.db. */
   private staleness = new Map<string, { commits: number, missing: number, checked: number }>()
   private staleTimer: NodeJS.Timeout | null = null
@@ -366,6 +388,10 @@ export class MicelioNode extends EventEmitter {
   private config: Config
   /** Timer di accorpamento degli aggiornamenti della vista (vedi scheduleMaterialize). */
   private timer: NodeJS.Timeout | null = null
+  /** Versione della vista all'ultimo aggiornamento dell'indice: se non cambia non si ricalcola nulla. */
+  private materializedVersion = -1
+  /** Timer del ricalcolo in sottofondo del grado dei nodi (vedi scheduleDegrees). */
+  private degreesTimer: NodeJS.Timeout | null = null
   /** Catena delle materializzazioni: mai due ricostruzioni dell'indice in parallelo. */
   private materializing: Promise<void> = Promise.resolve()
   private readonly log: (msg: string) => void
@@ -490,6 +516,7 @@ export class MicelioNode extends EventEmitter {
     await this.documents.stop()
     await this.pipeline.stop()
     if (this.timer) clearTimeout(this.timer)
+    if (this.degreesTimer) clearTimeout(this.degreesTimer)
     await this.materializing.catch(() => {})
     await this.team?.close()
     this.team = null
@@ -1058,6 +1085,8 @@ export class MicelioNode extends EventEmitter {
         if (batch.length === 0) break
         const vecs = await embedder.embed(batch.map((b) => b.text), 'passage')
         this.index.setVectors(embedder.model, batch.map((b, i) => ({ id: b.id, vec: vecs[i] })))
+        // Vicini per significato: solo i ricordi nuovi contro gli altri, non tutte le coppie
+        if (this.semantic.model === embedder.model) this.semantic.add(batch.map((b) => b.id), this.index.vectors(embedder.model), semanticThreshold(embedder.model))
         done += batch.length
       }
       if (done > 0) {
@@ -1070,19 +1099,19 @@ export class MicelioNode extends EventEmitter {
   /**
    * Collegamenti per affinità di significato, per la costellazione: per ogni ricordo i 2 più
    * simili sopra la soglia del modello. Peso: quanto la similarità supera la soglia.
+   * Calcolo completo solo la prima volta, se cambia il modello o se troppe liste citano ricordi
+   * non più attivi; per il resto le liste si aggiornano a ogni nuovo vettore (scheduleEmbedding).
    */
   private semanticLinks (): GraphLink[] {
     if (!this.embedder) return []
-    const vectors = this.index.vectors(this.embedder.model)
     const min = semanticThreshold(this.embedder.model)
-    const links: GraphLink[] = []
-    for (const [id, v] of vectors) {
-      for (const n of nearest(v, vectors, 3, min)) {
-        if (n.id === id || id > n.id) continue // una sola volta per coppia
-        links.push({ source: id, target: n.id, weight: Math.min(1, (n.score - min) / (1 - min) * 2), kind: 'semantic' })
-      }
+    const present = new Set(this.index.all().map((m) => m.id))
+    if (this.semantic.model !== this.embedder.model || this.semantic.staleShare(present) > 0.1) {
+      const t0 = Date.now()
+      this.semantic.rebuild(this.index.vectors(this.embedder.model), min, this.embedder.model)
+      this.log(`vicini per significato ricalcolati per ${present.size} ricordi in ${Date.now() - t0} ms`)
     }
-    return links
+    return this.semantic.links(min, present)
   }
 
   /** Collegamenti creati dal dreaming, fra ricordi ancora attivi (peso fisso: sono "decisi"). */
@@ -1391,7 +1420,7 @@ export class MicelioNode extends EventEmitter {
     const { memory } = filterMemory(parsed.data, await this.filterRules())
     const id = memoryId(memory)
     const added = this.privateStore.addPersonal(id, memory)
-    await this.materialize()
+    await this.materialize(true)
     return { id, duplicate: !added }
   }
 
@@ -1409,7 +1438,7 @@ export class MicelioNode extends EventEmitter {
     if (!p) throw new UserError(`Nessun ricordo personale con id ${id}`, `No personal memory with id ${id}`)
     const outcome = await this.pipeline.ingestExplicit({ ...p.memory, source: { ...p.memory.source, type: 'personal' } })
     this.privateStore.removePersonal(p.id)
-    await this.materialize()
+    await this.materialize(true)
     return outcome
   }
 
@@ -1418,7 +1447,7 @@ export class MicelioNode extends EventEmitter {
     const p = this.privateStore.personal().find((x) => x.id === id || x.id.startsWith(id))
     if (!p) throw new UserError(`Nessun ricordo personale con id ${id}`, `No personal memory with id ${id}`)
     this.privateStore.removePersonal(p.id)
-    await this.materialize()
+    await this.materialize(true)
   }
 
   /** Un elemento dell'inbox non va al team ma resta come ricordo personale. */
@@ -1427,7 +1456,7 @@ export class MicelioNode extends EventEmitter {
     const memory = this.pipeline.keepPrivately(inboxId)
     const id = memoryId(memory)
     const added = this.privateStore.addPersonal(id, memory)
-    await this.materialize()
+    await this.materialize(true)
     return { id, duplicate: !added }
   }
 
@@ -1741,7 +1770,7 @@ export class MicelioNode extends EventEmitter {
     const team = this.newTeamNode()
     await team.open(state)
     this.attach(team)
-    await this.materialize()
+    await this.materialize(true)
   }
 
   // ═══════════════════════════ Spazio occupato ═══════════════════════════
@@ -2043,11 +2072,38 @@ export class MicelioNode extends EventEmitter {
    * Ricostruisce indice ed export dalla vista. Le chiamate sono serializzate sulla catena
    * `materializing`, così due ricostruzioni non si sovrappongono mai.
    */
-  private materialize (): Promise<void> {
+  /**
+   * Grado dei nodi (quanti collegamenti ha ogni ricordo nella costellazione): serve
+   * all'attivazione. Costa (tutta la costellazione), quindi si calcola in sottofondo, raggruppando
+   * le scritture ravvicinate: un grado vecchio di qualche secondo non cambia la ricerca.
+   */
+  private scheduleDegrees (delayMs = DEGREES_DELAY_MS): void {
+    if (this.degreesTimer) return
+    this.degreesTimer = setTimeout(() => {
+      this.degreesTimer = null
+      if (!this.team) return
+      const t0 = Date.now()
+      const degrees = new Map<string, number>()
+      for (const l of buildGraph(this.teamMemories(), [...this.semanticLinks(), ...this.explicitLinks()]).links) for (const k of [l.source, l.target]) degrees.set(k, (degrees.get(k) ?? 0) + 1)
+      this.degrees = degrees
+      if (Date.now() - t0 > SLOW_MATERIALIZE_MS) this.log(`grado dei nodi ricalcolato in ${Date.now() - t0} ms`)
+    }, delayMs)
+    this.degreesTimer.unref()
+  }
+
+  /** @param force ricalcola anche se la versione della vista non è cambiata (ricordi personali, riconnessione) */
+  private materialize (force = false): Promise<void> {
     this.materializing = this.materializing.catch(() => {}).then(async () => {
       const team = this.team
       if (!team) return
+      // Una scrittura produce due richieste di aggiornamento (la sync esplicita e l'evento "vista
+      // cambiata" di Autobase): la seconda non trova nulla di nuovo e si salta
+      if (!force && team.viewVersion === this.materializedVersion) return
+      this.materializedVersion = team.viewVersion
+      // Tempi per fase: finiscono nel log solo se l'aggiornamento è lento (vedi in fondo)
+      const lap = phaseTimer()
       const [all, members, votes, pins, usage, links, roots] = await Promise.all([team.memories(), team.members(), team.votes(), team.pins(), team.usage(), team.links(), team.roots()])
+      lap('vista')
       this.rootsById = roots
       this.teamNameCache = (await team.team())?.name ?? this.teamNameCache
       // Solo i ricordi ATTIVI entrano in ricerca, costellazione ed export; gli altri sono storico.
@@ -2060,11 +2116,13 @@ export class MicelioNode extends EventEmitter {
       const personal = this.personalRecords(team.localKey ?? '').filter((p) => !teamIds.has(p.id))
       this.personalIds = new Set(personal.map((p) => p.id))
       this.index.rebuild([...memories, ...personal], members, { votes, pins, usage })
+      lap('indice')
       writeExport(this.paths.export, memories, members)
-      // Collegamenti per ricordo (servono all'attivazione)
-      const degrees = new Map<string, number>()
-      for (const l of buildGraph(this.teamMemories(), [...this.semanticLinks(), ...this.explicitLinks()]).links) for (const k of [l.source, l.target]) degrees.set(k, (degrees.get(k) ?? 0) + 1)
-      this.degrees = degrees
+      lap('export')
+      // Collegamenti per ricordo (servono all'attivazione): in sottofondo, fuori dalla scrittura
+      this.scheduleDegrees()
+      const slow = lap.report(SLOW_MATERIALIZE_MS)
+      if (slow) this.log(`aggiornamento della vista lento (${memories.length} ricordi): ${slow}`)
       this.scheduleEmbedding()
       this.changed('memories', 'members', 'status')
       // B4: i file per gli agenti seguono le Radici (si riscrivono solo se cambiano davvero)
