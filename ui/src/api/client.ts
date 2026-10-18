@@ -40,7 +40,15 @@ export async function call<T> (method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: 
     body: body !== undefined ? JSON.stringify(body) : undefined
   })
   const data = await res.json().catch(() => ({})) as any
-  if (!res.ok) throw new ApiError(data?.error ?? `Errore HTTP ${res.status}`, res.status)
+  if (!res.ok) {
+    const msg: string = data?.error ?? `Errore HTTP ${res.status}`
+    // Rotta sconosciuta al daemon: l'interfaccia è più nuova del daemon in esecuzione (ricompilato
+    // ma non riavviato). Al posto del "Cannot GET /api/…" di Express, diciamo cosa fare.
+    if (res.status === 404 && /^Cannot (GET|POST|PUT|DELETE) \/api\//.test(msg)) {
+      throw new ApiError('Questa funzione richiede un daemon aggiornato: il daemon in esecuzione è una versione precedente dell\'app. Riavvialo (micelio stop && micelio start; per il team demo: Ctrl+C e npm run demo).', 404)
+    }
+    throw new ApiError(msg, res.status)
+  }
   return data as T
 }
 
