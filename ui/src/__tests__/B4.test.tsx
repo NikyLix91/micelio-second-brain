@@ -15,6 +15,7 @@ import { RootsTools } from '../components/RootsTools'
 import { Digest as DigestPage } from '../pages/Digest'
 import { Memory } from '../pages/Memory'
 import { Onboarding } from '../pages/Onboarding'
+import { Settings } from '../pages/Settings'
 
 const A = 'a'.repeat(64)
 const hit = (id: string, title: string, extra: Partial<RecallHit> = {}): RecallHit =>
@@ -116,5 +117,17 @@ describe('B4 nella UI', () => {
     fireEvent.click(screen.getByLabelText(/Solo per me, senza rete/))
     fireEvent.click(screen.getByText('Crea il team'))
     await waitFor(() => expect(bodyOf(m, 'POST', '/api/team/init')).toEqual({ team: 'Personale', name: 'ada', network: 'local' }))
+  })
+
+  it('Impostazioni: "Configura" installa MCP e tutti gli hook, "Solo MCP" nessun hook', async () => {
+    const m = mockFetch({ 'POST /api/setup/claude-code': { mcpUrl: 'http://127.0.0.1:7337/mcp', hookFile: null } })
+    wrap(<Settings />)
+    fireEvent.click(await screen.findByText('Solo MCP'))
+    fireEvent.click(screen.getByText('Sì, registra MCP'))
+    await waitFor(() => expect(bodyOf(m, 'POST', '/api/setup/claude-code')).toEqual({ hook: false, context: false }))
+    m.mockClear()
+    fireEvent.click(screen.getByText('Configura MCP + raccolta + contesto automatico'))
+    fireEvent.click(screen.getByText('Sì, modifica la configurazione'))
+    await waitFor(() => expect(bodyOf(m, 'POST', '/api/setup/claude-code')).toEqual({ hook: true, context: true }))
   })
 })

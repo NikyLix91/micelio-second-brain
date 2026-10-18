@@ -563,7 +563,8 @@ function ContextCard () {
 /** Registra MCP e hook di fine sessione in Claude Code (come `micelio setup claude-code`). */
 function ClaudeCodeCard () {
   const t = useStrings(S).cc
-  const setup = useMutation({ mutationFn: (hook: boolean) => api.setupClaudeCode(hook) })
+  // "Configura" = MCP + tutti gli hook; "Solo MCP" = nessun hook (né raccolta né contesto automatico)
+  const setup = useMutation({ mutationFn: (hooks: boolean) => api.setupClaudeCode(hooks, hooks) })
   return (
     <Card help='settings#claude-code' title={t.title}>
       <p className='muted' style={{ marginTop: 0 }}>{t.intro1} {t.intro2}</p>
