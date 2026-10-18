@@ -40,14 +40,15 @@ import { FakeAdapter } from '../llm/fake'
 import { LlmRunner } from '../llm/runner'
 import type { LlmAdapter } from '../llm/types'
 import { TeamNode } from '../net/team-node'
-import { mergeRules } from '../privacy/filter'
+import { applyFilter, builtinDetectors, compileTeamPatterns, mergeRules, type TeamSecretPattern } from '../privacy/filter'
+import { DEFAULT_SENSITIVE_FILES, mergeSensitiveFiles, sensitiveMatch } from '../privacy/sensitive-files'
 import { mergeBlockedPaths } from '../privacy/paths'
 import { DocumentWatcher, hashFile } from '../ingest/documents'
 import { extractText } from '../ingest/extract'
 import { claudeProjectsDir, SessionScanner } from '../ingest/session-scanner'
 import { FileShare } from '../net/file-share'
 import { MemoryIndex } from '../store/memory-index'
-import { type Decision, type DocumentRecord, type InboxItem, PrivateStore } from '../store/private-store'
+import { type Decision, type DocumentRecord, type InboxItem, PrivateStore, type SecurityLogEntry } from '../store/private-store'
 import { BOOTSTRAP_RE, canonicalPath, type Config, dhtBootstrap, isInsideWatched, loadConfig, loadState, networkMode, parseBootstrap, saveState, updateConfig } from './config'
 import { checkNetwork, type NetworkCheck } from '../net/diagnose'
 import { reviewRoots } from '../roots/review'
@@ -77,7 +78,7 @@ export class UserError extends Error {}
  * - inbox, jobs, decisions: archivio privato (inbox, coda di ingestione, registro);
  * - settings:  impostazioni locali (cartelle abilitate, LLM).
  */
-export type ChangeTopic = 'status' | 'memories' | 'members' | 'inbox' | 'jobs' | 'decisions' | 'settings' | 'roots'
+export type ChangeTopic = 'status' | 'memories' | 'members' | 'inbox' | 'jobs' | 'decisions' | 'settings' | 'roots' | 'security'
 
 /** Impostazioni LOCALI modificabili dalla UI (config.json). */
 export interface NodeSettings {
@@ -139,6 +140,39 @@ export interface StorageReport {
     memories: number
     memoryBytes: number
   }[]
+}
+
+/** Regole di sicurezza come le mostra la schermata Sicurezza (Fase 9). */
+export interface SecurityRules {
+  /** Tipi di segreto e dato personale riconosciuti sempre (non modificabili). */
+  builtin: { type: string, label: string }[]
+  /** Pattern di file sensibili di default (non modificabili). */
+  defaultSensitiveFiles: string[]
+  /** Regole del TEAM, modificabili dall'admin. */
+  team: { secretPatterns: TeamSecretPattern[], allow: string[], sensitiveFiles: string[] }
+}
+
+/** Esito del banco di prova: cosa farebbe il filtro con un testo e/o un nome di file. */
+export interface SecurityTestResult {
+  /** Testo dopo la redazione. */
+  text: string
+  redactions: Record<string, number>
+  /** Parole chiave HR/personali trovate: il contenuto resterebbe privato. */
+  blockedBy: string[]
+  /** Se è stato indicato un file: il pattern che lo rende sensibile, o null. */
+  sensitiveFile: string | null
+}
+
+/** Un ricordo pubblicato che contiene segreti secondo le regole attuali (scansione retroattiva). */
+export interface SecurityFinding {
+  id: string
+  title: string
+  author: string
+  authorName: string | null
+  /** Tipi trovati, con il conteggio. */
+  kinds: Record<string, number>
+  /** È una Radice: dopo la pulizia lo resta. */
+  root: boolean
 }
 
 /** Una Radice con il suo ricordo, come la mostrano UI, CLI e MCP. */
@@ -266,7 +300,9 @@ export class MicelioNode extends EventEmitter {
       models: () => ({ classify: this.config.llm.classifyModel, distill: this.config.llm.distillModel }),
       publish: (m) => this.publish(m),
       // Regole e lingua si leggono dalla vista a ogni uso: un admin può cambiarle in qualunque momento.
-      rules: async () => mergeRules(await this.team?.config('filter.blockKeywords')),
+      // Regole del filtro: default + quelle del team (parole chiave, pattern di segreti, eccezioni)
+      rules: async () => mergeRules(await this.team?.config('filter.blockKeywords'), await this.team?.config('security.secretPatterns'), await this.team?.config('security.allow')),
+      sensitiveFiles: async () => mergeSensitiveFiles(await this.team?.config('security.sensitiveFiles')).filter((p) => !DEFAULT_SENSITIVE_FILES.includes(p)),
       blockedPaths: async () => mergeBlockedPaths(await this.team?.config('filter.blockedPaths')),
       language: async () => (await this.team?.config<string>('memory.language')) ?? 'it',
       gitChanges: () => this.config.watch.gitChanges,
@@ -951,6 +987,114 @@ export class MicelioNode extends EventEmitter {
   settings (): NodeSettings {
     const { adapter, command, classifyModel, distillModel, dailyBudget } = this.config.llm
     return { llm: { adapter, command, classifyModel, distillModel, dailyBudget }, watched: this.config.watch.sessions, documents: this.config.watch.documents, port: this.config.port, network: this.networkSettings() }
+  }
+
+  // ═══════════════════════════ Sicurezza (Fase 9) ═══════════════════════════
+
+  /** Regole in vigore: riconoscitori fissi, file sensibili di default e regole del team. */
+  async securityRules (): Promise<SecurityRules> {
+    const team = this.team
+    const patterns = await team?.config<unknown>('security.secretPatterns')
+    const allow = await team?.config<unknown>('security.allow')
+    const files = await team?.config<unknown>('security.sensitiveFiles')
+    const strings = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
+    return {
+      builtin: builtinDetectors(),
+      defaultSensitiveFiles: DEFAULT_SENSITIVE_FILES,
+      team: {
+        secretPatterns: Array.isArray(patterns) ? patterns.filter((p): p is TeamSecretPattern => typeof p?.name === 'string' && typeof p?.regex === 'string') : [],
+        allow: strings(allow),
+        sensitiveFiles: strings(files)
+      }
+    }
+  }
+
+  /**
+   * Aggiorna le regole del team (solo admin): pattern di segreti, eccezioni, file sensibili.
+   * Vengono replicate a tutti i nodi e valgono subito. I pattern non validi vengono rifiutati qui,
+   * con un messaggio leggibile, invece di essere ignorati in silenzio dalla pipeline.
+   */
+  async setSecurityRules (patch: Partial<SecurityRules['team']>): Promise<SecurityRules> {
+    if (patch.secretPatterns) {
+      for (const p of patch.secretPatterns) {
+        if (!p.name?.trim() || !p.regex?.trim()) throw new UserError('Ogni pattern ha un nome e un\'espressione regolare')
+        if (p.regex.length > 300) throw new UserError(`Pattern «${p.name}» troppo lungo (massimo 300 caratteri)`)
+        try { new RegExp(p.regex, 'g') } catch (e) { throw new UserError(`Pattern «${p.name}» non valido: ${(e as Error).message}`) }
+        // Un pattern che riconosce la stringa vuota redigerebbe ovunque
+        if (new RegExp(p.regex).test('')) throw new UserError(`Pattern «${p.name}» riconosce anche il testo vuoto: troppo generico`)
+      }
+      if (compileTeamPatterns(patch.secretPatterns).length !== patch.secretPatterns.length) throw new UserError('Alcuni pattern non sono validi')
+      await this.setTeamConfig('security.secretPatterns', patch.secretPatterns.map((p) => ({ name: p.name.trim(), regex: p.regex })))
+    }
+    if (patch.allow) await this.setTeamConfig('security.allow', patch.allow.map((a) => a.trim()).filter(Boolean))
+    if (patch.sensitiveFiles) await this.setTeamConfig('security.sensitiveFiles', patch.sensitiveFiles.map((f) => f.trim()).filter(Boolean))
+    this.changed('security')
+    return this.securityRules()
+  }
+
+  /** Banco di prova: cosa farebbe il filtro con un testo e/o un nome di file. Non salva nulla. */
+  async securityTest (text: string, file?: string): Promise<SecurityTestResult> {
+    const rules = await this.filterRules()
+    const r = applyFilter(text, rules)
+    const extra = (await this.securityRules()).team.sensitiveFiles
+    return { text: r.text, redactions: r.redactions, blockedBy: r.reasons, sensitiveFile: file ? sensitiveMatch(file, extra) : null }
+  }
+
+  /**
+   * Scansione retroattiva: i ricordi pubblicati che, con le regole ATTUALI, contengono segreti o
+   * dati personali (es. pubblicati prima di una nuova regola). Solo segnalazione: la pulizia è
+   * un'azione esplicita (securityClean).
+   */
+  async securityScan (): Promise<SecurityFinding[]> {
+    const rules = await this.filterRules()
+    const out: SecurityFinding[] = []
+    for (const m of this.index.all()) {
+      const r = applyFilter(`${m.title}\n${m.body}\n${m.tags.join(' ')}`, rules)
+      if (Object.keys(r.redactions).length) out.push({ id: m.id, title: m.title, author: m.author, authorName: m.authorName, kinds: r.redactions, root: this.rootsById.has(m.id) })
+    }
+    return out
+  }
+
+  /**
+   * "Ripulisci" un ricordo (solo admin): pubblica la versione REDATTA e rimuove l'originale dalla
+   * vista di tutti (memory.redact). Se era una Radice, la versione pulita lo resta.
+   * Limite: chi aveva già letto o esportato l'originale ne conserva una copia, e i blocchi cifrati
+   * restano nei log replicati (come per ogni redazione, DESIGN §10.3).
+   * @returns id della versione pulita
+   */
+  async securityClean (id: string): Promise<{ id: string }> {
+    await this.requireAdmin()
+    const rec = this.requireMemory(id)
+    const rules = await this.filterRules()
+    const clean = {
+      kind: rec.kind,
+      title: applyFilter(rec.title, rules).text,
+      body: applyFilter(rec.body, rules).text,
+      tags: rec.tags.map((t) => applyFilter(t, rules).text),
+      source: rec.source ?? { type: 'api' }
+    }
+    if (clean.title === rec.title && clean.body === rec.body) throw new UserError('Il ricordo non contiene segreti secondo le regole attuali')
+    const parsed = MemoryInput.parse(clean)
+    const newId = memoryId(parsed)
+    const team = this.requireTeam()
+    await team.append({ type: 'memory.add', memory: parsed })
+    const root = this.rootsById.get(rec.id)
+    if (root) await team.append({ type: 'root.set', id: newId, category: root.category })
+    await team.append({ type: 'memory.redact', id: rec.id, reason: 'ripulito: conteneva segreti o dati personali' })
+    this.privateStore.addSecurityLog({ source: { type: 'clean', ref: rec.id }, label: rec.title, kinds: applyFilter(`${rec.title}\n${rec.body}`, rules).redactions, omitted: [] })
+    await this.sync()
+    this.changed('security')
+    return { id: newId }
+  }
+
+  /** Registro di sicurezza locale (cosa è stato tolto, da dove, di che tipo). */
+  securityLog (limit = 200): SecurityLogEntry[] {
+    return this.privateStore.securityLog(limit)
+  }
+
+  /** Regole del filtro in vigore (default + team): le stesse usate dalla pipeline. */
+  private async filterRules () {
+    return mergeRules(await this.team?.config('filter.blockKeywords'), await this.team?.config('security.secretPatterns'), await this.team?.config('security.allow'))
   }
 
   // ═══════════════════════════════ Rete ═══════════════════════════════

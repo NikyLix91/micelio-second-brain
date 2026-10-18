@@ -24,7 +24,8 @@ import { checkNetwork } from '../net/diagnose'
 import { autostartOff, autostartOn, autostartStatus } from '../node/autostart'
 import { BOOTSTRAP_RE, dhtBootstrap, loadConfig, networkMode, updateConfig } from '../node/config'
 import { claudeSettingsFile, hookCommand, IntegrationError, mcpAddArgs, setupClaudeCode } from '../node/integrations'
-import type { IngestStatus, NetworkSettings, RootReviewResult, RootView } from '../node/micelio-node'
+import type { IngestStatus, NetworkSettings, RootReviewResult, RootView, SecurityFinding, SecurityRules, SecurityTestResult } from '../node/micelio-node'
+import type { SecurityLogEntry } from '../store/private-store'
 import type { Decision, InboxItem } from '../store/private-store'
 import { DaemonClient, DaemonError } from './client'
 
@@ -408,6 +409,67 @@ program.command('pin').description('fissa un ricordo importante: non decade e no
   .action(async (id: string) => { await client().call('POST', `/api/memories/${encodeURIComponent(id)}/pin`); console.log('Ricordo fissato') })
 program.command('unpin').description('sblocca un ricordo fissato').argument('<id>')
   .action(async (id: string) => { await client().call('DELETE', `/api/memories/${encodeURIComponent(id)}/pin`); console.log('Ricordo sbloccato') })
+
+// ═══════════════════════════════ Sicurezza (Fase 9) ═══════════════════════════════
+
+const security = program.command('security').alias('sicurezza').description('segreti e file sensibili: test | scan | clean | log | rules')
+
+/** Riepilogo "tipo ×n" delle redazioni. */
+const kindsText = (k: Record<string, number>) => Object.entries(k).map(([t, n]) => `${t.replace('secret:', '')}${n > 1 ? ` ×${n}` : ''}`).join(', ')
+
+security.command('test')
+  .description('banco di prova: cosa toglierebbe il filtro da un testo (o da stdin) e se un file è sensibile')
+  .argument('[testo...]', 'testo da provare (senza argomenti: legge stdin)')
+  .option('-f, --file <nome>', 'verifica anche se un file è considerato sensibile')
+  .action(async (words: string[], o: { file?: string }) => {
+    const text = words.length ? words.join(' ') : (process.stdin.isTTY ? '' : fs.readFileSync(0, 'utf8'))
+    const r = await client().call<SecurityTestResult>('POST', '/api/security/test', { text, file: o.file })
+    if (text) {
+      console.log(r.text)
+      console.log(`\nRedazioni: ${kindsText(r.redactions) || 'nessuna'}`)
+      if (r.blockedBy.length) console.log(`BLOCCATO (resterebbe privato): ${r.blockedBy.join(', ')}`)
+    }
+    if (o.file) console.log(r.sensitiveFile ? `File sensibile (${r.sensitiveFile}): il contenuto non entra mai in Micelio` : 'File non sensibile')
+  })
+
+security.command('scan')
+  .description('ricordi pubblicati che contengono segreti secondo le regole attuali')
+  .action(async () => {
+    const list = await client().call<SecurityFinding[]>('GET', '/api/security/scan')
+    if (!list.length) return console.log('Nessun ricordo con segreti o dati personali.')
+    for (const f of list) console.log(`  ${f.title}  (id:${f.id.slice(0, 12)}${f.root ? ', Radice' : ''})  → ${kindsText(f.kinds)}`)
+    console.log('\nPer ripulirne uno (admin): micelio security clean <id>')
+  })
+
+security.command('clean')
+  .description('ripulisce un ricordo (admin): pubblica la versione redatta e rimuove l\'originale')
+  .argument('<id>')
+  .action(async (id: string) => {
+    const r = await client().call<{ id: string }>('POST', `/api/security/clean/${encodeURIComponent(id)}`)
+    console.log(`✔ Ripulito: nuova versione id:${r.id.slice(0, 12)}, originale rimosso dalla vista di tutti`)
+  })
+
+security.command('log')
+  .description('registro locale: cosa il filtro ha tolto, da dove, di che tipo (mai i valori)')
+  .option('-n, --limit <n>', 'quante voci', '30')
+  .action(async (o: { limit: string }) => {
+    const list = await client().call<SecurityLogEntry[]>('GET', `/api/security/log?limit=${encodeURIComponent(o.limit)}`)
+    if (!list.length) return console.log('Registro vuoto.')
+    for (const e of list) {
+      const omitted = e.omitted.length ? ` · file omessi: ${e.omitted.join(', ')}` : ''
+      console.log(`${date(e.ts)}  [${e.source.type}] ${e.label.slice(0, 60)}  → ${kindsText(e.kinds) || '—'}${omitted}`)
+    }
+  })
+
+security.command('rules')
+  .description('regole in vigore (si modificano dalla schermata Sicurezza dell\'app, solo admin)')
+  .action(async () => {
+    const r = await client().call<SecurityRules>('GET', '/api/security/rules')
+    console.log('Riconosciuti sempre:')
+    for (const b of r.builtin) console.log(`  - ${b.label}`)
+    console.log(`\nFile sensibili di default: ${r.defaultSensitiveFiles.join('  ')}`)
+    console.log(`\nRegole del team:\n  pattern: ${r.team.secretPatterns.map((p) => p.name).join(', ') || 'nessuno'}\n  eccezioni: ${r.team.allow.join(', ') || 'nessuna'}\n  file sensibili aggiuntivi: ${r.team.sensitiveFiles.join(', ') || 'nessuno'}`)
+  })
 
 // ═══════════════════════════════ Radici (Fase 8) ═══════════════════════════════
 

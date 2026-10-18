@@ -286,6 +286,21 @@ Decisioni dell'utente (2026-10-18):
 
 ---
 
+## Fase 9 — Sicurezza dei segreti 🔄 (branch `feature/sicurezza-segreti`)
+
+Richiesta dell'utente (2026-10-18): un meccanismo di sicurezza, nel backend e con una schermata dedicata, per le informazioni sensibili come password e file `.env`. Il punto di partenza è quello che c'è già: la redazione dei segreti nel testo e i percorsi bloccati per i documenti.
+
+| # | Attività | Stato |
+|---|---|---|
+| 9.1 | **Riconoscimento dei segreti:** nuovi formati (Azure, Stripe, npm, PyPI, SendGrid, header Authorization/Bearer, chiavi private nei JSON); stringhe ad alta entropia (esclusi hash esadecimali); pattern ed eccezioni del team (`security.secretPatterns`, `security.allow`) | ✅ |
+| 9.2 | **File sensibili:** `.env*`, chiavi, `credentials`, kubeconfig, `.npmrc`… Nelle sessioni il contenuto letto o scritto da Claude viene tolto per intero (anche `cat .env` via Bash); nelle cartelle di documenti non si aprono; nel riassunto git si esclude il diff. Pattern aggiuntivi del team (`security.sensitiveFiles`) | ✅ |
+| 9.3 | **Registro di audit locale** (`private.db`): cosa è stato tolto, da dove, di che tipo. Mai il valore | ✅ |
+| 9.4 | **Scansione retroattiva** dei ricordi pubblicati e "ripulisci" (admin): versione redatta pubblicata, originale rimosso; una Radice resta Radice | ✅ |
+| 9.5 | **UI *Sicurezza*:** banco di prova (testo o nome di file), regole del team (modifica solo admin), registro, scansione. CLI `micelio security` | ⬜ |
+| 9.6 | Test e documentazione | ⬜ |
+
+---
+
 ## Registro
 
 | Data | Evento |

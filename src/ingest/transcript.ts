@@ -11,9 +11,14 @@
  * - i blocchi "thinking" (ragionamento interno) sono esclusi;
  * - le chiamate agli strumenti sono riassunte (nome + primi 200 caratteri dell'input);
  * - gli esiti degli strumenti sono troncati a 400 caratteri;
- * - i messaggi dei sotto-agenti (isSidechain) e di servizio (isMeta, comandi slash) sono esclusi.
+ * - i messaggi dei sotto-agenti (isSidechain) e di servizio (isMeta, comandi slash) sono esclusi;
+ * - FILE SENSIBILI (Fase 9): se uno strumento legge, scrive o modifica un `.env`, una chiave, un
+ *   file di credenziali… (vedi privacy/sensitive-files.ts) si tolgono PER INTERO sia il suo input
+ *   (es. il contenuto scritto) sia il suo esito (es. il contenuto letto). Resta solo una nota.
  */
 import fs from 'node:fs'
+import path from 'node:path'
+import { sensitiveInToolInput } from '../privacy/sensitive-files'
 
 /** Risultato dell'estrazione di (una parte di) una trascrizione. */
 export interface TranscriptExtract {
@@ -29,6 +34,8 @@ export interface TranscriptExtract {
    */
   firstAt: number | null
   lastAt: number | null
+  /** Nomi dei file sensibili il cui contenuto è stato tolto dalla parte nuova (per il registro). */
+  omitted: string[]
 }
 
 /** Limite di testo inviato al LLM: oltre, si tagliano le parti centrali. */
@@ -54,13 +61,34 @@ function blockText (block: any): string {
  * Estrae il testo della conversazione.
  * @param file     percorso del file .jsonl
  * @param fromLine numero di righe già elaborate in precedenza: si legge solo da lì in avanti
+ * @param sensitiveFiles pattern AGGIUNTIVI di file sensibili (quelli del team); i default valgono sempre
  */
-export function extractTranscript (file: string, fromLine = 0): TranscriptExtract {
+export function extractTranscript (file: string, fromLine = 0, sensitiveFiles: string[] = []): TranscriptExtract {
   const all = fs.readFileSync(file, 'utf8').split('\n').filter((l) => l.trim())
   const parts: string[] = []
   let userTurns = 0
   let firstAt: number | null = null
   let lastAt: number | null = null
+
+  // Strumenti che hanno toccato file sensibili, cercati in TUTTA la trascrizione: la richiesta
+  // (tool_use) e il suo esito (tool_result) possono cadere in capitoli diversi.
+  // Prefiltro testuale: si analizzano solo le righe che contengono chiamate a strumenti.
+  const sensitiveTools = new Map<string, string[]>() // id dello strumento → file sensibili
+  for (const raw of all) {
+    if (!raw.includes('"tool_use"')) continue
+    let row: any
+    try { row = JSON.parse(raw) } catch { continue }
+    for (const b of Array.isArray(row.message?.content) ? row.message.content : []) {
+      if (b?.type !== 'tool_use') continue
+      const files = sensitiveInToolInput(b.input, sensitiveFiles)
+      if (files.length) sensitiveTools.set(b.id, files)
+    }
+  }
+  const omitted = new Set<string>()
+  const note = (files: string[]) => {
+    for (const f of files) omitted.add(path.basename(f.replace(/\\/g, '/')))
+    return `[contenuto omesso: file sensibile ${files.map((f) => path.basename(f.replace(/\\/g, '/'))).join(', ')}]`
+  }
 
   for (const raw of all.slice(fromLine)) {
     let row: any
@@ -79,13 +107,19 @@ export function extractTranscript (file: string, fromLine = 0): TranscriptExtrac
       } else if (Array.isArray(content)) {
         for (const b of content) {
           if (b.type === 'text' && b.text?.trim()) { parts.push(`UTENTE: ${b.text.trim()}`); userTurns++ }
-          if (b.type === 'tool_result') parts.push(`  [esito strumento${b.is_error ? ' (errore)' : ''}] ${clip(blockText(b), TOOL_RESULT_CHARS)}`)
+          if (b.type === 'tool_result') {
+            const files = sensitiveTools.get(b.tool_use_id)
+            parts.push(`  [esito strumento${b.is_error ? ' (errore)' : ''}] ${files ? note(files) : clip(blockText(b), TOOL_RESULT_CHARS)}`)
+          }
         }
       }
     } else if (row.type === 'assistant' && Array.isArray(content)) {
       for (const b of content) {
         if (b.type === 'text' && b.text?.trim()) parts.push(`ASSISTENTE: ${b.text.trim()}`)
-        if (b.type === 'tool_use') parts.push(`  [strumento ${b.name}] ${clip(JSON.stringify(b.input ?? {}), TOOL_INPUT_CHARS)}`)
+        if (b.type === 'tool_use') {
+          const files = sensitiveTools.get(b.id)
+          parts.push(`  [strumento ${b.name}] ${files ? note(files) : clip(JSON.stringify(b.input ?? {}), TOOL_INPUT_CHARS)}`)
+        }
         // i blocchi "thinking" sono ragionamento interno: esclusi
       }
     }
@@ -96,5 +130,5 @@ export function extractTranscript (file: string, fromLine = 0): TranscriptExtrac
     // Inizio (il problema) + fine (la soluzione): la parte centrale è spesso tentativi intermedi.
     text = text.slice(0, MAX_CHARS * 0.25) + '\n[… parte centrale omessa …]\n' + text.slice(-MAX_CHARS * 0.75)
   }
-  return { text, lines: all.length, userTurns, firstAt, lastAt }
+  return { text, lines: all.length, userTurns, firstAt, lastAt, omitted: [...omitted] }
 }

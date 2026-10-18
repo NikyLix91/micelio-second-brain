@@ -21,9 +21,12 @@ import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import type { CodeRefs } from '../core/events'
+import { sensitiveMatch } from '../privacy/sensitive-files'
 
 /** Lunghezza massima del riassunto (resta una piccola parte del materiale da distillare). */
 export const MAX_SUMMARY_CHARS = 4000
+/** Hash dell'albero vuoto di git: il "prima" del primo commit di un repository. */
+const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'
 /** Dichiarazioni elencate al massimo per file. */
 const MAX_DECLS_PER_FILE = 8
 
@@ -67,7 +70,7 @@ export function declarationOf (line: string): string | null {
   return null
 }
 
-interface FileChange { status: string, file: string, added: string[], removed: string[] }
+interface FileChange { status: string, file: string, added: string[], removed: string[], sensitive?: boolean }
 
 /** Analizza l'output di `git diff -U0 --name-status`-like: dichiarazioni aggiunte/rimosse per file. */
 export function parseDiff (diff: string): Map<string, { added: Set<string>, removed: Set<string> }> {
@@ -155,10 +158,11 @@ export function repoInfo (cwd: string): RepoInfo | null {
  * @param since inizio del capitolo di sessione (ms)
  * @param until fine del capitolo (ms)
  * @param includeUncommitted aggiungere le modifiche non ancora committate (capitolo recente)
+ * @param sensitiveFiles pattern aggiuntivi di file sensibili (team): di quei file solo il nome, mai il diff
  * @returns null se la cartella non è un repository git; altrimenti identità del repository e, se
  *          nel periodo è cambiato qualcosa, il testo da aggiungere al materiale di distillazione
  */
-export function summarizeChanges (cwd: string, since: number, until: number, includeUncommitted: boolean): ChangeSummary | null {
+export function summarizeChanges (cwd: string, since: number, until: number, includeUncommitted: boolean, sensitiveFiles: string[] = []): ChangeSummary | null {
   const info = repoInfo(cwd)
   if (!info) return null
   const top = info.root
@@ -170,14 +174,16 @@ export function summarizeChanges (cwd: string, since: number, until: number, inc
   const log = git(top, ['log', `--since=${iso(since - 120_000)}`, `--until=${iso(until + 120_000)}`, '--no-merges', '--format=%H%x09%s'])
   commits = (log ?? '').split('\n').filter(Boolean).map((l) => { const [h, ...s] = l.split('\t'); return { hash: h, subject: s.join('\t') } })
   if (commits.length > 0) {
-    // Intervallo: dal genitore del commit più vecchio al più recente (o il solo commit, se è il primo del repo)
+    // Intervallo: dal genitore del commit più vecchio al più recente. Se il più vecchio è il PRIMO
+    // commit del repository (nessun genitore) si confronta con l'albero vuoto di git: `<hash>^!`
+    // non funziona su un commit radice e il riassunto restava vuoto.
     const oldest = commits[commits.length - 1].hash
-    const range = git(top, ['rev-parse', '--verify', '--quiet', `${oldest}^`]) ? [`${oldest}^..${commits[0].hash}`] : [`${commits[0].hash}^!`]
+    const range = git(top, ['rev-parse', '--verify', '--quiet', `${oldest}^`]) ? [`${oldest}^..${commits[0].hash}`] : [EMPTY_TREE, commits[0].hash]
     const names = parseNameStatus(git(top, ['diff', '--name-status', ...range]) ?? '')
     const decls = parseDiff(git(top, ['diff', '-U0', ...range]) ?? '')
     parts.push({
       title: `Commit nel periodo (${commits.length}): ${commits.slice(0, 6).map((c) => `${c.hash.slice(0, 8)} "${c.subject}"`).join('; ')}`,
-      changes: toChanges(names, decls)
+      changes: toChanges(names, decls, sensitiveFiles)
     })
   }
 
@@ -186,7 +192,7 @@ export function summarizeChanges (cwd: string, since: number, until: number, inc
     const names = parseNameStatus(git(top, ['diff', '--name-status', 'HEAD']) ?? '')
     for (const f of (git(top, ['ls-files', '--others', '--exclude-standard']) ?? '').split('\n').filter(Boolean)) names.set(f, 'A')
     const decls = parseDiff(git(top, ['diff', '-U0', 'HEAD']) ?? '')
-    if (names.size > 0) parts.push({ title: 'Modifiche non ancora committate', changes: toChanges(names, decls) })
+    if (names.size > 0) parts.push({ title: 'Modifiche non ancora committate', changes: toChanges(names, decls, sensitiveFiles) })
   }
 
   const files = [...new Set(parts.flatMap((p) => p.changes.map((c) => c.file)))]
@@ -201,7 +207,7 @@ export function summarizeChanges (cwd: string, since: number, until: number, inc
         c.added.length ? `+ ${c.added.slice(0, MAX_DECLS_PER_FILE).join(', ')}` : '',
         c.removed.length ? `- ${c.removed.slice(0, MAX_DECLS_PER_FILE).join(', ')}` : ''
       ].filter(Boolean).join(' | ')
-      lines.push(`  ${c.file} (${STATUS_LABEL[c.status] ?? c.status})${detail ? ': ' + detail : ''}`)
+      lines.push(`  ${c.file} (${STATUS_LABEL[c.status] ?? c.status}${c.sensitive ? ', file sensibile: contenuto escluso' : ''})${detail ? ': ' + detail : ''}`)
     }
   }
   const text = lines.join('\n')
@@ -214,8 +220,11 @@ export function summarizeChanges (cwd: string, since: number, until: number, inc
 }
 
 /** Unisce stato dei file e dichiarazioni; i file con dichiarazioni vengono prima. */
-function toChanges (names: Map<string, string>, decls: Map<string, { added: Set<string>, removed: Set<string> }>): FileChange[] {
-  return [...names].map(([file, status]) => ({ file, status, added: [...(decls.get(file)?.added ?? [])], removed: [...(decls.get(file)?.removed ?? [])] }))
+function toChanges (names: Map<string, string>, decls: Map<string, { added: Set<string>, removed: Set<string> }>, sensitiveFiles: string[] = []): FileChange[] {
+  return [...names].map(([file, status]) => sensitiveMatch(file, sensitiveFiles)
+    // File sensibile (.env, chiavi…): solo il nome, nessuna riga del diff (Fase 9)
+    ? { file, status, added: [], removed: [], sensitive: true }
+    : { file, status, added: [...(decls.get(file)?.added ?? [])], removed: [...(decls.get(file)?.removed ?? [])] })
     .sort((a, b) => (b.added.length + b.removed.length) - (a.added.length + a.removed.length))
     .slice(0, 40)
 }

@@ -62,6 +62,8 @@ CREATE TABLE IF NOT EXISTS documents (
 CREATE INDEX IF NOT EXISTS documents_hash ON documents(hash);
 -- Fase 5: uso locale dei ricordi (contatori cumulativi) e quanto è già stato pubblicato al team.
 CREATE TABLE IF NOT EXISTS usage_local (id TEXT PRIMARY KEY, count INTEGER NOT NULL, last INTEGER NOT NULL, reported INTEGER NOT NULL DEFAULT 0);
+-- Registro di sicurezza (Fase 9): cosa il filtro ha tolto, da dove, di che tipo. MAI il valore.
+CREATE TABLE IF NOT EXISTS security_log (id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, source_type TEXT NOT NULL, source_ref TEXT, label TEXT NOT NULL, kinds TEXT NOT NULL, omitted TEXT NOT NULL);
 -- Radici suggerite dal distillatore (Fase 8): restano qui finché l'utente non le promuove o le ignora.
 CREATE TABLE IF NOT EXISTS root_suggestions (id TEXT PRIMARY KEY, category TEXT NOT NULL, title TEXT NOT NULL, created INTEGER NOT NULL);
 `
@@ -85,6 +87,19 @@ export interface DocumentRecord {
   chunksDone: number
   memories: number
   updated: number
+}
+
+/** Voce del registro di sicurezza (vedi addSecurityLog). */
+export interface SecurityLogEntry {
+  id: number
+  ts: number
+  source: SourceRef
+  /** Descrizione del contenuto (es. prima domanda della sessione, nome del documento). */
+  label: string
+  /** Redazioni per tipo, es. { "secret:jwt": 2 }. */
+  kinds: Record<string, number>
+  /** File sensibili il cui contenuto è stato tolto per intero. */
+  omitted: string[]
 }
 
 export interface InboxItem { id: string, created: number, expires: number, source: SourceRef, reason: string, memory: MemoryData }
@@ -219,6 +234,24 @@ export class PrivateStore {
   getDocument (file: string): DocumentRecord | null {
     const r = this.db.prepare('SELECT * FROM documents WHERE path = ?').get(file) as any
     return r ? rowToDocument(r) : null
+  }
+
+  // ── Registro di sicurezza (Fase 9) ─────────────────────────────────────────────
+
+  /**
+   * Registra cosa il filtro ha tolto da un contenuto. Si salvano solo TIPI e conteggi (es.
+   * { "secret:github-token": 1 }) e i NOMI dei file sensibili omessi: mai i valori.
+   */
+  addSecurityLog (e: { source: SourceRef, label: string, kinds: Record<string, number>, omitted: string[] }, now = Date.now()): void {
+    this.db.prepare('INSERT INTO security_log (ts, source_type, source_ref, label, kinds, omitted) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(now, e.source.type, e.source.ref ?? null, e.label.slice(0, 200), JSON.stringify(e.kinds), JSON.stringify(e.omitted))
+  }
+
+  /** Voci del registro di sicurezza, dalla più recente. */
+  securityLog (limit = 200): SecurityLogEntry[] {
+    return (this.db.prepare('SELECT * FROM security_log ORDER BY id DESC LIMIT ?').all(limit) as any[]).map((r) => ({
+      id: r.id, ts: r.ts, source: { type: r.source_type, ref: r.source_ref ?? undefined }, label: r.label, kinds: JSON.parse(r.kinds), omitted: JSON.parse(r.omitted)
+    }))
   }
 
   // ── Radici suggerite (Fase 8) ──────────────────────────────────────────────────

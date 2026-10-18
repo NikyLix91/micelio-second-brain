@@ -35,6 +35,7 @@ import { LlmBudgetExceededError, LlmUnavailableError } from '../llm/types'
 import type { LlmRunner } from '../llm/runner'
 import { applyFilter, type FilterRules } from '../privacy/filter'
 import { isBlockedPath } from '../privacy/paths'
+import { sensitiveMatch } from '../privacy/sensitive-files'
 import type { DocumentRecord, InboxItem, Job, PrivateStore, SourceRef } from '../store/private-store'
 import { CHUNK_CHARS, chunkText, extractText, MAX_CHUNKS, mimeOf } from './extract'
 import { CLASSIFY_SYSTEM, Classification, Distilled, distillSystem } from './prompts'
@@ -67,6 +68,8 @@ export interface PipelineDeps {
   blockedPaths: () => Promise<string[]>
   /** Lingua dei ricordi del team (`memory.language`). */
   language: () => Promise<string>
+  /** Pattern AGGIUNTIVI di file sensibili del team (`security.sensitiveFiles`); i default valgono sempre. */
+  sensitiveFiles?: () => Promise<string[]>
   /** Il distillatore suggerisce una Radice (Fase 8): la decide l'utente (vista Radici). */
   suggestRoot?: (id: string, category: RootCategory, title: string) => void
   /** Promozione diretta a Radice: ricordi dalle cartelle di documenti "di Radici". */
@@ -77,7 +80,7 @@ export interface PipelineDeps {
   gitChanges?: () => boolean
   log: (msg: string) => void
   /** Avvisa chi osserva il nodo (UI) che una parte dello stato privato è cambiata. */
-  notify?: (topic: 'inbox' | 'jobs' | 'decisions') => void
+  notify?: (topic: 'inbox' | 'jobs' | 'decisions' | 'security') => void
 }
 
 /** Esito di un salvataggio esplicito, restituito a CLI e MCP. */
@@ -106,11 +109,12 @@ export function route (c: Classification): Route {
 }
 
 /** Applica il filtro a un ricordo già strutturato: blocco sull'insieme, redazione campo per campo. */
-export function filterMemory (m: MemoryData, rules: FilterRules): { blocked: boolean, reasons: string[], memory: MemoryData } {
+export function filterMemory (m: MemoryData, rules: FilterRules): { blocked: boolean, reasons: string[], memory: MemoryData, redactions: Record<string, number> } {
   const whole = applyFilter(`${m.title}\n${m.body}\n${m.tags.join(' ')}`, rules)
   return {
     blocked: whole.blocked,
     reasons: whole.reasons,
+    redactions: whole.redactions,
     memory: {
       ...m,
       title: applyFilter(m.title, rules).text,
@@ -220,7 +224,8 @@ export class IngestPipeline {
     const { sessionId, transcriptPath, cwd } = job.payload as { sessionId: string, transcriptPath: string, cwd: string }
     if (!existsSync(transcriptPath)) return log(`trascrizione assente: ${transcriptPath}`)
 
-    const ex = extractTranscript(transcriptPath, store.sessionLines(sessionId))
+    const sensitive = (await this.deps.sensitiveFiles?.()) ?? []
+    const ex = extractTranscript(transcriptPath, store.sessionLines(sessionId), sensitive)
     const source: SourceRef = { type: 'claude-code', ref: sessionId, cwd }
     // Il progresso va salvato solo quando la sessione è stata davvero gestita: se lanciamo un
     // errore (budget, LLM) la parte nuova verrà rielaborata al prossimo tentativo.
@@ -230,12 +235,13 @@ export class IngestPipeline {
 
     // 0) Modifiche al codice durante il capitolo (commit + lavoro non committato), se la cartella
     //    è un repository git. Vanno in coda alla conversazione e passano dallo stesso filtro.
-    const changes = this.codeChanges(cwd, ex.firstAt, ex.lastAt)
+    const changes = this.codeChanges(cwd, ex.firstAt, ex.lastAt, sensitive)
     const material = ex.text + changes.suffix
 
     // 1) Filtro deterministico: se blocca, il contenuto non lascia mai la macchina.
     const rules = await this.deps.rules()
     const filtered = applyFilter(material, rules)
+    this.audit(source, firstUserLine(ex.text), filtered.redactions, ex.omitted)
     if (filtered.blocked) {
       this.logDecision(source, 'blocked', `parole chiave: ${filtered.reasons.join(', ')}`, firstUserLine(ex.text))
       return done()
@@ -294,7 +300,7 @@ export class IngestPipeline {
    * Le modifiche non committate si includono solo se il capitolo è recente: altrimenti sarebbero
    * lavoro fatto dopo, in un altro momento (es. recupero di una sessione vecchia).
    */
-  private codeChanges (cwd: string, firstAt: number | null, lastAt: number | null): { suffix: string, info: RepoInfo | null, summary: ChangeSummary | null } {
+  private codeChanges (cwd: string, firstAt: number | null, lastAt: number | null, sensitive: string[] = []): { suffix: string, info: RepoInfo | null, summary: ChangeSummary | null } {
     const none = { suffix: '', info: null, summary: null }
     if (!cwd || !existsSync(cwd)) return none
     try {
@@ -302,7 +308,7 @@ export class IngestPipeline {
       const info = repoInfo(cwd)
       if (!info || this.deps.gitChanges?.() === false || firstAt === null || lastAt === null) return { ...none, info }
       const recent = Date.now() - lastAt < UNCOMMITTED_WINDOW_MS
-      const summary = summarizeChanges(cwd, firstAt, lastAt, recent)
+      const summary = summarizeChanges(cwd, firstAt, lastAt, recent, sensitive)
       return { suffix: summary?.text ? '\n\n' + summary.text : '', info, summary }
     } catch (e) {
       this.deps.log(`riassunto git non disponibile per ${cwd}: ${(e as Error).message}`)
@@ -350,6 +356,13 @@ export class IngestPipeline {
       this.logDecision(source, 'blocked', `percorso protetto (${blockedBy})`, name)
       return save('blocked', 0, 0)
     }
+    // File sensibile (.env, chiavi, credenziali…): non si apre nemmeno (Fase 9).
+    const sensitiveBy = sensitiveMatch(path.relative(folder, file), (await this.deps.sensitiveFiles?.()) ?? [])
+    if (sensitiveBy) {
+      this.logDecision(source, 'blocked', `file sensibile (${sensitiveBy})`, name)
+      this.audit(source, name, {}, [name])
+      return save('blocked', 0, 0)
+    }
     if (!existsSync(file)) return save('removed', 0, 0)
 
     let text: string
@@ -369,6 +382,7 @@ export class IngestPipeline {
       // Intestazione: aiuta il modello a capire che è un documento e quale parte sta leggendo.
       const header = `DOCUMENTO: ${name}${chunks.length > 1 ? ` (parte ${i + 1} di ${chunks.length})` : ''}\n\n`
       const filtered = applyFilter(header + chunks[i], rules)
+      this.audit(source, `${name}${chunks.length > 1 ? ` · parte ${i + 1}` : ''}`, filtered.redactions, [])
       if (filtered.blocked) {
         this.logDecision(source, 'blocked', `parole chiave: ${filtered.reasons.join(', ')}`, `${name} · parte ${i + 1}`)
         save('queued', i + 1, memories)
@@ -424,6 +438,7 @@ export class IngestPipeline {
     const rules = await this.deps.rules()
 
     const fm = filterMemory(memory, rules)
+    this.audit(source, memory.title, fm.redactions, [])
     if (fm.blocked) {
       const reason = `contiene argomenti personali o HR (${fm.reasons.join(', ')})`
       this.logDecision(source, 'blocked', reason, memory.title)
@@ -520,6 +535,13 @@ export class IngestPipeline {
     const item = this.deps.store.getInbox(id)
     if (!item) throw new InboxNotFoundError(`Nessun elemento in inbox con id ${id}`)
     return item
+  }
+
+  /** Registro di sicurezza: solo se il filtro ha davvero tolto qualcosa (tipi e nomi, mai valori). */
+  private audit (source: SourceRef, label: string, kinds: Record<string, number>, omitted: string[]): void {
+    if (Object.keys(kinds).length === 0 && omitted.length === 0) return
+    this.deps.store.addSecurityLog({ source, label, kinds, omitted })
+    this.deps.notify?.('security')
   }
 
   // ═══════════════════════════════ Chiamate LLM ═══════════════════════════════

@@ -54,6 +54,14 @@ const RootQuery = z.object({
   files: z.string().max(5000).optional(),
   q: z.string().max(500).optional()
 })
+/** Regole di sicurezza del team (Fase 9): ogni campo è facoltativo e sostituisce l'elenco intero. */
+const SecurityRulesBody = z.object({
+  secretPatterns: z.array(z.object({ name: z.string().max(60), regex: z.string().max(300) })).max(100).optional(),
+  allow: z.array(z.string().max(300)).max(200).optional(),
+  sensitiveFiles: z.array(z.string().max(200)).max(200).optional()
+})
+/** Banco di prova: un testo (fino a 100 kB) e/o un nome di file. */
+const SecurityTestBody = z.object({ text: z.string().max(100_000).default(''), file: z.string().max(500).optional() })
 const RedactBody = z.object({ reason: z.string().max(500).default('') }).default({ reason: '' })
 const VoteBody = z.object({ delta: z.union([z.literal(-1), z.literal(0), z.literal(1)]) })
 const SetupBody = z.object({ hook: z.boolean().default(true) }).default({ hook: true })
@@ -192,6 +200,47 @@ export class ApiController {
   async unpin (@Param('id') id: string) {
     await this.node.pin(id, false)
     return this.node.detail(id)
+  }
+
+  // ═══════════════════════════ Sicurezza (Fase 9) ═══════════════════════════
+
+  /** Regole in vigore: riconoscitori fissi, file sensibili di default, regole del team. */
+  @Get('security/rules')
+  securityRules () {
+    return this.node.securityRules()
+  }
+
+  /** Aggiorna le regole del team (solo admin): pattern di segreti, eccezioni, file sensibili. */
+  @Put('security/rules')
+  setSecurityRules (@Body() body: unknown) {
+    return this.node.setSecurityRules(SecurityRulesBody.parse(body))
+  }
+
+  /** Banco di prova: cosa farebbe il filtro con un testo e/o un nome di file. Non salva nulla. */
+  @Post('security/test')
+  @HttpCode(200)
+  securityTest (@Body() body: unknown) {
+    const { text, file } = SecurityTestBody.parse(body ?? {})
+    return this.node.securityTest(text, file)
+  }
+
+  /** Scansione dei ricordi pubblicati con le regole attuali. */
+  @Get('security/scan')
+  securityScan () {
+    return this.node.securityScan()
+  }
+
+  /** Ripulisce un ricordo (solo admin): versione redatta pubblicata, originale rimosso. */
+  @Post('security/clean/:id')
+  @HttpCode(200)
+  securityClean (@Param('id') id: string) {
+    return this.node.securityClean(id)
+  }
+
+  /** Registro di sicurezza locale. */
+  @Get('security/log')
+  securityLog (@Query('limit') limit?: string) {
+    return this.node.securityLog(limit ? Math.min(1000, Math.max(1, Number(limit) || 200)) : 200)
   }
 
   // ═══════════════════════════════ Radici (Fase 8) ═══════════════════════════════
