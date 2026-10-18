@@ -20,6 +20,7 @@ import { MEMORY_KINDS, ROOT_CATEGORIES } from '../core/events'
 import type { MemberRecord, NodeStatus, RecallHit } from '../core/model'
 import { nodePaths, type NodePaths } from '../core/paths'
 import type { ExplicitOutcome } from '../ingest/pipeline'
+import type { DistillQuality } from '../ingest/quality'
 import { checkNetwork } from '../net/diagnose'
 import { autostartOff, autostartOn, autostartStatus } from '../node/autostart'
 import { BOOTSTRAP_RE, dhtBootstrap, loadConfig, networkMode, updateConfig } from '../node/config'
@@ -325,7 +326,7 @@ members.command('promote').description('promuove un membro ad admin e indexer (s
 const team = program.command('team').description('impostazioni condivise del team')
 team.command('config')
   .description('imposta una configurazione di team (solo admin), es. memory.language en')
-  .argument('<key>', 'memory.language | filter.blockKeywords')
+  .argument('<key>', 'memory.language | filter.blockKeywords | distill.maxMemories')
   .argument('<value>', 'valore; JSON accettato (es. \'["parola1","parola2"]\')')
   .action(async (key: string, value: string) => {
     // Se il valore è JSON valido lo usiamo come tale (array, numeri…), altrimenti come stringa.
@@ -333,6 +334,21 @@ team.command('config')
     try { parsed = JSON.parse(value) } catch {}
     await client().call('POST', '/api/team/config', { key, value: parsed })
     console.log(`${key} = ${JSON.stringify(parsed)} (replicato a tutto il team)`)
+  })
+
+/** Qualità della distillazione: serve all'admin per decidere `distill.maxMemories`. */
+program.command('quality')
+  .description('qualità della distillazione per posizione nel distillato, e indicazione sul limite di ricordi')
+  .action(async () => {
+    const q = await client().call<DistillQuality>('GET', '/api/distill/quality')
+    const pct = (x: number) => `${Math.round(x * 100)}%`.padStart(5)
+    console.log(`Limite in vigore: ${q.maxMemories} ricordi per distillazione · ${q.total} ricordi distillati con posizione nota`)
+    console.log(`Saturazione: ${q.saturation.atLimit}/${q.saturation.batches} distillazioni hanno raggiunto il limite (${Math.round(q.saturation.rate * 100)}%)\n`)
+    console.log('Posizione      n  utili inutili rimossi mai usati punteggio  (recenti)')
+    for (const b of q.buckets) console.log(`${b.label.padEnd(12)} ${String(b.n).padStart(4)} ${pct(b.useful)}   ${pct(b.notUseful)}   ${pct(b.removed)}     ${pct(b.unused)}     ${b.score.toFixed(2).padStart(5)}  (${b.young})`)
+    const verb = { raise: 'ALZARE', keep: 'TENERE', lower: 'ABBASSARE', unknown: 'DATI INSUFFICIENTI' }[q.advice.action]
+    console.log(`\nIndicazione: ${verb}. ${q.advice.reason}`)
+    console.log('Per cambiarlo (admin): micelio team config distill.maxMemories <n>')
   })
 
 // ═══════════════════════════════ Ricordi ═══════════════════════════════

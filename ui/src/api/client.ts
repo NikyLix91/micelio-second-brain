@@ -10,13 +10,14 @@
 import type { CodeRefs, MemoryData } from '../../../src/core/events'
 import type { InviteRecord, MemberRecord, NodeStatus, RecallHit } from '../../../src/core/model'
 import type { ExplicitOutcome } from '../../../src/ingest/pipeline'
+import type { DistillQuality } from '../../../src/ingest/quality'
 import type { Graph, GraphLink, GraphNode } from '../../../src/graph/constellation'
 import type { IngestStatus, NetworkSettings, NodeSettings, RootReviewResult, RootView, StorageReport } from '../../../src/node/micelio-node'
 import type { NetworkCheck } from '../../../src/net/diagnose'
 import type { Decision, InboxItem } from '../../../src/store/private-store'
 import { getToken } from './auth'
 
-export type { Graph, GraphLink, GraphNode }
+export type { DistillQuality, Graph, GraphLink, GraphNode }
 export type { NetworkCheck, NetworkSettings, RootReviewResult, RootView, StorageReport }
 export type { CodeRefs, Decision, ExplicitOutcome, InboxItem, IngestStatus, InviteRecord, MemberRecord, MemoryData, NodeSettings, NodeStatus, RecallHit }
 
@@ -51,7 +52,8 @@ export const api = {
   status: () => call<NodeStatus>('GET', '/api/status'),
   init: (team: string, name: string) => call<NodeStatus>('POST', '/api/team/init', { team, name }),
   join: (code: string, name: string) => call<NodeStatus>('POST', '/api/team/join', { code, name }),
-  teamConfig: () => call<{ language: string, blockKeywords: string[] }>('GET', '/api/team/config'),
+  teamConfig: () => call<{ language: string, blockKeywords: string[], maxMemories: number }>('GET', '/api/team/config'),
+  distillQuality: () => call<DistillQuality>('GET', '/api/distill/quality'),
   setTeamConfig: (key: string, value: unknown) => call<{ ok: true }>('POST', '/api/team/config', { key, value }),
   members: () => call<MemberRecord[]>('GET', '/api/members'),
   removeMember: (key: string) => call<MemberRecord>('POST', `/api/members/${enc(key)}/remove`),

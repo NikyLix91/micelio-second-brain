@@ -442,6 +442,12 @@ export class ApiController {
     return this.node.storage()
   }
 
+  /** Qualità della distillazione: metriche per fascia di posizione e indicazione sul limite. */
+  @Get('distill/quality')
+  distillQuality () {
+    return this.node.distillQuality()
+  }
+
   /** Configurazione condivisa del team (lingua, parole chiave del filtro). */
   @Get('team/config')
   teamConfig () {

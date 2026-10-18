@@ -50,6 +50,7 @@ import { MemoryIndex } from '../store/memory-index'
 import { type Decision, type DocumentRecord, type InboxItem, PrivateStore } from '../store/private-store'
 import { BOOTSTRAP_RE, canonicalPath, type Config, dhtBootstrap, isInsideWatched, loadConfig, loadState, networkMode, parseBootstrap, saveState, updateConfig } from './config'
 import { checkNetwork, type NetworkCheck } from '../net/diagnose'
+import { distillQuality, type DistillQuality, MAX_MEMORIES_RANGE, maxMemoriesOf } from '../ingest/quality'
 import { reviewRoots } from '../roots/review'
 
 export interface MicelioNodeOptions {
@@ -269,6 +270,7 @@ export class MicelioNode extends EventEmitter {
       rules: async () => mergeRules(await this.team?.config('filter.blockKeywords')),
       blockedPaths: async () => mergeBlockedPaths(await this.team?.config('filter.blockedPaths')),
       language: async () => (await this.team?.config<string>('memory.language')) ?? 'it',
+      maxMemories: async () => maxMemoriesOf(await this.team?.config('distill.maxMemories')),
       gitChanges: () => this.config.watch.gitChanges,
       log: this.log,
       notify: (topic) => this.changed(topic),
@@ -435,6 +437,10 @@ export class MicelioNode extends EventEmitter {
    * Chiavi note: `memory.language` (es. "it", "en"), `filter.blockKeywords` (array di stringhe).
    */
   async setTeamConfig (key: string, value: unknown): Promise<void> {
+    // Validazione delle chiavi note: un valore sbagliato vale per tutto il team
+    if (key === 'distill.maxMemories' && maxMemoriesOf(value) !== value) {
+      throw new UserError(`distill.maxMemories: un intero fra ${MAX_MEMORIES_RANGE.min} e ${MAX_MEMORIES_RANGE.max}`)
+    }
     await this.requireAdmin()
     await this.requireTeam().append({ type: 'team.config', key, value })
     await this.sync()
@@ -442,13 +448,27 @@ export class MicelioNode extends EventEmitter {
   }
 
   /** Configurazione condivisa del team (lingua, parole chiave del filtro), per la UI. */
-  async teamConfig (): Promise<{ language: string, blockKeywords: string[] }> {
+  async teamConfig (): Promise<{ language: string, blockKeywords: string[], maxMemories: number }> {
     const team = this.requireTeam()
     const kw = await team.config<unknown>('filter.blockKeywords')
     return {
       language: (await team.config<string>('memory.language')) ?? 'it',
-      blockKeywords: Array.isArray(kw) ? kw.filter((k): k is string => typeof k === 'string') : []
+      blockKeywords: Array.isArray(kw) ? kw.filter((k): k is string => typeof k === 'string') : [],
+      maxMemories: maxMemoriesOf(await team.config('distill.maxMemories'))
     }
+  }
+
+  /**
+   * Qualità della distillazione (Fase 10): per fascia di posizione nel distillato, quanti ricordi
+   * risultano utili, inutili, rimossi o mai usati, la saturazione del limite e un'indicazione per
+   * l'admin. Calcolata sulla vista replicata: la stessa su ogni PC.
+   */
+  async distillQuality (now = Date.now()): Promise<DistillQuality> {
+    const team = this.requireTeam()
+    const signals = this.index.signals()
+    const active = this.index.all().map((m) => ({ ts: m.ts, status: 'active' as const, source: m.source, votes: signals.get(m.id)?.votes ?? 0, uses: signals.get(m.id)?.uses ?? 0 }))
+    const inactive = this.inactive.map((m) => ({ ts: m.ts, status: (m.status ?? 'archived') as 'superseded' | 'archived' | 'redacted', source: m.source, votes: 0, uses: 0 }))
+    return distillQuality([...active, ...inactive], maxMemoriesOf(await team.config('distill.maxMemories')), now)
   }
 
   // ═════════════════════════════════ Ricordi ═══════════════════════════════════

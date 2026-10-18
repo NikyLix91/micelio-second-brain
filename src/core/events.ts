@@ -100,7 +100,13 @@ export const MemoryInput = z.object({
      * Solo per i ricordi distillati da una sessione di CODICE: dove guardare per approfondire
      * (progetto, repository, branch, file, simboli, commit). Vedi CodeRefs.
      */
-    code: CodeRefs.optional()
+    code: CodeRefs.optional(),
+    /**
+     * Solo per i ricordi DISTILLATI (Fase 10): posizione nel distillato (1 = il primo) e quanti
+     * ricordi aveva proposto il modello. Servono alle metriche di qualità (src/ingest/quality.ts).
+     */
+    rank: z.number().int().min(1).max(100).optional(),
+    batch: z.number().int().min(0).max(100).optional()
   }).default({ type: 'api' })
 })
 /** Forma accettata in ingresso (campi con default opzionali). */

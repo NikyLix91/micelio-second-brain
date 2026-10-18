@@ -199,6 +199,15 @@ describe('daemon', () => {
     expect((await api('GET', '/api/roots')).data).toEqual([])
   })
 
+  it('limite di ricordi distillati: impostazione di team validata e metriche di qualità', async () => {
+    expect((await api('POST', '/api/team/config', { key: 'distill.maxMemories', value: 30 })).status).toBe(400)
+    expect((await api('POST', '/api/team/config', { key: 'distill.maxMemories', value: 8 })).status).toBeLessThan(300)
+    expect((await api('GET', '/api/team/config')).data.maxMemories).toBe(8)
+    const q = await api('GET', '/api/distill/quality')
+    expect(q.data).toMatchObject({ maxMemories: 8, advice: { action: 'unknown' } })
+    expect(q.data.buckets.map((b: any) => b.label)).toEqual(['1ª', '2ª', '3ª', '4ª–5ª', '6ª–10ª'])
+  })
+
   it('dopo un riavvio il nodo ritrova team e ricordi', async () => {
     await app.close()
     await start()
