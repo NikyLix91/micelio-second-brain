@@ -136,6 +136,17 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent-soft
 table { border-collapse: collapse; width: 100%; }
 th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
 th { color: var(--muted); font-weight: 500; font-size: 12px; }
+th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Spazio occupato: barra a segmenti, un colore per membro (Stato del nodo) */
+.storage-bar { display: flex; height: 14px; border-radius: 999px; overflow: hidden; background: var(--surface-2); }
+.storage-bar > div { height: 100%; min-width: 2px; }
+.storage-bar > div + div { border-left: 1px solid var(--bg, #000); }
+
+/* Scelta della rete (Impostazioni) */
+.choice { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; color: var(--text); margin: 0; }
+.choice.selected { border-color: var(--accent); background: var(--accent-soft); }
+.choice input { width: auto; margin-top: 3px; }
 
 .tree { list-style: none; padding-left: 18px; margin: 0; }
 .tree.root { padding-left: 0; }

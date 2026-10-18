@@ -39,7 +39,13 @@ const LlmSettingsBody = z.object({
   distillModel: z.string().min(1).max(100).optional(),
   dailyBudget: z.number().int().min(0).max(100_000).optional()
 })
-const RedactBody = z.object({ reason: z.string().max(500).default('') }).default({ reason: '' })
+/** Scelta della DHT; il formato dei nodi è controllato da MicelioNode.setNetwork. */
+const NetworkBody = z.object({
+  mode: z.enum(['public', 'private']),
+  bootstrap: z.array(z.string().max(300)).max(10).optional()
+})
+const NetworkCheckBody = NetworkBody.partial().default({})
+const RedactBody =z.object({ reason: z.string().max(500).default('') }).default({ reason: '' })
 const VoteBody = z.object({ delta: z.union([z.literal(-1), z.literal(0), z.literal(1)]) })
 const SetupBody = z.object({ hook: z.boolean().default(true) }).default({ hook: true })
 
@@ -340,6 +346,36 @@ export class ApiController {
   @Put('settings/llm')
   updateLlm (@Body() body: unknown) {
     return this.node.updateLlmSettings(LlmSettingsBody.parse(body))
+  }
+
+  /** Rete P2P in uso: DHT pubblica o privata (vedi server/README.md). */
+  @Get('network')
+  network () {
+    return this.node.networkSettings()
+  }
+
+  /**
+   * Sceglie la DHT e la applica subito (il nodo si ricollega). Tutti i membri devono usare la
+   * stessa: la UI lo ricorda prima di confermare.
+   */
+  @Put('network')
+  setNetwork (@Body() body: unknown) {
+    const { mode, bootstrap } = NetworkBody.parse(body)
+    return this.node.setNetwork(mode, bootstrap)
+  }
+
+  /** Diagnosi di una DHT (quella indicata, o quella in uso) senza cambiare nulla. Fino a ~20 s. */
+  @Post('network/check')
+  @HttpCode(200)
+  checkNetwork (@Body() body: unknown) {
+    const { mode, bootstrap } = NetworkCheckBody.parse(body ?? {})
+    return this.node.checkNetwork(mode, bootstrap)
+  }
+
+  /** Spazio occupato su disco e quota del log del team per membro. */
+  @Get('storage')
+  storage () {
+    return this.node.storage()
   }
 
   /** Configurazione condivisa del team (lingua, parole chiave del filtro). */

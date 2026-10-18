@@ -146,8 +146,7 @@ cat <<EOF
    o con un port forwarding verso questa macchina.
 
 2) Su OGNI PC del team (tutti devono usare lo stesso server):
-     micelio network set $HOST:$PORT
-     micelio stop && micelio start
+     micelio network set $HOST:$PORT      (oppure dall'app: Impostazioni > Rete)
      micelio network check
 
 Log del servizio:  journalctl -u micelio-server -f

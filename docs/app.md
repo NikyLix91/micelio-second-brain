@@ -90,10 +90,15 @@ Solo i casi dubbi: per ognuno il motivo e la scadenza. Le azioni sono *Pubblica 
 
 Il nodo a colpo d'occhio: ruolo, peer connessi, ricordi, LLM e budget di oggi, coda della raccolta automatica, inbox.
 
+**Spazio occupato** mostra:
+- il totale su questo disco, diviso per componente;
+- la quota del log del team che viene da ciascun membro, con una barra a segmenti e una tabella. I colori dei membri sono gli stessi del Nucleo e della Mappa.
+
 ### Registro privato e Impostazioni
 
 - **Registro privato:** cosa non è andato al team e perché.
 - **Impostazioni:**
+  - **Rete:** DHT pubblica o DHT privata del team, con i nodi di avvio. *Verifica* prova la scelta senza applicarla; *Applica* chiede conferma e ricollega subito il nodo;
   - cartelle abilitate alla raccolta automatica (nell'app c'è il selettore di cartelle);
   - modelli e budget LLM, con effetto immediato;
   - configurazione di Claude Code (MCP + hook), con conferma, perché modifica il tuo profilo.

@@ -1,6 +1,6 @@
 /**
- * @file Impostazioni locali (attività 3.9): cartelle abilitate alla raccolta, modelli e budget
- * LLM, configurazione di Claude Code. Sono impostazioni di QUESTO nodo (config.json), non del team.
+ * @file Impostazioni locali (attività 3.9): rete P2P (DHT pubblica o privata), cartelle abilitate
+ * alla raccolta, modelli e budget LLM, configurazione di Claude Code. Sono impostazioni di QUESTO nodo (config.json), non del team.
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
@@ -12,12 +12,102 @@ export function Settings () {
     <>
       <PageHeader title='Impostazioni' subtitle='Impostazioni di questo PC. Quelle condivise dal team sono nella schermata Team.' />
       <div className='stack'>
+        <NetworkCard />
         <WatchCard />
         <DocumentsCard />
         <LlmCard />
         <ClaudeCodeCard />
       </div>
     </>
+  )
+}
+
+/**
+ * Rete P2P: DHT pubblica di Holepunch o DHT privata del team (server/README.md).
+ * - "Verifica" prova la scelta IN BOZZA senza cambiare nulla (ingresso, IP pubblico, NAT);
+ * - "Applica" salva e ricollega subito il nodo, dopo una conferma: tutti i membri del team
+ *   devono usare la stessa DHT, altrimenti non si trovano più.
+ * I server privati restano salvati anche passando alla DHT pubblica.
+ */
+export function NetworkCard () {
+  const client = useQueryClient()
+  const net = useQuery({ queryKey: ['network'], queryFn: api.network })
+  // Bozza: null = nessuna modifica rispetto a quanto salvato
+  const [mode, setMode] = useState<'public' | 'private' | null>(null)
+  const [text, setText] = useState<string | null>(null)
+  const check = useMutation({ mutationFn: () => api.checkNetwork(draftMode, draftList) })
+  const apply = useMutation({
+    mutationFn: () => api.setNetwork(draftMode, draftMode === 'private' ? draftList : undefined),
+    onSuccess: () => { setMode(null); setText(null); check.reset(); void client.invalidateQueries({ queryKey: ['network'] }); void client.invalidateQueries({ queryKey: ['status'] }) }
+  })
+  const n = net.data
+  if (!n) return <Card title='Rete'><ErrorBox error={net.error} /></Card>
+
+  const draftMode = mode ?? n.mode
+  // Un nodo per riga (accetta anche virgole e spazi come separatori)
+  const draftList = (text ?? n.bootstrap.join('\n')).split(/[\s,]+/).map((s) => s.trim()).filter(Boolean)
+  const changed = draftMode !== n.mode || (draftMode === 'private' && draftList.join(',') !== n.bootstrap.join(','))
+  const inUse = n.active.length ? `DHT privata: ${n.active.join(', ')}` : 'DHT pubblica di Holepunch'
+
+  if (n.fixedByEnv) {
+    return (
+      <Card title='Rete'>
+        <div className='notice warn'>In uso: <span className='mono'>{n.fixedByEnv}</span>, fissata dalla variabile <code>MICELIO_DHT_BOOTSTRAP</code> (demo, container o test): da qui non si può cambiare.</div>
+      </Card>
+    )
+  }
+
+  return (
+    <Card title='Rete'>
+      <p className='muted' style={{ marginTop: 0 }}>
+        Dove i nodi del team si incontrano su internet. I contenuti viaggiano sempre cifrati e direttamente fra i PC: la DHT serve solo a trovarsi.
+        In uso adesso: <strong>{inUse}</strong>.
+      </p>
+      <div className='stack'>
+        <label className={`choice ${draftMode === 'public' ? 'selected' : ''}`}>
+          <input type='radio' name='dht' checked={draftMode === 'public'} onChange={() => { setMode('public'); check.reset() }} />
+          <span>
+            <strong>DHT pubblica</strong> (Holepunch)<br />
+            <span className='muted small'>Nessun server da gestire. L'impronta del team e gli IP dei membri sono visibili nella DHT pubblica, i contenuti mai.</span>
+          </span>
+        </label>
+        <label className={`choice ${draftMode === 'private' ? 'selected' : ''}`}>
+          <input type='radio' name='dht' checked={draftMode === 'private'} onChange={() => { setMode('private'); check.reset() }} />
+          <span>
+            <strong>DHT privata del team</strong> (server del team)<br />
+            <span className='muted small'>Nessuna dipendenza da terzi; impronta e IP restano sul vostro server. Si installa a parte: vedi server/README.md.</span>
+          </span>
+        </label>
+        {draftMode === 'private' && (
+          <div>
+            <label>Nodi di avvio (uno per riga, host:porta)</label>
+            <textarea rows={2} className='mono' value={text ?? n.bootstrap.join('\n')} onChange={(e) => { setText(e.target.value); check.reset() }} placeholder='203.0.113.10:49737' />
+          </div>
+        )}
+      </div>
+
+      {check.data && (
+        <div className={`notice ${check.data.reachable ? (check.data.randomizedPort ? 'warn' : 'ok') : 'error'}`} style={{ marginTop: 10 }}>
+          {check.data.reachable
+            ? <>Raggiungibile: {check.data.nodes} nodi in {check.data.ms} ms · IP pubblico {check.data.publicHost ?? 'non determinato'} · NAT simmetrico: {check.data.randomizedPort === null ? 'non determinabile' : check.data.randomizedPort ? 'SÌ (la connessione diretta può fallire con colleghi nella stessa situazione)' : 'no'}</>
+            : <>Nessun nodo ha risposto: server spento, porta UDP chiusa sul server, oppure questa rete blocca l'UDP in uscita.</>}
+        </div>
+      )}
+      <ErrorBox error={check.error ?? apply.error} />
+      <div className='row' style={{ marginTop: 10 }}>
+        <button className='btn' disabled={check.isPending || (draftMode === 'private' && draftList.length === 0)} onClick={() => check.mutate()}>
+          {check.isPending ? 'Verifica in corso…' : 'Verifica'}
+        </button>
+        <ConfirmButton
+          label='Applica'
+          confirmLabel='Sì, cambia rete: tutti i membri devono usare la stessa'
+          onConfirm={() => apply.mutate()}
+          disabled={!changed || apply.isPending || (draftMode === 'private' && draftList.length === 0)}
+        />
+        {changed && <button className='btn' onClick={() => { setMode(null); setText(null); check.reset() }}>Annulla</button>}
+        {apply.isPending && <span className='muted small'>Riconnessione…</span>}
+      </div>
+    </Card>
   )
 }
 

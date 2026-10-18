@@ -41,7 +41,7 @@ export class DaemonClient {
    * @param timeoutMs il default è alto perché `join` può attendere fino a 2 minuti un membro online
    * @throws DaemonError con il messaggio del daemon, o con istruzioni se il daemon non risponde
    */
-  async call<T = any> (method: 'GET' | 'POST' | 'DELETE', path: string, body?: unknown, timeoutMs = 180_000): Promise<T> {
+  async call<T = any> (method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown, timeoutMs = 180_000): Promise<T> {
     let res: Response
     try {
       res = await fetch(`${this.baseUrl}${path}`, {

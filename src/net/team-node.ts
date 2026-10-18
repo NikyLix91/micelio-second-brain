@@ -374,6 +374,29 @@ export class TeamNode extends EventEmitter {
     }
   }
 
+  /**
+   * Dimensione del feed di ciascun membro: è lo spazio che i SUOI eventi (ricordi, voti, uso,
+   * sogni…) occupano nel log del team, quindi su OGNI nodo, perché ogni nodo replica tutto.
+   * `byteLength` è la lunghezza del feed nota a questo nodo (cifrata, senza indici locali).
+   * @param writerKeys chiavi (hex) dei feed dei membri
+   * @returns chiave → { bytes, blocks }; 0 per un feed non (ancora) disponibile
+   */
+  async feedSizes (writerKeys: string[]): Promise<Record<string, { bytes: number, blocks: number }>> {
+    const out: Record<string, { bytes: number, blocks: number }> = {}
+    for (const k of writerKeys) {
+      const core = this.store.get({ key: buf(k) })
+      try {
+        await core.ready()
+        out[k] = { bytes: core.byteLength ?? 0, blocks: core.length ?? 0 }
+      } catch {
+        out[k] = { bytes: 0, blocks: 0 }
+      } finally {
+        await core.close().catch(() => {})
+      }
+    }
+    return out
+  }
+
   /** Connessioni P2P aperte in questo momento (per agganciare protocolli a quelle già esistenti). */
   get connections (): any[] { return this.swarm ? [...this.swarm.connections] : [] }
 

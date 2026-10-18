@@ -22,9 +22,9 @@ import { nodePaths, type NodePaths } from '../core/paths'
 import type { ExplicitOutcome } from '../ingest/pipeline'
 import { checkNetwork } from '../net/diagnose'
 import { autostartOff, autostartOn, autostartStatus } from '../node/autostart'
-import { dhtBootstrap, loadConfig, updateConfig } from '../node/config'
+import { BOOTSTRAP_RE, dhtBootstrap, loadConfig, networkMode, updateConfig } from '../node/config'
 import { claudeSettingsFile, hookCommand, IntegrationError, mcpAddArgs, setupClaudeCode } from '../node/integrations'
-import type { IngestStatus } from '../node/micelio-node'
+import type { IngestStatus, NetworkSettings } from '../node/micelio-node'
 import type { Decision, InboxItem } from '../store/private-store'
 import { DaemonClient, DaemonError } from './client'
 
@@ -183,37 +183,58 @@ program.command('status')
 
 /**
  * Dove i nodi del team si incontrano: DHT pubblica di Holepunch (default) o DHT privata del team
- * (server/ nella repo). Modifica config.json direttamente: il daemon la legge all'avvio, quindi
- * dopo `set`/`public` va riavviato.
+ * (server/ nella repo). Se il daemon è acceso la scelta passa da lui e vale SUBITO (il nodo si
+ * ricollega); se è spento si modifica config.json e vale al prossimo avvio.
  */
-const network = program.command('network').description('rete P2P: DHT pubblica o server del team (show | set | public | check)')
+const network = program.command('network').description('rete P2P: DHT pubblica o server del team (show | set | public | private | check)')
+
+/**
+ * Applica una scelta di rete: via daemon se risponde, altrimenti direttamente su config.json.
+ * @param bootstrap nodi della DHT privata (undefined = lascia quelli salvati)
+ */
+async function applyNetwork (mode: 'public' | 'private', bootstrap?: string[]): Promise<void> {
+  const c = client()
+  if (await c.health()) {
+    const n = await c.call<NetworkSettings>('PUT', '/api/network', { mode, bootstrap })
+    console.log(n.mode === 'private' ? `DHT privata del team: ${n.bootstrap.join(', ')}` : 'DHT pubblica di Holepunch')
+    console.log('Applicata subito: il nodo si è ricollegato. Verifica con: micelio network check')
+    return
+  }
+  if (process.env.MICELIO_DHT_BOOTSTRAP) throw new DaemonError('La rete è fissata dalla variabile MICELIO_DHT_BOOTSTRAP: toglila per sceglierla')
+  const bad = bootstrap?.find((b) => !BOOTSTRAP_RE.test(b))
+  if (bad) throw new DaemonError(`Nodo di avvio non valido: ${bad} (formato host:porta)`)
+  const cfg = updateConfig(paths(), (c) => {
+    c.network.mode = mode
+    if (bootstrap) c.network.bootstrap = bootstrap
+  })
+  if (mode === 'private' && cfg.network.bootstrap.length === 0) throw new DaemonError('Per la DHT privata serve almeno un nodo di avvio: micelio network set <host:porta>')
+  console.log(mode === 'private' ? `DHT privata del team: ${cfg.network.bootstrap.join(', ')}` : 'DHT pubblica di Holepunch')
+  console.log('Il daemon è spento: varrà al prossimo `micelio start`.')
+}
 
 network.command('show', { isDefault: true })
-  .description('nodi di avvio in uso')
+  .description('DHT in uso e nodi di avvio salvati')
   .action(() => {
     const cfg = loadConfig(paths())
     const env = process.env.MICELIO_DHT_BOOTSTRAP
+    const saved = cfg.network.bootstrap.length ? cfg.network.bootstrap.join(', ') : 'nessuno'
     if (env) console.log(`DHT da MICELIO_DHT_BOOTSTRAP: ${env} (prevale su config.json)`)
-    else if (cfg.network.bootstrap.length) console.log(`DHT privata del team: ${cfg.network.bootstrap.join(', ')}`)
-    else console.log('DHT pubblica di Holepunch (nessun server del team configurato)')
+    else if (networkMode(cfg.network) === 'private') console.log(`DHT privata del team: ${saved}`)
+    else console.log(`DHT pubblica di Holepunch (server del team salvati: ${saved})`)
   })
 
 network.command('set')
   .description('usa il server del team come nodo di avvio (tutti i membri devono usare lo stesso)')
   .argument('<nodi...>', 'uno o più host:porta, es. 203.0.113.10:49737')
-  .action((nodi: string[]) => {
-    const cfg = updateConfig(paths(), (c) => { c.network.bootstrap = nodi })
-    console.log(`DHT privata del team: ${cfg.network.bootstrap.join(', ')}`)
-    console.log('Riavvia il daemon per applicarla: micelio stop && micelio start')
-    console.log('Verifica la rete con: micelio network check')
-  })
+  .action((nodi: string[]) => applyNetwork('private', nodi))
+
+network.command('private')
+  .description('torna alla DHT privata con i nodi di avvio già salvati')
+  .action(() => applyNetwork('private'))
 
 network.command('public')
-  .description('torna alla DHT pubblica di Holepunch')
-  .action(() => {
-    updateConfig(paths(), (c) => { c.network.bootstrap = [] })
-    console.log('DHT pubblica di Holepunch. Riavvia il daemon per applicarla: micelio stop && micelio start')
-  })
+  .description('passa alla DHT pubblica di Holepunch (i nodi privati restano salvati)')
+  .action(() => applyNetwork('public'))
 
 network.command('check')
   .description('diagnosi: il PC entra nella DHT? con quale IP pubblico? che tipo di NAT?')

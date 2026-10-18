@@ -19,12 +19,12 @@ import { getToken } from './auth'
  */
 export const TOPIC_QUERIES: Record<string, string[][]> = {
   status: [['status'], ['teamConfig']],
-  memories: [['memories'], ['graph'], ['dreams'], ['archive']],
-  members: [['members'], ['invites'], ['graph']],
+  memories: [['memories'], ['graph'], ['dreams'], ['archive'], ['storage']],
+  members: [['members'], ['invites'], ['graph'], ['storage']],
   inbox: [['inbox'], ['ingest']],
   jobs: [['ingest'], ['documents']],
   decisions: [['decisions']],
-  settings: [['settings'], ['ingest'], ['documents']]
+  settings: [['settings'], ['ingest'], ['documents'], ['network']]
 }
 
 /** Un evento SSE già interpretato. */

@@ -200,7 +200,9 @@ Riferimento implementativo utile: **Autopass** (password manager P2P di Holepunc
 - **DHT pubblica o privata.** Di default i nodi entrano nella DHT pubblica di Holepunch, attraverso i suoi nodi di avvio. Un team può avere una **DHT privata** con `micelio-server`, cioè la cartella `server/`. È un pacchetto separato che si installa come servizio systemd su una macchina Linux con una porta UDP pubblica.
   - Il server fa da nodo di avvio e da intermediario per l'hole punching.
   - Non ha chiavi né dati: vede solo impronte e IP.
-  - I client lo indicano in `network.bootstrap`, e tutti i membri devono usare lo stesso, altrimenti stanno in DHT separate.
+  - I client lo indicano in `network.bootstrap`, con `network.mode` = `private`, e tutti i membri devono usare lo stesso, altrimenti stanno in DHT separate.
+  - Passando alla pubblica i nodi privati restano salvati.
+  - Il cambio si applica a caldo: `MicelioNode.setNetwork` chiude e riapre il `TeamNode` con i nuovi nodi di avvio, mentre corestore e vista restano su disco.
   - `micelio network check` (`src/net/diagnose.ts`) verifica l'ingresso, l'IP pubblico e il NAT simmetrico. Il NAT simmetrico si rileva solo con almeno 2 nodi DHT, quindi sul server serve `--extra-nodes`.
   - Accanto al server si consiglia un nodo Micelio sempre acceso: fa da ponte fra chi non riesce a collegarsi direttamente.
 - Misure dello spike A (3–4 nodi Docker, DHT pubblica): convergenza in 1–2 s dopo scritture concorrenti, dopo una partizione e dopo il rientro di un nodo offline; circa 40 MB di RAM per nodo.

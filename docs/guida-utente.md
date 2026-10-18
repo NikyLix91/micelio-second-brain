@@ -96,15 +96,36 @@ Le connessioni sono cifrate e i dati del team lo sono di nuovo con la chiave del
 ```bash
 micelio network                          # quale DHT usa questo PC
 micelio network set 203.0.113.10:49737   # server del team (tutti i membri devono usare lo stesso)
-micelio network public                   # torna alla DHT pubblica
+micelio network public                   # passa alla DHT pubblica (i server privati restano salvati)
+micelio network private                  # torna alla DHT privata con i server salvati
 micelio network check                    # diagnosi: entra nella DHT? IP pubblico? NAT simmetrico?
 ```
 
-Dopo `set` o `public` riavvia il daemon (`micelio stop && micelio start`). Il valore sta in `config.json`, in `network.bootstrap`.
+**Dall'app:** in Impostazioni → **Rete**:
+1. scegli *DHT pubblica* o *DHT privata del team*, e per la privata scrivi i nodi di avvio (`host:porta`, uno per riga);
+2. **Verifica** prova la scelta senza cambiare nulla e mostra se la rete risponde, l'IP pubblico e il tipo di NAT;
+3. **Applica** chiede conferma e la rende attiva subito.
+
+Se il daemon è acceso, la nuova rete vale **subito**, sia dall'app sia dalla CLI: il nodo si ricollega da solo in pochi secondi e i dati locali restano. Se è spento, vale al prossimo avvio.
+
+Il valore sta in `config.json`, in `network.mode` (`public` / `private`) e `network.bootstrap`. Se è impostata la variabile `MICELIO_DHT_BOOTSTRAP` (team demo, container, test), la rete è fissata da lei e l'app lo segnala.
 
 `micelio network check` è la prima cosa da provare se un collega non si collega:
 - **"Raggiungibile: NO"**: la rete blocca l'UDP oppure il server è spento o ha la porta chiusa;
 - **"NAT simmetrico: SÌ"**: la connessione diretta può fallire con un collega nella stessa situazione. Il sapere arriva comunque se c'è un **nodo sempre acceso** raggiungibile da tutti, che si consiglia di mettere sulla stessa macchina del server.
+
+### Spazio occupato
+
+In **Stato** la scheda *Spazio occupato* mostra:
+- **quanto occupa Micelio su questo disco**, diviso fra:
+  - log del team;
+  - indice di ricerca;
+  - archivio privato;
+  - documenti scaricati;
+  - export;
+- **la provenienza del sapere per membro**: una barra colorata e una tabella con la quota del log del team scritta da ciascuno, i byte, i ricordi attivi e il loro testo.
+
+La quota comprende tutto ciò che il membro ha scritto: ricordi, ma anche voti, uso e sogni. È la stessa su ogni PC del team, perché ogni nodo conserva tutto.
 
 ## 5. Il filtro privacy: cosa arriva al team
 

@@ -85,6 +85,9 @@ const DreamConfig = z.object({
   slotMinutes: z.number().int().min(1).default(30)
 }).prefault({})
 
+/** Formato di un nodo di avvio: "host:porta" (host senza spazi né due punti). */
+export const BOOTSTRAP_RE = /^[^\s:]+:\d{1,5}$/
+
 /**
  * Rete P2P: dove i nodi del team si incontrano (vedi server/README.md).
  * TUTTI i membri del team devono usare gli stessi nodi di avvio, altrimenti stanno in DHT diverse
@@ -92,11 +95,19 @@ const DreamConfig = z.object({
  */
 const NetworkConfig = z.object({
   /**
-   * Nodi di avvio della DHT, come "host:porta". Vuota = DHT pubblica di Holepunch.
+   * "public" = DHT pubblica di Holepunch; "private" = DHT del team (nodi in `bootstrap`).
+   * Facoltativo per compatibilità con i config.json scritti prima della scelta esplicita:
+   * se manca vale "private" quando `bootstrap` non è vuota (vedi networkMode).
+   */
+  mode: z.enum(['public', 'private']).optional(),
+  /**
+   * Nodi di avvio della DHT privata, come "host:porta". Restano salvati anche passando alla
+   * DHT pubblica, così si può tornare indietro senza riscriverli.
    * Con un server Micelio (cartella server/ della repo) il team usa una DHT tutta sua.
    */
-  bootstrap: z.array(z.string().regex(/^[^\s:]+:\d{1,5}$/, 'formato host:porta')).default([])
+  bootstrap: z.array(z.string().regex(BOOTSTRAP_RE, 'formato host:porta')).default([])
 }).prefault({})
+export type NetworkConfig = z.infer<typeof NetworkConfig>
 
 const Config = z.object({
   /** Interfaccia di ascolto: 127.0.0.1 (solo questa macchina); 0.0.0.0 nei container. */
@@ -201,8 +212,13 @@ export function parseBootstrap (list: string[]): { host: string, port: number }[
 export function dhtBootstrap (config?: Config): { host: string, port: number }[] | undefined {
   const env = process.env.MICELIO_DHT_BOOTSTRAP
   if (env) return parseBootstrap(env.split(','))
-  const list = config?.network.bootstrap ?? []
-  return list.length ? parseBootstrap(list) : undefined
+  if (!config || networkMode(config.network) === 'public') return undefined
+  return config.network.bootstrap.length ? parseBootstrap(config.network.bootstrap) : undefined
+}
+
+/** DHT scelta: esplicita se indicata, altrimenti dedotta dalla presenza di nodi di avvio. */
+export function networkMode (n: NetworkConfig): 'public' | 'private' {
+  return n.mode ?? (n.bootstrap.length ? 'private' : 'public')
 }
 
 /**

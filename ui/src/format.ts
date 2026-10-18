@@ -16,6 +16,23 @@ export function ago (ts: number, now = Date.now()): string {
   return `${Math.floor(s / 86_400)} g fa`
 }
 
+/** Dimensione leggibile: "512 B", "3,4 KB", "12,1 MB", "1,2 GB" (base 1024). */
+export function bytes (n: number): string {
+  if (n < 1024) return `${n} B`
+  const units = ['KB', 'MB', 'GB', 'TB']
+  let v = n / 1024
+  let i = 0
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++ }
+  return `${v.toLocaleString('it-IT', { maximumFractionDigits: v < 10 ? 1 : 0 })} ${units[i]}`
+}
+
+/** Percentuale leggibile da una quota 0..1: "42%", "0,4%", "<0,1%". */
+export function percent (share: number): string {
+  const p = share * 100
+  if (p > 0 && p < 0.1) return '<0,1%'
+  return `${p.toLocaleString('it-IT', { maximumFractionDigits: p < 10 ? 1 : 0 })}%`
+}
+
 /** Etichette italiane dei tipi di ricordo. */
 export const KIND_LABEL: Record<string, string> = {
   fact: 'fatto', howto: 'procedura', decision: 'decisione', gotcha: 'gotcha', snippet: 'snippet', reference: 'riferimento'

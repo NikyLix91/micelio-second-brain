@@ -80,12 +80,13 @@ Requisiti:
 Tutti i membri devono usare **lo stesso** server, altrimenti stanno in DHT diverse e non si trovano:
 
 ```bash
-micelio network set <IP pubblico>:49737
-micelio stop && micelio start
+micelio network set <IP pubblico>:49737   # vale subito se il daemon è acceso
 micelio network check
 ```
 
-Per tornare alla DHT pubblica: `micelio network public`.
+Oppure dall'app: Impostazioni, poi **Rete**, poi *DHT privata del team*. Lì *Verifica* prova la scelta prima di applicarla.
+
+Per tornare alla DHT pubblica: `micelio network public` (l'indirizzo del server resta salvato: `micelio network private` per riprenderlo).
 
 `micelio network check` dice:
 - se il PC entra nella DHT;

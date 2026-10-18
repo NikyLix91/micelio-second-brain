@@ -48,7 +48,8 @@ import { claudeProjectsDir, SessionScanner } from '../ingest/session-scanner'
 import { FileShare } from '../net/file-share'
 import { MemoryIndex } from '../store/memory-index'
 import { type Decision, type DocumentRecord, type InboxItem, PrivateStore } from '../store/private-store'
-import { canonicalPath, type Config, isInsideWatched, loadConfig, loadState, saveState, updateConfig } from './config'
+import { BOOTSTRAP_RE, canonicalPath, type Config, dhtBootstrap, isInsideWatched, loadConfig, loadState, networkMode, parseBootstrap, saveState, updateConfig } from './config'
+import { checkNetwork, type NetworkCheck } from '../net/diagnose'
 
 export interface MicelioNodeOptions {
   /** Nodi bootstrap DHT (test o rete privata); assente = DHT pubblica. */
@@ -84,6 +85,59 @@ export interface NodeSettings {
   /** Cartelle di documenti sorvegliate e se i loro originali sono scaricabili dai colleghi. */
   documents: { path: string, shareable: boolean }[]
   port: number
+  /** Rete P2P: DHT pubblica o privata del team (vedi server/README.md). */
+  network: NetworkSettings
+}
+
+/** Impostazioni di rete come le mostra la UI. */
+export interface NetworkSettings {
+  /** DHT scelta in config.json. */
+  mode: 'public' | 'private'
+  /** Nodi di avvio della DHT privata salvati ("host:porta"), anche se ora si usa la pubblica. */
+  bootstrap: string[]
+  /** Nodi di avvio IN USO adesso ([] = DHT pubblica). */
+  active: string[]
+  /**
+   * Se valorizzato, la rete è fissata dalla variabile d'ambiente MICELIO_DHT_BOOTSTRAP (demo,
+   * container, test) e non si può cambiare dalla UI: contiene il suo valore.
+   */
+  fixedByEnv: string | null
+}
+
+/**
+ * Spazio occupato dal sapere (schermata "Stato del nodo").
+ * - `disk`: byte su QUESTO disco, per componente;
+ * - `members`: quanto del log del team viene da ciascun membro. Ogni nodo replica tutto, quindi
+ *   la ripartizione è la stessa su ogni PC del team.
+ */
+export interface StorageReport {
+  disk: {
+    /** Log replicato del team (corestore): feed di tutti i membri, cifrati. */
+    log: number
+    /** Indice di ricerca e vettori (view.db): derivato, ricostruibile. */
+    index: number
+    /** Archivio privato (private.db): inbox, registro, coda. Mai replicato. */
+    private: number
+    /** Documenti originali scaricati dai colleghi (cache, svuotata dopo 30 giorni). */
+    cache: number
+    /** Copia Markdown in sola lettura. */
+    export: number
+    total: number
+  }
+  /** Somma dei feed dei membri (byte del log del team). */
+  teamLogBytes: number
+  members: {
+    key: string
+    name: string
+    removed: boolean
+    /** Byte del feed del membro: tutti i suoi eventi (ricordi, voti, uso, sogni…). */
+    bytes: number
+    /** Quota del log del team (0..1). */
+    share: number
+    /** Ricordi attivi di cui è autore e loro dimensione in testo (titolo + corpo + tag). */
+    memories: number
+    memoryBytes: number
+  }[]
 }
 
 /** Esito del download di un documento originale. */
@@ -685,7 +739,117 @@ export class MicelioNode extends EventEmitter {
   /** Impostazioni locali correnti (per la schermata Impostazioni). */
   settings (): NodeSettings {
     const { adapter, command, classifyModel, distillModel, dailyBudget } = this.config.llm
-    return { llm: { adapter, command, classifyModel, distillModel, dailyBudget }, watched: this.config.watch.sessions, documents: this.config.watch.documents, port: this.config.port }
+    return { llm: { adapter, command, classifyModel, distillModel, dailyBudget }, watched: this.config.watch.sessions, documents: this.config.watch.documents, port: this.config.port, network: this.networkSettings() }
+  }
+
+  // ═══════════════════════════════ Rete ═══════════════════════════════
+
+  /** Impostazioni di rete correnti (vedi NetworkSettings). */
+  networkSettings (): NetworkSettings {
+    return {
+      mode: networkMode(this.config.network),
+      bootstrap: this.config.network.bootstrap,
+      active: (this.opts.bootstrap ?? []).map((b) => `${b.host}:${b.port}`),
+      fixedByEnv: process.env.MICELIO_DHT_BOOTSTRAP || null
+    }
+  }
+
+  /**
+   * Sceglie la DHT (pubblica o privata) e la applica SUBITO: salva config.json e, se il nodo è
+   * in un team, chiude e riapre la rete con i nuovi nodi di avvio (i dati locali restano; dopo
+   * pochi secondi il nodo ritrova i colleghi che usano la stessa DHT).
+   * ATTENZIONE: tutti i membri devono usare la stessa DHT, altrimenti non si trovano.
+   * @param bootstrap nodi "host:porta" della DHT privata; con "public" si possono omettere
+   *                  (restano quelli salvati, per poter tornare alla privata)
+   */
+  async setNetwork (mode: 'public' | 'private', bootstrap?: string[]): Promise<NetworkSettings> {
+    if (process.env.MICELIO_DHT_BOOTSTRAP) throw new UserError('La rete è fissata dalla variabile MICELIO_DHT_BOOTSTRAP: toglila per sceglierla da qui')
+    if (mode !== 'public' && mode !== 'private') throw new UserError('Rete: "public" oppure "private"')
+    const list = bootstrap?.map((b) => b.trim()).filter(Boolean)
+    if (list?.some((b) => !BOOTSTRAP_RE.test(b))) throw new UserError('Formato dei nodi di avvio: host:porta (es. 203.0.113.10:49737)')
+    if (mode === 'private' && !(list ?? this.config.network.bootstrap).length) throw new UserError('Per la DHT privata serve almeno un nodo di avvio (il server del team)')
+    this.config = updateConfig(this.paths, (c) => {
+      c.network.mode = mode
+      if (list) c.network.bootstrap = list
+    })
+    this.opts.bootstrap = dhtBootstrap(this.config)
+    await this.reconnect()
+    this.changed('settings', 'status')
+    return this.networkSettings()
+  }
+
+  /**
+   * Diagnosi di una DHT PRIMA di sceglierla (pulsante "Verifica" della UI): non cambia nulla.
+   * Senza argomenti verifica la DHT in uso.
+   */
+  async checkNetwork (mode?: 'public' | 'private', bootstrap?: string[]): Promise<NetworkCheck> {
+    if (mode === undefined) return checkNetwork(this.opts.bootstrap)
+    if (mode === 'public') return checkNetwork(undefined)
+    const list = (bootstrap ?? this.config.network.bootstrap).map((b) => b.trim()).filter(Boolean)
+    if (!list.length || list.some((b) => !BOOTSTRAP_RE.test(b))) throw new UserError('Indica almeno un nodo di avvio nel formato host:porta')
+    return checkNetwork(parseBootstrap(list))
+  }
+
+  /**
+   * Chiude e riapre la connessione al team con i nodi di avvio attuali (dopo un cambio di DHT).
+   * Il log locale non si tocca: la riapertura riparte dai dati su disco.
+   */
+  private async reconnect (): Promise<void> {
+    const state = loadState(this.paths)
+    if (!state || !this.team) return
+    const where = this.opts.bootstrap ? 'DHT privata ' + this.opts.bootstrap.map((b) => `${b.host}:${b.port}`).join(', ') : 'DHT pubblica'
+    this.log(`rete: riconnessione (${where})`)
+    if (this.timer) { clearTimeout(this.timer); this.timer = null }
+    await this.materializing.catch(() => {})
+    const old = this.team
+    this.team = null
+    await old.close()
+    const team = this.newTeamNode()
+    await team.open(state)
+    this.attach(team)
+    await this.materialize()
+  }
+
+  // ═══════════════════════════ Spazio occupato ═══════════════════════════
+
+  /** Spazio occupato dal sapere, su disco e per membro (vedi StorageReport). */
+  async storage (): Promise<StorageReport> {
+    // I database SQLite in modalità WAL hanno due file accessori (-wal, -shm)
+    const db = (base: string) => [base, base + '-wal', base + '-shm'].reduce((n, f) => n + fileSize(f), 0)
+    const disk = {
+      log: dirSize(this.paths.store),
+      index: db(this.paths.index),
+      private: db(this.paths.private),
+      cache: dirSize(path.join(this.paths.home, 'sources')),
+      export: dirSize(this.paths.export),
+      total: 0
+    }
+    disk.total = disk.log + disk.index + disk.private + disk.cache + disk.export
+
+    const members = this.team ? await this.members() : []
+    const feeds = this.team ? await this.team.feedSizes(members.map((m) => m.key)) : {}
+    // Ricordi attivi per autore, con la loro dimensione in testo
+    const byAuthor = new Map<string, { n: number, bytes: number }>()
+    for (const m of this.index.all()) {
+      const a = byAuthor.get(m.author) ?? { n: 0, bytes: 0 }
+      a.n++
+      a.bytes += Buffer.byteLength(m.title + m.body + m.tags.join(' '))
+      byAuthor.set(m.author, a)
+    }
+    const teamLogBytes = members.reduce((n, m) => n + (feeds[m.key]?.bytes ?? 0), 0)
+    return {
+      disk,
+      teamLogBytes,
+      members: members.map((m) => ({
+        key: m.key,
+        name: m.name,
+        removed: m.removed,
+        bytes: feeds[m.key]?.bytes ?? 0,
+        share: teamLogBytes ? (feeds[m.key]?.bytes ?? 0) / teamLogBytes : 0,
+        memories: byAuthor.get(m.key)?.n ?? 0,
+        memoryBytes: byAuthor.get(m.key)?.bytes ?? 0
+      })).sort((a, b) => b.bytes - a.bytes)
+    }
   }
 
   /**
@@ -989,4 +1153,21 @@ function createAdapter (config: Config): LlmAdapter | null {
     case 'fake': return new FakeAdapter()
     default: return null
   }
+}
+
+/** Dimensione di un file in byte (0 se non esiste). */
+function fileSize (file: string): number {
+  try { return fs.statSync(file).size } catch { return 0 }
+}
+
+/** Dimensione totale di una cartella, ricorsiva (0 se non esiste). */
+function dirSize (dir: string): number {
+  let n = 0
+  let entries: fs.Dirent[]
+  try { entries = fs.readdirSync(dir, { withFileTypes: true }) } catch { return 0 }
+  for (const e of entries) {
+    const p = path.join(dir, e.name)
+    n += e.isDirectory() ? dirSize(p) : fileSize(p)
+  }
+  return n
 }

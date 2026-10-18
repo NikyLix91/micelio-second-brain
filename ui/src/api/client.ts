@@ -11,11 +11,13 @@ import type { CodeRefs, MemoryData } from '../../../src/core/events'
 import type { InviteRecord, MemberRecord, NodeStatus, RecallHit } from '../../../src/core/model'
 import type { ExplicitOutcome } from '../../../src/ingest/pipeline'
 import type { Graph, GraphLink, GraphNode } from '../../../src/graph/constellation'
-import type { IngestStatus, NodeSettings } from '../../../src/node/micelio-node'
+import type { IngestStatus, NetworkSettings, NodeSettings, StorageReport } from '../../../src/node/micelio-node'
+import type { NetworkCheck } from '../../../src/net/diagnose'
 import type { Decision, InboxItem } from '../../../src/store/private-store'
 import { getToken } from './auth'
 
 export type { Graph, GraphLink, GraphNode }
+export type { NetworkCheck, NetworkSettings, StorageReport }
 export type { CodeRefs, Decision, ExplicitOutcome, InboxItem, IngestStatus, InviteRecord, MemberRecord, MemoryData, NodeSettings, NodeStatus, RecallHit }
 
 /** Errore dell'API con il messaggio leggibile restituito dal daemon. */
@@ -83,5 +85,11 @@ export const api = {
   fetchSource: (id: string) => call<{ path: string, name: string, size: number, local: boolean }>('POST', `/api/memories/${enc(id)}/source`),
   watchAdd: (path: string) => call<string[]>('POST', '/api/watch', { path }),
   watchRemove: (path: string) => call<string[]>('DELETE', '/api/watch', { path }),
-  setupClaudeCode: (hook: boolean) => call<{ mcpUrl: string, hookFile: string | null }>('POST', '/api/setup/claude-code', { hook })
+  setupClaudeCode: (hook: boolean) => call<{ mcpUrl: string, hookFile: string | null }>('POST', '/api/setup/claude-code', { hook }),
+
+  // Rete P2P e spazio occupato
+  network: () => call<NetworkSettings>('GET', '/api/network'),
+  setNetwork: (mode: 'public' | 'private', bootstrap?: string[]) => call<NetworkSettings>('PUT', '/api/network', { mode, bootstrap }),
+  checkNetwork: (mode?: 'public' | 'private', bootstrap?: string[]) => call<NetworkCheck>('POST', '/api/network/check', { mode, bootstrap }),
+  storage: () => call<StorageReport>('GET', '/api/storage')
 }
