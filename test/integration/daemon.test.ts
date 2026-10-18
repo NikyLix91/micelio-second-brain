@@ -63,6 +63,14 @@ describe('daemon', () => {
     expect(r.status).toBe(400)
     expect(r.data.error).toMatch(/non configurato/)
     expect((await api('POST', '/api/team/init', { team: '' })).status).toBe(400)
+    // La UI chiede la lingua con x-micelio-lang: lo stesso errore in inglese
+    const en = await fetch(`${base}/api/memories`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', 'x-micelio-lang': 'en' },
+      body: JSON.stringify({ title: 'x', body: 'y' })
+    })
+    expect(en.status).toBe(400)
+    expect(((await en.json()) as { error: string }).error).toMatch(/Node not configured/)
   })
 
   it('init, remember e recall via API', async () => {

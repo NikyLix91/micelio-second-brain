@@ -15,6 +15,12 @@ npm run build
 npm link            # installa il comando `micelio` nel PATH
 ```
 
+## 1-bis. Lingua
+
+L'app è in italiano e in inglese: si cambia con **IT / EN** in fondo alla barra laterale. Sono due lingue diverse:
+- quella dell'**interfaccia**, personale;
+- quella dei **ricordi distillati**, di tutto il team, scelta dall'admin nella pagina Team.
+
 ## 2. Avviare il nodo
 
 ```bash

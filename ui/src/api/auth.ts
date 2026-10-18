@@ -11,6 +11,8 @@
  * Il token non viene mai messo in un URL né in localStorage (persistente).
  */
 
+import { detectLang } from '../i18n'
+
 const STORAGE_KEY = 'micelio.token'
 
 let token: string | null = null
@@ -44,7 +46,8 @@ export async function initAuth (): Promise<string | null> {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ code })
     })
-    if (!res.ok) throw new Error('Link scaduto o già usato: esegui di nuovo `micelio ui`.')
+    // Siamo prima del provider della lingua: si usa quella salvata o del sistema.
+    if (!res.ok) throw new Error(detectLang() === 'it' ? 'Link scaduto o già usato: esegui di nuovo `micelio ui`.' : 'Link expired or already used: run `micelio ui` again.')
     token = ((await res.json()) as { token: string }).token
     sessionStorage.setItem(STORAGE_KEY, token)
     return token

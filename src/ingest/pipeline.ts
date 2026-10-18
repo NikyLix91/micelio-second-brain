@@ -30,6 +30,7 @@
  */
 import { existsSync } from 'node:fs'
 import path from 'node:path'
+import { LocalizedError } from '../core/errors'
 import { MemoryInput, type MemoryData, type RootCategory } from '../core/events'
 import { LlmBudgetExceededError, LlmUnavailableError } from '../llm/types'
 import type { LlmRunner } from '../llm/runner'
@@ -535,7 +536,7 @@ export class IngestPipeline {
 
   private requireInbox (id: string): InboxItem {
     const item = this.deps.store.getInbox(id)
-    if (!item) throw new InboxNotFoundError(`Nessun elemento in inbox con id ${id}`)
+    if (!item) throw new InboxNotFoundError(`Nessun elemento in inbox con id ${id}`, `No inbox item with id ${id}`)
     return item
   }
 
@@ -567,7 +568,7 @@ export class IngestPipeline {
   }
 }
 
-export class InboxNotFoundError extends Error {}
+export class InboxNotFoundError extends LocalizedError {}
 
 /** Prima domanda dell'utente, usata come anteprima nel registro delle decisioni. */
 function firstUserLine (text: string): string {

@@ -10,6 +10,7 @@
  * Entrambe le operazioni sono idempotenti: rieseguirle sostituisce la configurazione precedente.
  */
 import { spawnSync } from 'node:child_process'
+import { LocalizedError } from '../core/errors'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -26,7 +27,7 @@ export function claudeSettingsFile (): string {
 const isMicelioHook = (h: any) => typeof h?.command === 'string' && h.command.includes('hook session-end') && h.command.includes('micelio')
 
 /** Errore di configurazione da mostrare all'utente così com'è. */
-export class IntegrationError extends Error {}
+export class IntegrationError extends LocalizedError {}
 
 /**
  * Comando dell'hook. Usa percorsi assoluti (funziona anche se `micelio` non è nel PATH) e
@@ -47,7 +48,7 @@ export function installSessionEndHook (home: string, cliMain = CLI_MAIN): string
   let settings: any = {}
   if (fs.existsSync(file)) {
     const raw = fs.readFileSync(file, 'utf8')
-    try { settings = JSON.parse(raw) } catch { throw new IntegrationError(`${file} non è JSON valido: correggilo prima di installare l'hook`) }
+    try { settings = JSON.parse(raw) } catch { throw new IntegrationError(`${file} non è JSON valido: correggilo prima di installare l'hook`, `${file} is not valid JSON: fix it before installing the hook`) }
     fs.writeFileSync(file + '.micelio-backup', raw)
   }
   settings.hooks ??= {}
@@ -77,7 +78,8 @@ export function registerMcp (mcpUrl: string, token: string): void {
   spawnSync('claude', ['mcp', 'remove', '--scope', 'user', 'micelio'], { stdio: 'ignore', windowsHide: true })
   const r = spawnSync('claude', mcpAddArgs(mcpUrl, token), { encoding: 'utf8', windowsHide: true })
   if (r.error || r.status !== 0) {
-    throw new IntegrationError(`Registrazione MCP non riuscita: ${(r.error?.message ?? r.stderr ?? '').toString().trim() || 'claude non disponibile'}`)
+    const detail = (r.error?.message ?? r.stderr ?? '').toString().trim()
+    throw new IntegrationError(`Registrazione MCP non riuscita: ${detail || 'claude non disponibile'}`, `MCP registration failed: ${detail || 'claude not available'}`)
   }
 }
 

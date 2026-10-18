@@ -30,6 +30,11 @@ const STORAGE_KEY = 'micelio.lang'
 
 /** Lingua iniziale: quella salvata, altrimenti quella del sistema. */
 export function detectLang (): Lang {
+  // `#/…?lang=en` nell'indirizzo forza una lingua (catture per la documentazione, prove)
+  try {
+    const forced = new URLSearchParams(location.hash.split('?')[1] ?? '').get('lang')
+    if (forced === 'it' || forced === 'en') return forced
+  } catch { /* fuori dal browser */ }
   try {
     const saved = localStorage.getItem(STORAGE_KEY)
     if (saved === 'it' || saved === 'en') return saved
@@ -54,12 +59,15 @@ export function I18nProvider ({ children, initial }: { children: ReactNode, init
   const [lang, setState] = useState<Lang>(() => {
     const l = initial ?? detectLang()
     current = l
+    // App desktop: menu dell'icona e notifiche seguono la lingua della UI
+    if (typeof window !== 'undefined') window.micelio?.setLang?.(l)
     return l
   })
   const setLang = useCallback((l: Lang) => {
     current = l
     try { localStorage.setItem(STORAGE_KEY, l) } catch { /* ignorato */ }
     document.documentElement.lang = l
+    window.micelio?.setLang?.(l)
     setState(l)
   }, [])
   return <LangContext.Provider value={{ lang, setLang }}>{children}</LangContext.Provider>

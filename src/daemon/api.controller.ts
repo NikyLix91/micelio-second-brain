@@ -517,7 +517,7 @@ export class ApiController {
       return setupClaudeCode({ mcpUrl: `http://${h}:${port}/mcp`, token, home: this.options.paths.home, hook })
     } catch (err) {
       // Errori di configurazione (claude assente, settings.json non valido) → 400 leggibile.
-      throw err instanceof IntegrationError ? new UserError(err.message) : err
+      throw err instanceof IntegrationError ? new UserError(err.message, err.en) : err
     }
   }
 }

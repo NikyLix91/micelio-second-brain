@@ -95,6 +95,33 @@ Le sessioni sono lavori in una **coda persistente** (`private.db`, tabella `jobs
 5. **Le librerie Holepunch restano dentro `src/net`.** Non hanno tipi (vedi `src/types/holepunch.d.ts`) e la loro API evolve.
 6. **Niente lascia la macchina prima del filtro.** Ogni nuovo ingresso di contenuti deve passare da `IngestPipeline`, mai da `TeamNode.append` diretto.
 7. **Gli schemi degli eventi sono un contratto tra versioni.** I campi "aperti" sono stringhe libere e non enum: un nodo vecchio deve accettare valori nuovi.
+8. **Ogni funzione nasce bilingue e con la sua guida in linea.** Una funzione è finita solo quando i suoi testi esistono in italiano e in inglese e ha la voce nella guida in linea, che spiega anche come funziona dietro. Vedi «Lingue dell'interfaccia».
+
+## Lingue dell'interfaccia (italiano / inglese)
+
+**Testi della UI.** Ogni componente dichiara i suoi testi accanto al codice:
+
+```tsx
+const S = defineStrings({
+  it: { title: 'Memoria del team', found: (n: number) => `${n} ricordi trovati` },
+  en: { title: 'Team memory', found: (n: number) => `${n} memories found` }
+})
+const s = useStrings(S)  // → s.title, s.found(3)
+```
+
+`defineStrings` obbliga la versione inglese ad avere la stessa forma di quella italiana: stesse chiavi, stessi parametri. Se manca un testo, **TypeScript non compila**. Si trova in `ui/src/i18n/index.tsx`, che contiene anche `LangSwitch` (il selettore IT/EN), `byLang` (tabelle di etichette come `KIND_LABEL`) e `currentLang`/`currentLocale` per il codice fuori da React.
+
+**Formattazione.** Le funzioni di `ui/src/format.ts` (date, byte, percentuali) usano il locale della lingua scelta.
+
+**Errori del daemon.** Si lanciano con il testo inglese accanto: `new UserError('Operazione riservata agli admin del team', 'Only team admins can do this')`. La classe base è `LocalizedError` (`src/core/errors.ts`). La UI manda la lingua con l'intestazione `x-micelio-lang`, e `ErrorFilter` risponde in quella lingua; CLI e MCP ricevono l'italiano.
+
+**Testi composti dal daemon** (indicazioni, note di revisione…). Si restituiscono **un codice e i valori** insieme al testo italiano, e la UI compone la frase nella sua lingua. Esempi: `advice.code/params` della qualità della distillazione, `notes[].code/params` della revisione delle Radici.
+
+**App desktop.** I testi del menu dell'icona e delle notifiche stanno in `desktop/src/strings.ts`. La lingua iniziale è quella del sistema; poi la UI comunica quella scelta con `window.micelio.setLang`.
+
+**Cosa resta nella lingua d'origine.** Sono **dati del team**, non testi dell'app: titoli e contenuti dei ricordi (nella lingua di team `memory.language`), motivi delle segnalazioni sulle Radici, riassunti dei sogni, motivi nel registro privato. Restano in italiano anche CLI e risposte MCP.
+
+**Catture in una lingua precisa:** `#/…?lang=en` nell'indirizzo forza la lingua, per esempio `MICELIO_SCREENSHOT_EXTRA="/stato?lang=en"`.
 
 ## Convenzioni di codice
 

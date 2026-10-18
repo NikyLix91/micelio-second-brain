@@ -36,6 +36,8 @@ export async function call<T> (method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: 
     method,
     headers: {
       authorization: `Bearer ${getToken() ?? ''}`,
+      // Lingua dei messaggi d'errore del daemon (vedi src/daemon/error.filter.ts)
+      'x-micelio-lang': currentLang(),
       ...(body !== undefined ? { 'content-type': 'application/json' } : {})
     },
     body: body !== undefined ? JSON.stringify(body) : undefined

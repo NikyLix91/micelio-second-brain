@@ -68,10 +68,17 @@ export function cameraFor (target: Vec3, distance: number): Vec3 {
   return { x: target.x * k, y: target.y * k, z: target.z * k }
 }
 
-/** Testo della didascalia di una tappa, es. "12 ricordi · di Mario, Lucia e altri 2 · soprattutto gotcha". */
-export function caption (stop: TourStop, kindLabel: (k: string) => string): string {
+/**
+ * Testo della didascalia di una tappa, es. "12 ricordi · di Mario, Lucia e altri 2 · soprattutto gotcha"
+ * (o in inglese: "12 memories · by Mario, Lucia and 2 more · mostly gotcha").
+ */
+export function caption (stop: TourStop, kindLabel: (k: string) => string, lang: 'it' | 'en' = 'it'): string {
+  const it = lang === 'it'
+  const and = it ? 'e' : 'and'
   const who = stop.authors.length <= 2
-    ? stop.authors.join(' e ')
-    : `${stop.authors.slice(0, 2).join(', ')} e altri ${stop.authors.length - 2}`
-  return `${stop.ids.length} ricordi · di ${who} · soprattutto ${kindLabel(stop.kinds[0])}`
+    ? stop.authors.join(` ${and} `)
+    : `${stop.authors.slice(0, 2).join(', ')} ${and} ${it ? 'altri' : ''} ${stop.authors.length - 2}${it ? '' : ' more'}`.replace(/\s+/g, ' ')
+  return it
+    ? `${stop.ids.length} ricordi · di ${who} · soprattutto ${kindLabel(stop.kinds[0])}`
+    : `${stop.ids.length} memories · by ${who} · mostly ${kindLabel(stop.kinds[0])}`
 }

@@ -12,6 +12,7 @@
  */
 import type { DaemonInfo } from './daemon'
 import { get } from './daemon'
+import { t } from './strings'
 
 export interface Notice { title: string, body: string, route: string }
 
@@ -34,7 +35,7 @@ export class NotificationRules {
     this.lastInbox = count
     if (prev === null || count <= prev) return null
     const n = count - prev
-    return { title: 'Micelio · da verificare', body: n === 1 ? 'Un nuovo ricordo attende la tua decisione.' : `${n} nuovi ricordi attendono la tua decisione.`, route: '/inbox' }
+    return { title: t().inboxTitle, body: t().inboxBody(n), route: '/inbox' }
   }
 
   /** Isolamento: notifica una volta quando i peer restano a zero oltre ISOLATION_MS. */
@@ -47,7 +48,7 @@ export class NotificationRules {
     this.isolatedSince ??= now
     if (!this.isolationNotified && now - this.isolatedSince >= ISOLATION_MS) {
       this.isolationNotified = true
-      return { title: 'Micelio · nodo isolato', body: 'Da più di 10 minuti nessun collega è raggiungibile: il sapere non si sta sincronizzando.', route: '/stato' }
+      return { title: t().isolatedTitle, body: t().isolatedBody, route: '/stato' }
     }
     return null
   }
@@ -57,7 +58,7 @@ export class NotificationRules {
     const day = new Date(now).toISOString().slice(0, 10)
     if (limit <= 0 || used / limit < 0.9 || this.budgetNotifiedDay === day) return null
     this.budgetNotifiedDay = day
-    return { title: 'Micelio · budget quasi esaurito', body: `Oggi ${used} chiamate su ${limit}. Oltre il limite il lavoro aspetta domani.`, route: '/impostazioni' }
+    return { title: t().budgetTitle, body: t().budgetBody(used, limit), route: '/impostazioni' }
   }
 }
 

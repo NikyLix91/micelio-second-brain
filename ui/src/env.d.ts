@@ -9,6 +9,8 @@ interface MicelioDesktopBridge {
   pickFolder?: () => Promise<string | null>
   /** Mostra un file nella cartella che lo contiene (Esplora file / Finder). */
   showInFolder?: (path: string) => Promise<void>
+  /** Comunica la lingua scelta all'app desktop (menu dell'icona e notifiche). */
+  setLang?: (lang: string) => void
 }
 
 interface Window {

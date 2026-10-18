@@ -23,6 +23,7 @@
 import { EventEmitter } from 'node:events'
 import fs from 'node:fs'
 import path from 'node:path'
+import { LocalizedError } from '../core/errors'
 import { MemoryInput, memoryId, type MemoryData, ROOT_CATEGORIES, type RootCategory } from '../core/events'
 import type { InviteRecord, MemberRecord, NodeStatus, RecallHit, RootRecord } from '../core/model'
 import type { NodePaths } from '../core/paths'
@@ -70,7 +71,7 @@ export interface MicelioNodeOptions {
 }
 
 /** Errore causato dall'utente o dallo stato del nodo: messaggio pensato per essere mostrato. */
-export class UserError extends Error {}
+export class UserError extends LocalizedError {}
 
 /**
  * Parti dello stato che possono cambiare, usate come "argomento" degli eventi `change`:
@@ -453,7 +454,7 @@ export class MicelioNode extends EventEmitter {
   async removeMember (ref: string): Promise<MemberRecord> {
     await this.requireAdmin()
     const target = await this.resolveMember(ref)
-    if (target.key === this.team?.localKey) throw new UserError('Un nodo non può espellere se stesso')
+    if (target.key === this.team?.localKey) throw new UserError('Un nodo non può espellere se stesso', 'A node cannot remove itself')
     await this.requireTeam().append({ type: 'member.remove', key: target.key })
     await this.sync()
     return target
@@ -475,7 +476,7 @@ export class MicelioNode extends EventEmitter {
   async setTeamConfig (key: string, value: unknown): Promise<void> {
     // Validazione delle chiavi note: un valore sbagliato vale per tutto il team
     if (key === 'distill.maxMemories' && maxMemoriesOf(value) !== value) {
-      throw new UserError(`distill.maxMemories: un intero fra ${MAX_MEMORIES_RANGE.min} e ${MAX_MEMORIES_RANGE.max}`)
+      throw new UserError(`distill.maxMemories: un intero fra ${MAX_MEMORIES_RANGE.min} e ${MAX_MEMORIES_RANGE.max}`, `distill.maxMemories: an integer between ${MAX_MEMORIES_RANGE.min} and ${MAX_MEMORIES_RANGE.max}`)
     }
     await this.requireAdmin()
     await this.requireTeam().append({ type: 'team.config', key, value })
@@ -595,10 +596,10 @@ export class MicelioNode extends EventEmitter {
 
   /** Sogno manuale (`micelio dream now`, pulsante nell'app): epoca dedicata, nessuna attesa. */
   async dreamNow (): Promise<DreamReport> {
-    if (this.dreamer.busy) throw new UserError('Un sogno è già in corso')
-    if (!this.llm) throw new UserError('Serve un LLM per sognare (llm.adapter in config.json)')
+    if (this.dreamer.busy) throw new UserError('Un sogno è già in corso', 'A dream is already running')
+    if (!this.llm) throw new UserError('Serve un LLM per sognare (llm.adapter in config.json)', 'Dreaming needs an LLM (llm.adapter in config.json)')
     const r = await this.runDream(`manuale-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}`)
-    if (!r) throw new UserError('Un altro nodo sta già sognando questa epoca')
+    if (!r) throw new UserError('Un altro nodo sta già sognando questa epoca', 'Another node is already dreaming this epoch')
     return r
   }
 
@@ -653,7 +654,7 @@ export class MicelioNode extends EventEmitter {
   /** Ripristina un ricordo archiviato o sostituito. */
   async restore (id: string): Promise<void> {
     const m = this.inactive.find((x) => (x.id === id || x.id.startsWith(id.toLowerCase())) && x.status !== 'redacted')
-    if (!m) throw new UserError(`Nessun ricordo archiviato con id ${id}`)
+    if (!m) throw new UserError(`Nessun ricordo archiviato con id ${id}`, `No archived memory with id ${id}`)
     await this.requireTeam().append({ type: 'memory.restore', id: m.id })
     await this.sync()
   }
@@ -679,7 +680,7 @@ export class MicelioNode extends EventEmitter {
    * @param category vedi ROOT_CATEGORIES in events.ts
    */
   async rootSet (id: string, category: RootCategory): Promise<RootView> {
-    if (!ROOT_CATEGORIES.includes(category)) throw new UserError(`Categoria sconosciuta: ${category} (${ROOT_CATEGORIES.join(', ')})`)
+    if (!ROOT_CATEGORIES.includes(category)) throw new UserError(`Categoria sconosciuta: ${category} (${ROOT_CATEGORIES.join(', ')})`, `Unknown category: ${category} (${ROOT_CATEGORIES.join(', ')})`)
     const rec = this.requireMemory(id)
     await this.requireTeam().append({ type: 'root.set', id: rec.id, category })
     this.privateStore.removeRootSuggestion(rec.id)
@@ -829,7 +830,7 @@ export class MicelioNode extends EventEmitter {
   private requireRoot (id: string): RootView {
     const rec = this.index.get(id)
     const r = rec ? this.rootsById.get(rec.id) : undefined
-    if (!rec || !r) throw new UserError(`Il ricordo ${id} non è una Radice`)
+    if (!rec || !r) throw new UserError(`Il ricordo ${id} non è una Radice`, `Memory ${id} is not a Root`)
     return { ...r, memory: this.enrich([rec])[0], byName: rec.authorName, reviewedByName: null }
   }
 
@@ -861,7 +862,7 @@ export class MicelioNode extends EventEmitter {
 
   private requireMemory (id: string): RecallHit {
     const rec = this.index.get(id)
-    if (!rec) throw new UserError(`Nessun ricordo con id ${id}`)
+    if (!rec) throw new UserError(`Nessun ricordo con id ${id}`, `No memory with id ${id}`)
     return rec
   }
 
@@ -983,7 +984,7 @@ export class MicelioNode extends EventEmitter {
 
   /** Abilita la raccolta automatica per una cartella (e sottocartelle). */
   watchAdd (dir: string): string[] {
-    if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) throw new UserError(`Cartella inesistente: ${path.resolve(dir)}`)
+    if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) throw new UserError(`Cartella inesistente: ${path.resolve(dir)}`, `Folder not found: ${path.resolve(dir)}`)
     // Salviamo la forma canonica (nome lungo, link risolti): è quella che si vede nell'elenco.
     const abs = canonicalPath(dir)
     this.config = updateConfig(this.paths, (c) => {
@@ -1037,13 +1038,13 @@ export class MicelioNode extends EventEmitter {
   async setSecurityRules (patch: Partial<SecurityRules['team']>): Promise<SecurityRules> {
     if (patch.secretPatterns) {
       for (const p of patch.secretPatterns) {
-        if (!p.name?.trim() || !p.regex?.trim()) throw new UserError('Ogni pattern ha un nome e un\'espressione regolare')
-        if (p.regex.length > 300) throw new UserError(`Pattern «${p.name}» troppo lungo (massimo 300 caratteri)`)
-        try { new RegExp(p.regex, 'g') } catch (e) { throw new UserError(`Pattern «${p.name}» non valido: ${(e as Error).message}`) }
+        if (!p.name?.trim() || !p.regex?.trim()) throw new UserError('Ogni pattern ha un nome e un\'espressione regolare', 'Every pattern needs a name and a regular expression')
+        if (p.regex.length > 300) throw new UserError(`Pattern «${p.name}» troppo lungo (massimo 300 caratteri)`, `Pattern “${p.name}” is too long (300 characters at most)`)
+        try { new RegExp(p.regex, 'g') } catch (e) { throw new UserError(`Pattern «${p.name}» non valido: ${(e as Error).message}`, `Pattern “${p.name}” is not valid: ${(e as Error).message}`) }
         // Un pattern che riconosce la stringa vuota redigerebbe ovunque
-        if (new RegExp(p.regex).test('')) throw new UserError(`Pattern «${p.name}» riconosce anche il testo vuoto: troppo generico`)
+        if (new RegExp(p.regex).test('')) throw new UserError(`Pattern «${p.name}» riconosce anche il testo vuoto: troppo generico`, `Pattern “${p.name}” also matches empty text: too generic`)
       }
-      if (compileTeamPatterns(patch.secretPatterns).length !== patch.secretPatterns.length) throw new UserError('Alcuni pattern non sono validi')
+      if (compileTeamPatterns(patch.secretPatterns).length !== patch.secretPatterns.length) throw new UserError('Alcuni pattern non sono validi', 'Some patterns are not valid')
       await this.setTeamConfig('security.secretPatterns', patch.secretPatterns.map((p) => ({ name: p.name.trim(), regex: p.regex })))
     }
     if (patch.allow) await this.setTeamConfig('security.allow', patch.allow.map((a) => a.trim()).filter(Boolean))
@@ -1093,7 +1094,7 @@ export class MicelioNode extends EventEmitter {
       tags: rec.tags.map((t) => applyFilter(t, rules).text),
       source: rec.source ?? { type: 'api' }
     }
-    if (clean.title === rec.title && clean.body === rec.body) throw new UserError('Il ricordo non contiene segreti secondo le regole attuali')
+    if (clean.title === rec.title && clean.body === rec.body) throw new UserError('Il ricordo non contiene segreti secondo le regole attuali', 'The memory contains no secrets according to the current rules')
     const parsed = MemoryInput.parse(clean)
     const newId = memoryId(parsed)
     const team = this.requireTeam()
@@ -1138,11 +1139,11 @@ export class MicelioNode extends EventEmitter {
    *                  (restano quelli salvati, per poter tornare alla privata)
    */
   async setNetwork (mode: 'public' | 'private', bootstrap?: string[]): Promise<NetworkSettings> {
-    if (process.env.MICELIO_DHT_BOOTSTRAP) throw new UserError('La rete è fissata dalla variabile MICELIO_DHT_BOOTSTRAP: toglila per sceglierla da qui')
-    if (mode !== 'public' && mode !== 'private') throw new UserError('Rete: "public" oppure "private"')
+    if (process.env.MICELIO_DHT_BOOTSTRAP) throw new UserError('La rete è fissata dalla variabile MICELIO_DHT_BOOTSTRAP: toglila per sceglierla da qui', 'The network is set by the MICELIO_DHT_BOOTSTRAP variable: remove it to choose from here')
+    if (mode !== 'public' && mode !== 'private') throw new UserError('Rete: "public" oppure "private"', 'Network: "public" or "private"')
     const list = bootstrap?.map((b) => b.trim()).filter(Boolean)
-    if (list?.some((b) => !BOOTSTRAP_RE.test(b))) throw new UserError('Formato dei nodi di avvio: host:porta (es. 203.0.113.10:49737)')
-    if (mode === 'private' && !(list ?? this.config.network.bootstrap).length) throw new UserError('Per la DHT privata serve almeno un nodo di avvio (il server del team)')
+    if (list?.some((b) => !BOOTSTRAP_RE.test(b))) throw new UserError('Formato dei nodi di avvio: host:porta (es. 203.0.113.10:49737)', 'Bootstrap node format: host:port (e.g. 203.0.113.10:49737)')
+    if (mode === 'private' && !(list ?? this.config.network.bootstrap).length) throw new UserError('Per la DHT privata serve almeno un nodo di avvio (il server del team)', 'The private DHT needs at least one bootstrap node (the team server)')
     this.config = updateConfig(this.paths, (c) => {
       c.network.mode = mode
       if (list) c.network.bootstrap = list
@@ -1161,7 +1162,7 @@ export class MicelioNode extends EventEmitter {
     if (mode === undefined) return checkNetwork(this.opts.bootstrap)
     if (mode === 'public') return checkNetwork(undefined)
     const list = (bootstrap ?? this.config.network.bootstrap).map((b) => b.trim()).filter(Boolean)
-    if (!list.length || list.some((b) => !BOOTSTRAP_RE.test(b))) throw new UserError('Indica almeno un nodo di avvio nel formato host:porta')
+    if (!list.length || list.some((b) => !BOOTSTRAP_RE.test(b))) throw new UserError('Indica almeno un nodo di avvio nel formato host:porta', 'Give at least one bootstrap node as host:port')
     return checkNetwork(parseBootstrap(list))
   }
 
@@ -1233,7 +1234,7 @@ export class MicelioNode extends EventEmitter {
    */
   updateLlmSettings (patch: { classifyModel?: string, distillModel?: string, dailyBudget?: number }): NodeSettings {
     if (patch.dailyBudget !== undefined && (!Number.isInteger(patch.dailyBudget) || patch.dailyBudget < 0)) {
-      throw new UserError('Il budget giornaliero deve essere un intero maggiore o uguale a 0')
+      throw new UserError('Il budget giornaliero deve essere un intero maggiore o uguale a 0', 'The daily budget must be an integer greater than or equal to 0')
     }
     this.config = updateConfig(this.paths, (c) => {
       if (patch.classifyModel) c.llm.classifyModel = patch.classifyModel
@@ -1252,7 +1253,7 @@ export class MicelioNode extends EventEmitter {
    * @param roots se true, i ricordi distillati dai documenti della cartella diventano Radici (Fase 8)
    */
   async documentsAdd (dir: string, shareable: boolean, roots = false): Promise<NodeSettings['documents']> {
-    if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) throw new UserError(`Cartella inesistente: ${path.resolve(dir)}`)
+    if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) throw new UserError(`Cartella inesistente: ${path.resolve(dir)}`, `Folder not found: ${path.resolve(dir)}`)
     const abs = canonicalPath(dir)
     this.config = updateConfig(this.paths, (c) => {
       c.watch.documents = [...c.watch.documents.filter((d) => canonicalPath(d.path) !== abs), { path: abs, shareable, roots }]
@@ -1287,9 +1288,9 @@ export class MicelioNode extends EventEmitter {
    */
   async fetchSource (memoryId: string): Promise<SourceFile> {
     const rec = this.index.get(memoryId)
-    if (!rec) throw new UserError(`Nessun ricordo con id ${memoryId}`)
+    if (!rec) throw new UserError(`Nessun ricordo con id ${memoryId}`, `No memory with id ${memoryId}`)
     const src = rec.source
-    if (src?.type !== 'document' || !src.ref) throw new UserError('Questo ricordo non viene da un documento: non c\'è un originale da scaricare')
+    if (src?.type !== 'document' || !src.ref) throw new UserError('Questo ricordo non viene da un documento: non c\'è un originale da scaricare', 'This memory does not come from a document: there is no original to download')
     const name = path.basename(src.name ?? 'documento')
     // Documento di questo nodo: nessun download.
     if (rec.author === this.team?.localKey) {
@@ -1302,7 +1303,7 @@ export class MicelioNode extends EventEmitter {
     try {
       r = await this.files.fetch(src.ref)
     } catch (err) {
-      throw new UserError(`Download non riuscito: ${(err as Error).message}`)
+      throw new UserError(`Download non riuscito: ${(err as Error).message}`, `Download failed: ${(err as Error).message}`)
     }
     fs.mkdirSync(path.dirname(cached), { recursive: true })
     fs.writeFileSync(cached, r.data)
@@ -1373,7 +1374,7 @@ export class MicelioNode extends EventEmitter {
     try {
       return await this.pipeline.approve(id, overrides)
     } catch (err) {
-      throw err instanceof InboxNotFoundError ? new UserError(err.message) : err
+      throw err instanceof InboxNotFoundError ? new UserError(err.message, err.en) : err
     }
   }
 
@@ -1382,7 +1383,7 @@ export class MicelioNode extends EventEmitter {
     try {
       this.pipeline.reject(id)
     } catch (err) {
-      throw err instanceof InboxNotFoundError ? new UserError(err.message) : err
+      throw err instanceof InboxNotFoundError ? new UserError(err.message, err.en) : err
     }
   }
 
@@ -1480,7 +1481,7 @@ export class MicelioNode extends EventEmitter {
   }
 
   private requireTeam (): TeamNode {
-    if (!this.team) throw new UserError('Nodo non configurato: esegui prima `micelio init` o `micelio join`')
+    if (!this.team) throw new UserError('Nodo non configurato: esegui prima `micelio init` o `micelio join`', 'Node not configured: run `micelio init` or `micelio join` first')
     return this.team
   }
 
@@ -1492,11 +1493,11 @@ export class MicelioNode extends EventEmitter {
    */
   private async requireAdmin (): Promise<void> {
     await this.sync()
-    if ((await this.status()).role !== 'admin') throw new UserError('Operazione riservata agli admin del team')
+    if ((await this.status()).role !== 'admin') throw new UserError('Operazione riservata agli admin del team', 'Only team admins can do this')
   }
 
   private assertNotConfigured (): void {
-    if (this.team || loadState(this.paths)) throw new UserError('Questo nodo appartiene già a un team')
+    if (this.team || loadState(this.paths)) throw new UserError('Questo nodo appartiene già a un team', 'This node already belongs to a team')
   }
 
   /**
@@ -1508,8 +1509,8 @@ export class MicelioNode extends EventEmitter {
     const byName = all.filter((m) => m.name === ref)
     const byKey = ref.length >= 6 ? all.filter((m) => m.key.startsWith(ref.toLowerCase())) : []
     const found = byName.length ? byName : byKey
-    if (found.length === 0) throw new UserError(`Nessun membro attivo corrisponde a "${ref}"`)
-    if (found.length > 1) throw new UserError(`"${ref}" è ambiguo: usa una parte più lunga della chiave`)
+    if (found.length === 0) throw new UserError(`Nessun membro attivo corrisponde a "${ref}"`, `No active member matches "${ref}"`)
+    if (found.length > 1) throw new UserError(`"${ref}" è ambiguo: usa una parte più lunga della chiave`, `"${ref}" is ambiguous: use a longer part of the key`)
     return found[0]
   }
 }

@@ -22,9 +22,37 @@ import { api, type GraphNode } from '../api/client'
 import { MemoryPanel } from '../components/MemoryPanel'
 import { ErrorBox } from '../components/ui'
 import { KIND_LABEL, short } from '../format'
+import { defineStrings, useStrings } from '../i18n'
 import { authorColor, DIM, KIND_COLOR, registerAuthors, rootRing } from './colors'
 
 type ColorMode = 'author' | 'kind'
+
+const S = defineStrings({
+  it: {
+    title: 'Mappa 2D',
+    counts: (n: number, l: number) => `${n} ricordi · ${l} collegamenti`,
+    highlight: 'Accendi un argomento: es. build, orm…',
+    byAuthor: 'Colora per autore',
+    byKind: 'Colora per tipo',
+    isolate: 'Clic per isolare',
+    rootsOnly: 'Mostra solo le Radici: il sapere fondante del team',
+    roots: (n: number) => `◆ Radici · ${n}`,
+    relevant: (n: number, q: string) => `${n} pertinenti a «${q}»`,
+    empty: 'La costellazione si accenderà con i primi ricordi del team.'
+  },
+  en: {
+    title: '2D map',
+    counts: (n: number, l: number) => `${n} memories · ${l} links`,
+    highlight: 'Light up a topic: e.g. build, orm…',
+    byAuthor: 'Colour by author',
+    byKind: 'Colour by kind',
+    isolate: 'Click to isolate',
+    rootsOnly: 'Show only the Roots: the foundational knowledge of the team',
+    roots: (n: number) => `◆ Roots · ${n}`,
+    relevant: (n: number, q: string) => `${n} relevant to “${q}”`,
+    empty: 'The constellation will light up with the first memories of the team.'
+  }
+})
 
 /** Dimensioni del contenitore, aggiornate al ridimensionamento della finestra. */
 function useSize (ref: React.RefObject<HTMLDivElement | null>): { width: number, height: number } {
@@ -39,6 +67,7 @@ function useSize (ref: React.RefObject<HTMLDivElement | null>): { width: number,
 }
 
 export function Constellation () {
+  const s = useStrings(S)
   const graph = useQuery({ queryKey: ['graph'], queryFn: api.graph })
   const [mode, setMode] = useState<ColorMode>('author')
   const [focus, setFocus] = useState<string | null>(null) // voce della legenda selezionata
@@ -95,13 +124,13 @@ export function Constellation () {
     <div style={{ display: 'grid', gridTemplateColumns: selected ? '1fr 360px' : '1fr', gap: 16, height: 'calc(100vh - 64px)' }}>
       <div className='stack' style={{ minHeight: 0 }}>
         <div className='row'>
-          <h1 style={{ margin: 0 }}>Mappa 2D</h1>
-          <span className='muted'>{data.nodes.length} ricordi · {data.links.length} collegamenti</span>
+          <h1 style={{ margin: 0 }}>{s.title}</h1>
+          <span className='muted'>{s.counts(data.nodes.length, data.links.length)}</span>
           <span className='spacer' />
-          <input style={{ width: 280 }} placeholder='Accendi un argomento: es. build, orm…' value={query} onChange={(e) => setQuery(e.target.value)} />
+          <input style={{ width: 280 }} placeholder={s.highlight} value={query} onChange={(e) => setQuery(e.target.value)} />
           <select style={{ width: 170 }} value={mode} onChange={(e) => { setMode(e.target.value as ColorMode); setFocus(null) }}>
-            <option value='author'>Colora per autore</option>
-            <option value='kind'>Colora per tipo</option>
+            <option value='author'>{s.byAuthor}</option>
+            <option value='kind'>{s.byKind}</option>
           </select>
         </div>
         <ErrorBox error={graph.error} />
@@ -111,20 +140,20 @@ export function Constellation () {
               key={l.key}
               className={`btn small ${focus === l.key ? 'primary' : ''}`}
               onClick={() => setFocus(focus === l.key ? null : l.key)}
-              title='Clic per isolare'
+              title={s.isolate}
             >
               <span className='dot' style={{ background: l.color, marginRight: 6 }} />{l.label} · {l.count}
             </button>
           ))}
-          <button className={`btn small ${rootsOnly ? 'primary' : ''}`} disabled={rootCount === 0} onClick={() => setRootsOnly(!rootsOnly)} title='Mostra solo le Radici: il sapere fondante del team'>
-            ◆ Radici · {rootCount}
+          <button className={`btn small ${rootsOnly ? 'primary' : ''}`} disabled={rootCount === 0} onClick={() => setRootsOnly(!rootsOnly)} title={s.rootsOnly}>
+            {s.roots(rootCount)}
           </button>
-          {hits && <span className='badge accent'>{hits.size} pertinenti a «{q}»</span>}
+          {hits && <span className='badge accent'>{s.relevant(hits.size, q)}</span>}
         </div>
         <div ref={boxRef} style={{ flex: 1, minHeight: 300, borderRadius: 12, overflow: 'hidden', background: '#0b100d', position: 'relative' }}>
           {data.nodes.length === 0 && !graph.isLoading && (
             <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', color: '#9aa696' }}>
-              La costellazione si accenderà con i primi ricordi del team.
+              {s.empty}
             </div>
           )}
           <ForceGraph2D

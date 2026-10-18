@@ -34,11 +34,55 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { api, type GraphNode } from '../../api/client'
 import { MemoryPanel } from '../../components/MemoryPanel'
 import { KIND_LABEL } from '../../format'
+import { defineStrings, useLang, useStrings } from '../../i18n'
 import { authorColor, KIND_COLOR, registerAuthors, ROOT_STAR, rootRing } from '../colors'
 import { animateHologram, createHologram, HOLO, rootMarker, SPHERE_RADIUS, sphericalForce, starSprite } from './hologram'
 import { cameraFor, caption, centroid, computeTourStops, type TourStop } from './tour'
 
 type ColorMode = 'holo' | 'author' | 'kind'
+
+const S = defineStrings({
+  it: {
+    title: 'NUCLEO',
+    stats: (m: number, r: number, a: number, l: number) => `${m} RICORDI · ${r} RADICI · ${a} AUTORI · ${l} SINAPSI`,
+    highlight: 'Accendi un argomento…',
+    modes: { holo: 'Olografico', author: 'Per autore', kind: 'Per tipo' } as Record<ColorMode, string>,
+    rootsOnly: 'Mostra solo le Radici: il sapere fondante del team',
+    roots: (n: number) => `◆ Radici ${n}`,
+    startTour: '▶ Avvia esplorazione guidata',
+    stop: '■ Stop',
+    stopLabel: (i: number, n: number) => `TAPPA ${i} / ${n}`,
+    lit: (n: number, relevant: boolean) => `${n} ricordi ${relevant ? 'pertinenti' : ''}`,
+    to: (q: string) => `a «${q}»`,
+    onlyRoots: 'solo Radici',
+    by: (name: string) => `di ${name}`,
+    ofKind: (k: string) => `di tipo ${k}`,
+    empty: 'Il nucleo si accenderà con i primi ricordi del team.',
+    showAll: 'Mostra tutti',
+    isolate: 'Isola',
+    showAllBtn: '✕ mostra tutti'
+  },
+  en: {
+    title: 'NUCLEUS',
+    stats: (m: number, r: number, a: number, l: number) => `${m} MEMORIES · ${r} ROOTS · ${a} AUTHORS · ${l} SYNAPSES`,
+    highlight: 'Light up a topic…',
+    modes: { holo: 'Holographic', author: 'By author', kind: 'By kind' } as Record<ColorMode, string>,
+    rootsOnly: 'Show only the Roots: the foundational knowledge of the team',
+    roots: (n: number) => `◆ Roots ${n}`,
+    startTour: '▶ Start guided exploration',
+    stop: '■ Stop',
+    stopLabel: (i: number, n: number) => `STOP ${i} / ${n}`,
+    lit: (n: number, relevant: boolean) => `${n} ${relevant ? 'relevant ' : ''}memories`,
+    to: (q: string) => `to “${q}”`,
+    onlyRoots: 'Roots only',
+    by: (name: string) => `by ${name}`,
+    ofKind: (k: string) => `of kind ${k}`,
+    empty: 'The nucleus will light up with the first memories of the team.',
+    showAll: 'Show all',
+    isolate: 'Isolate',
+    showAllBtn: '✕ show all'
+  }
+})
 
 /** Distanza della camera dal centro durante il tour e dopo una ricerca. */
 const TOUR_DISTANCE = SPHERE_RADIUS * 2.1
@@ -48,6 +92,8 @@ const STOP_MS = 7000
 const IDLE_MS = 20_000
 
 export default function Nucleus () {
+  const s = useStrings(S)
+  const { lang } = useLang()
   const graph = useQuery({ queryKey: ['graph'], queryFn: api.graph })
   const status = useQuery({ queryKey: ['status'], queryFn: api.status })
   const fgRef = useRef<any>(null)
@@ -262,7 +308,7 @@ export default function Nucleus () {
   const linkOn = (l: any) => !lit || (lit.has(l.source.id ?? l.source) && lit.has(l.target.id ?? l.target))
 
   const rootCount = data.nodes.filter((n) => n.root).length
-  const stats = `${data.nodes.length} RICORDI · ${rootCount} RADICI · ${new Set(data.nodes.map((n) => n.author)).size} AUTORI · ${data.links.length} SINAPSI`
+  const stats = s.stats(data.nodes.length, rootCount, new Set(data.nodes.map((n) => n.author)).size, data.links.length)
 
   return (
     <div className='nucleus' ref={boxRef}>
@@ -300,31 +346,31 @@ export default function Nucleus () {
 
       {/* ── HUD: titolo e statistiche ─────────────────────────────────────── */}
       <div className='hud hud-top-left'>
-        <div className='hud-title'>NUCLEO{status.data?.team ? ` · ${status.data.team.name.toUpperCase()}` : ''}</div>
+        <div className='hud-title'>{s.title}{status.data?.team ? ` · ${status.data.team.name.toUpperCase()}` : ''}</div>
         <div className='hud-sub'>{stats}</div>
       </div>
 
       {/* ── HUD: comandi ──────────────────────────────────────────────────── */}
       <div className='hud hud-top-right'>
-        <input className='hud-input' placeholder='Accendi un argomento…' value={query} onChange={(e) => { setTourIndex(null); setQuery(e.target.value) }} />
+        <input className='hud-input' placeholder={s.highlight} value={query} onChange={(e) => { setTourIndex(null); setQuery(e.target.value) }} />
         <div className='row'>
           {(['holo', 'author', 'kind'] as ColorMode[]).map((m) => (
             <button key={m} className={`hud-btn ${mode === m ? 'on' : ''}`} onClick={() => { setMode(m); setFocus(null) }}>
-              {m === 'holo' ? 'Olografico' : m === 'author' ? 'Per autore' : 'Per tipo'}
+              {s.modes[m]}
             </button>
           ))}
-          <button className={`hud-btn ${rootsOnly ? 'on' : ''}`} disabled={rootCount === 0} title='Mostra solo le Radici: il sapere fondante del team' onClick={() => { setTourIndex(null); setRootsOnly(!rootsOnly) }}>
-            ◆ Radici {rootCount}
+          <button className={`hud-btn ${rootsOnly ? 'on' : ''}`} disabled={rootCount === 0} title={s.rootsOnly} onClick={() => { setTourIndex(null); setRootsOnly(!rootsOnly) }}>
+            {s.roots(rootCount)}
           </button>
         </div>
         {tourIndex === null
-          ? <button className='hud-btn primary' disabled={stops.length === 0} onClick={startTour}>▶ Avvia esplorazione guidata</button>
+          ? <button className='hud-btn primary' disabled={stops.length === 0} onClick={startTour}>{s.startTour}</button>
           : (
             <div className='row'>
               <button className='hud-btn' onClick={() => setTourIndex((i) => ((i ?? 0) - 1 + stops.length) % stops.length)}>◀</button>
               <button className='hud-btn' onClick={() => setPaused(!paused)}>{paused ? '▶' : '❚❚'}</button>
               <button className='hud-btn' onClick={() => setTourIndex((i) => ((i ?? 0) + 1) % stops.length)}>▶</button>
-              <button className='hud-btn' onClick={stopTour}>■ Stop</button>
+              <button className='hud-btn' onClick={stopTour}>{s.stop}</button>
             </div>
             )}
         {mode !== 'holo' && <Legend nodes={graph.data?.nodes ?? []} mode={mode} focus={focus} onFocus={(k) => { setTourIndex(null); setFocus(focus === k ? null : k) }} />}
@@ -333,24 +379,24 @@ export default function Nucleus () {
       {/* ── HUD: didascalia della tappa del tour ─────────────────────────── */}
       {stop && (
         <div className='hud hud-caption'>
-          <div className='hud-sub'>TAPPA {(tourIndex ?? 0) + 1} / {stops.length}</div>
+          <div className='hud-sub'>{s.stopLabel((tourIndex ?? 0) + 1, stops.length)}</div>
           <div className='hud-topic'>#{stop.topic}</div>
-          <div>{caption(stop, (k) => KIND_LABEL[k] ?? k)}</div>
+          <div>{caption(stop, (k) => KIND_LABEL[k] ?? k, lang)}</div>
         </div>
       )}
       {!stop && lit && (
         <div className='hud hud-caption'>
-          <div className='hud-topic'>{lit.size} ricordi {q.length >= 2 ? 'pertinenti' : ''}</div>
+          <div className='hud-topic'>{s.lit(lit.size, q.length >= 2)}</div>
           <div>
-            {q.length >= 2 && <>a «{q}»</>}
-            {rootsOnly && <>{q.length >= 2 || focus ? ' · ' : ''}solo Radici</>}
-            {focus && <>{q.length >= 2 ? ' · ' : ''}{mode === 'author' ? 'di ' + (graph.data?.nodes.find((n) => n.author === focus)?.authorName ?? focus.slice(0, 8)) : 'di tipo ' + (KIND_LABEL[focus] ?? focus)}</>}
+            {q.length >= 2 && <>{s.to(q)}</>}
+            {rootsOnly && <>{q.length >= 2 || focus ? ' · ' : ''}{s.onlyRoots}</>}
+            {focus && <>{q.length >= 2 ? ' · ' : ''}{mode === 'author' ? s.by(graph.data?.nodes.find((n) => n.author === focus)?.authorName ?? focus.slice(0, 8)) : s.ofKind(KIND_LABEL[focus] ?? focus)}</>}
           </div>
         </div>
       )}
 
       {data.nodes.length === 0 && !graph.isLoading && (
-        <div className='hud hud-center'>Il nucleo si accenderà con i primi ricordi del team.</div>
+        <div className='hud hud-center'>{s.empty}</div>
       )}
 
       {selected && (
@@ -367,6 +413,7 @@ export default function Nucleus () {
  * secondo clic sulla stessa voce rimuove il filtro. Mostra anche quanti ricordi ha ogni voce.
  */
 function Legend ({ nodes, mode, focus, onFocus }: { nodes: GraphNode[], mode: ColorMode, focus: string | null, onFocus: (key: string) => void }) {
+  const s = useStrings(S)
   const count = (pred: (n: GraphNode) => boolean) => nodes.filter(pred).length
   const entries = mode === 'kind'
     ? [...new Set(nodes.map((n) => n.kind))].map((k) => ({ key: k, label: KIND_LABEL[k] ?? k, color: KIND_COLOR[k] ?? HOLO.amber, n: count((x) => x.kind === k) }))
@@ -374,11 +421,11 @@ function Legend ({ nodes, mode, focus, onFocus }: { nodes: GraphNode[], mode: Co
   return (
     <div className='hud-legend'>
       {entries.map((e) => (
-        <button key={e.key} className={`hud-legend-item ${focus === e.key ? 'on' : ''} ${focus && focus !== e.key ? 'off' : ''}`} onClick={() => onFocus(e.key)} title={focus === e.key ? 'Mostra tutti' : 'Isola'}>
+        <button key={e.key} className={`hud-legend-item ${focus === e.key ? 'on' : ''} ${focus && focus !== e.key ? 'off' : ''}`} onClick={() => onFocus(e.key)} title={focus === e.key ? s.showAll : s.isolate}>
           <span className='dot' style={{ background: e.color, boxShadow: `0 0 6px ${e.color}` }} /> {e.label} <span className='hud-legend-count'>{e.n}</span>
         </button>
       ))}
-      {focus && <button className='hud-legend-item' onClick={() => onFocus(focus)}>✕ mostra tutti</button>}
+      {focus && <button className='hud-legend-item' onClick={() => onFocus(focus)}>{s.showAllBtn}</button>}
     </div>
   )
 }

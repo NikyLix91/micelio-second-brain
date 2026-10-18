@@ -22,6 +22,7 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, s
 import { type DaemonInfo, daemonInfo, ensureDaemon } from './daemon'
 import { nucleusIconPng } from './icon'
 import { watchDaemon } from './notifications'
+import { langFromLocale, setDesktopLang, t } from './strings'
 
 let win: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -103,14 +104,24 @@ let uiUrl = ''
 function createTray (info: DaemonInfo): void {
   tray = new Tray(icon.resize({ width: 16, height: 16 }))
   tray.setToolTip('Micelio')
-  tray.setContextMenu(Menu.buildFromTemplate([
-    { label: 'Apri Micelio', click: () => showWindow() },
-    { label: 'Inbox', click: () => showWindow('/inbox') },
-    { label: 'Apri nel browser', click: () => void shell.openExternal(`${info.baseUrl}/ui/`) },
-    { type: 'separator' },
-    { label: 'Esci (il nodo resta attivo)', click: () => { quitting = true; app.quit() } }
-  ]))
+  trayInfo = info
+  buildTrayMenu()
   tray.on('click', () => showWindow())
+}
+
+let trayInfo: DaemonInfo | null = null
+
+/** Menu dell'icona nella lingua corrente (ricostruito quando l'utente cambia lingua nella UI). */
+function buildTrayMenu (): void {
+  if (!tray || !trayInfo) return
+  const info = trayInfo
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: t().trayOpen, click: () => showWindow() },
+    { label: t().trayInbox, click: () => showWindow('/inbox') },
+    { label: t().trayBrowser, click: () => void shell.openExternal(`${info.baseUrl}/ui/`) },
+    { type: 'separator' },
+    { label: t().trayQuit, click: () => { quitting = true; app.quit() } }
+  ]))
 }
 
 /**
@@ -142,6 +153,7 @@ async function takeScreenshots (dir: string): Promise<void> {
 }
 
 app.whenReady().then(async () => {
+  setDesktopLang(langFromLocale(app.getLocale()))
   // Niente menu applicativo: la navigazione è nella UI.
   Menu.setApplicationMenu(null)
   let info: DaemonInfo
@@ -158,12 +170,16 @@ app.whenReady().then(async () => {
   // Ponte con la UI (vedi preload.ts).
   ipcMain.on('micelio:token', (e) => { e.returnValue = info.token })
   ipcMain.handle('micelio:pick-folder', async () => {
-    const r = await dialog.showOpenDialog(win!, { properties: ['openDirectory'], title: 'Scegli la cartella del progetto' })
+    const r = await dialog.showOpenDialog(win!, { properties: ['openDirectory'], title: t().pickFolder })
     return r.canceled ? null : r.filePaths[0]
   })
 
   // Mostra un file nella sua cartella. Solo "mostra", mai "esegui": un documento arrivato da un
   // collega non viene aperto automaticamente.
+  // Lingua scelta nella UI: la seguono menu e notifiche (vedi strings.ts).
+  ipcMain.on('micelio:set-lang', (_e, l: unknown) => {
+    if (l === 'it' || l === 'en') { setDesktopLang(l); buildTrayMenu() }
+  })
   ipcMain.handle('micelio:show-in-folder', (_e, file: string) => { if (typeof file === 'string' && fs.existsSync(file)) shell.showItemInFolder(file) })
 
   if (screenshotDir) {

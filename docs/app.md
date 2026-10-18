@@ -126,6 +126,12 @@ Il nodo a colpo d'occhio: ruolo, peer connessi, ricordi, LLM e budget di oggi, c
 
 ![Impostazioni](img/impostazioni.png)
 
+## Lingua
+
+L'app è in **italiano** e in **inglese**. Il selettore **IT / EN** è in fondo alla barra laterale (e nella schermata di benvenuto). La scelta vale anche per date e numeri e, nell'app desktop, per il menu dell'icona e per le notifiche. Si ricorda fra un avvio e l'altro; la prima volta si usa la lingua del sistema.
+
+I contenuti scritti dal team (ricordi, motivi delle segnalazioni, riassunti dei sogni) restano nella lingua in cui sono stati scritti. La lingua dei ricordi distillati si sceglie per tutto il team nella pagina Team.
+
 ## Aggiornamenti in tempo reale
 
 Tutte le schermate si aggiornano da sole: il daemon invia un evento a ogni cambiamento (`GET /api/events`) e la UI ricarica solo i dati interessati. Il pallino in basso nella barra laterale indica se il collegamento è attivo.
