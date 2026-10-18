@@ -26,7 +26,9 @@ const STRINGS = {
     isolatedTitle: 'Micelio · nodo isolato',
     isolatedBody: 'Da più di 10 minuti nessun collega è raggiungibile: il sapere non si sta sincronizzando.',
     budgetTitle: 'Micelio · budget quasi esaurito',
-    budgetBody: (used: number, limit: number) => `Oggi ${used} chiamate su ${limit}. Oltre il limite il lavoro aspetta domani.`
+    budgetBody: (used: number, limit: number) => `Oggi ${used} chiamate su ${limit}. Oltre il limite il lavoro aspetta domani.`,
+    digestTitle: 'Micelio · la settimana del team',
+    digestBody: (added: number, gaps: number) => `${added === 1 ? 'Un ricordo nuovo' : `${added} ricordi nuovi`}${gaps ? `, ${gaps === 1 ? 'una lacuna aperta' : `${gaps} lacune aperte`}` : ''}. Apri il riepilogo.`
   },
   en: {
     trayOpen: 'Open Micelio',
@@ -39,7 +41,9 @@ const STRINGS = {
     isolatedTitle: 'Micelio · isolated node',
     isolatedBody: 'No colleague has been reachable for more than 10 minutes: knowledge is not being synchronised.',
     budgetTitle: 'Micelio · budget almost used up',
-    budgetBody: (used: number, limit: number) => `Today ${used} calls out of ${limit}. Beyond the limit work waits for tomorrow.`
+    budgetBody: (used: number, limit: number) => `Today ${used} calls out of ${limit}. Beyond the limit work waits for tomorrow.`,
+    digestTitle: 'Micelio · the team\'s week',
+    digestBody: (added: number, gaps: number) => `${added === 1 ? 'One new memory' : `${added} new memories`}${gaps ? `, ${gaps === 1 ? 'one open gap' : `${gaps} open gaps`}` : ''}. Open the digest.`
   }
 }
 

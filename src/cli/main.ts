@@ -27,7 +27,8 @@ import { autostartOff, autostartOn, autostartStatus } from '../node/autostart'
 import { BOOTSTRAP_RE, dhtBootstrap, loadConfig, networkMode, type NetworkMode, updateConfig } from '../node/config'
 import { claudeSettingsFile, hookCommand, IntegrationError, mcpAddArgs, setupClaudeCode } from '../node/integrations'
 import type { TeamSummary } from '../node/micelio-host'
-import type { IngestStatus, NetworkSettings, RootReviewResult, RootView, SecurityFinding, SecurityRules, SecurityTestResult } from '../node/micelio-node'
+import type { GapView, IngestStatus, NetworkSettings, RootReviewResult, RootView, SecurityFinding, SecurityRules, SecurityTestResult } from '../node/micelio-node'
+import type { Digest } from '../insight/digest'
 import type { SecurityLogEntry } from '../store/private-store'
 import type { Decision, InboxItem } from '../store/private-store'
 import { DaemonClient, DaemonError } from './client'
@@ -459,6 +460,75 @@ program.command('remember')
       return
     }
     printOutcome(await client().call<ExplicitOutcome>('POST', '/api/memories', { title, body, kind: o.kind, tags }))
+  })
+
+// ── Lacune e riepilogo (B4) ───────────────────────────────────────────────────────
+const gaps = program.command('gaps').description('lacune di conoscenza: ciò che il team cerca e non trova (list | mine | report | close | dismiss)')
+
+gaps.command('list', { isDefault: true })
+  .description('lacune segnalate al team')
+  .action(async () => {
+    const list = await client().call<GapView[]>('GET', '/api/gaps')
+    if (!list.length) return console.log('Nessuna lacuna segnalata al team. Le tue ricerche senza risposta: micelio gaps mine')
+    for (const g of list) {
+      console.log(`${g.status === 'open' ? '○' : '●'} ${g.id.slice(0, 12)}  ${g.question}  · ${g.askerNames.join(', ')}${g.status === 'closed' ? ' · chiusa' : ''}`)
+      if (g.answer) console.log(`    forse colmata da: ${g.answer.title} (id:${g.answer.id.slice(0, 12)})`)
+    }
+  })
+
+gaps.command('mine')
+  .description('le tue ricerche senza risposta (solo su questo PC)')
+  .action(async () => {
+    const list = await client().call<{ key: string, query: string, count: number, last: number, answer: { id: string, title: string } | null }[]>('GET', '/api/gaps/mine')
+    if (!list.length) return console.log('Nessuna ricerca senza risposta.')
+    for (const m of list) {
+      console.log(`${m.count}×  ${m.query}  (ultima ${date(m.last)})  chiave: "${m.key}"`)
+      if (m.answer) console.log(`    forse colmata da: ${m.answer.title} (id:${m.answer.id.slice(0, 12)})`)
+    }
+    console.log('\nPer segnalarne una al team: micelio gaps report "<chiave>"')
+  })
+
+gaps.command('report')
+  .description('segnala al team una tua lacuna (per chiave, vedi "mine") o una domanda scritta da te')
+  .argument('[chiave]', 'chiave della lacuna (da micelio gaps mine)')
+  .option('-q, --question <testo>', 'domanda da segnalare')
+  .action(async (key: string | undefined, o: { question?: string }) => {
+    await client().call('POST', '/api/gaps/report', { key: key ?? '', question: o.question })
+    console.log('Lacuna segnalata al team.')
+  })
+
+gaps.command('close')
+  .description('chiude una lacuna del team, facoltativamente con il ricordo che la colma')
+  .argument('<id>', 'id della lacuna (anche abbreviato)')
+  .option('-m, --memory <id>', 'ricordo che la colma')
+  .action(async (id: string, o: { memory?: string }) => {
+    await client().call('POST', `/api/gaps/${encodeURIComponent(id)}/close`, { memory: o.memory })
+    console.log('Lacuna chiusa.')
+  })
+
+gaps.command('dismiss')
+  .description('ignora una tua ricerca senza risposta')
+  .argument('<chiave>', 'chiave (da micelio gaps mine)')
+  .action(async (key: string) => {
+    await client().call('DELETE', `/api/gaps/mine/${encodeURIComponent(key)}`)
+    console.log('Ignorata.')
+  })
+
+program.command('digest')
+  .description('riepilogo: cosa ha imparato il team negli ultimi giorni')
+  .option('-d, --days <n>', 'giorni da considerare', '7')
+  .action(async (o: { days: string }) => {
+    const d = await client().call<Digest>('GET', `/api/digest?days=${encodeURIComponent(o.days)}`)
+    const list = (items: { title: string, detail?: string }[]) => items.map((i) => `   - ${i.title}${i.detail ? ` (${i.detail})` : ''}`).join('\n')
+    console.log(`Riepilogo dal ${date(d.from)} al ${date(d.to)}\n`)
+    console.log(`Ricordi nuovi: ${d.memories.added}${Object.keys(d.memories.byKind).length ? ' · ' + Object.entries(d.memories.byKind).map(([k, n]) => `${k} ${n}`).join(', ') : ''}`)
+    if (d.memories.byAuthor.length) console.log(`   da: ${d.memories.byAuthor.map((a) => `${a.name} (${a.count})`).join(', ')}`)
+    if (d.memories.latest.length) console.log(list(d.memories.latest))
+    if (d.roots.added.length) console.log(`Nuove Radici:\n${list(d.roots.added)}`)
+    if (d.roots.toReview.length) console.log(`Radici da rivedere:\n${list(d.roots.toReview)}`)
+    if (d.mostUsed.length) console.log(`Più usati:\n${list(d.mostUsed.map((m) => ({ title: m.title, detail: `${m.detail} usi` })))}`)
+    if (d.gaps.length) console.log(`Lacune aperte del team:\n${list(d.gaps.map((g) => ({ title: g.title, detail: `${g.detail} persone` })))}`)
+    console.log(`Tue ricerche senza risposta: ${d.myMisses} · sogni: ${d.dreams.count} · ricordi con codice cambiato: ${d.stale}`)
   })
 
 // ── Ricordi e codice (B4) ─────────────────────────────────────────────────────────

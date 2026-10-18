@@ -120,6 +120,22 @@ export interface RootFlag {
   ts: number
 }
 
+/** Una lacuna di conoscenza segnalata al team (B4, src/insight/gaps.ts). */
+export interface GapRecord {
+  id: string
+  question: string
+  /** Chi l'ha segnalata per primo. */
+  by: string
+  ts: number
+  /** Tutti i membri che l'hanno segnalata (chiavi dei feed): quanti hanno lo stesso bisogno. */
+  askers: string[]
+  status: 'open' | 'closed'
+  closedBy?: string
+  closedAt?: number
+  /** Ricordo che la colma, se indicato. */
+  memory?: string
+}
+
 /**
  * Una RADICE: ricordo fondante del team (architettura, rete, interfacce, best practice,
  * policy…). Non decade, non viene archiviata né fusa dal dreaming, emerge sempre nelle ricerche
@@ -142,6 +158,8 @@ export interface RootRecord {
 
 /** Stato sintetico del nodo, mostrato da `micelio status` e dalla futura UI. */
 export interface NodeStatus {
+  /** Team in modalità solo locale (B4): nessuna rete, quindi nessun peer è normale. */
+  localOnly?: boolean
   /** false finché il nodo non ha fatto `init` o `join`. */
   configured: boolean
   nodeName: string | null

@@ -186,7 +186,15 @@ export const TeamEvent = z.discriminatedUnion('type', [
    */
   z.object({ ...base, type: z.literal('root.flag'), id: memoryIdHex, reason: z.string().min(1).max(500), refs: z.array(z.string().max(100)).max(20).default([]) }),
   /** Radice rivista e confermata: le segnalazioni si azzerano e la data di revisione riparte. */
-  z.object({ ...base, type: z.literal('root.confirm'), id: memoryIdHex })
+  z.object({ ...base, type: z.literal('root.confirm'), id: memoryIdHex }),
+  // ── Lacune di conoscenza (B4) ─────────────────────────────────────────────────────
+  /**
+   * Una domanda a cui la memoria del team non sa rispondere, segnalata da un membro. La stessa
+   * domanda segnalata da altri (stesso id, vedi src/insight/gaps.ts) aggiunge chi la condivide.
+   */
+  z.object({ ...base, type: z.literal('gap.report'), id: hexKey, question: z.string().trim().min(3).max(300) }),
+  /** Lacuna colmata (facoltativamente dal ricordo indicato) o non più utile. Qualunque membro. */
+  z.object({ ...base, type: z.literal('gap.close'), id: hexKey, memory: memoryIdHex.optional() })
 ])
 export type TeamEvent = z.infer<typeof TeamEvent>
 

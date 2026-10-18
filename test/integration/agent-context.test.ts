@@ -53,4 +53,30 @@ describe('contesto automatico', () => {
     expect(await node.agentContext({ event: 'session-start', cwd: project, sessionId: 's4' })).toBe('')
     expect(await node.agentContext({ event: 'prompt', cwd: project, sessionId: 's4', prompt: 'come configuro il proxy aziendale per npm install?' })).toBe('')
   })
+
+  it('lacune: una ricerca senza risposta si registra, si segnala al team e si chiude', async () => {
+    expect(await node.recallHybrid('kubernetes helm chart', 5)).toEqual([])
+    await node.recallHybrid('helm chart kubernetes', 5) // stessa domanda, altre parole in ordine diverso
+    const [mine] = node.myGaps()
+    expect(mine).toMatchObject({ query: 'helm chart kubernetes', count: 2, answer: null })
+    // ricerche interne (track = false) non contano
+    await node.recallHybrid('terraform', 5, false)
+    expect(node.myGaps()).toHaveLength(1)
+
+    const [g] = await node.reportGap(mine.key)
+    expect(g).toMatchObject({ question: 'helm chart kubernetes', status: 'open', askerNames: ['ada'] })
+    expect(node.myGaps()).toEqual([]) // segnalata: non è più fra le tue
+    const mem = published(await node.remember({ title: 'Chart Helm per kubernetes', body: 'I chart Helm del team stanno nel repository infra, cartella charts.', tags: ['helm'] }))
+    expect((await node.teamGaps())[0].answer?.id).toBe(mem.id)
+    const [closed] = await node.closeGap(g.id.slice(0, 10), mem.id)
+    expect(closed).toMatchObject({ status: 'closed', memory: mem.id })
+  })
+
+  it('riepilogo: ricordi nuovi, Radici, lacune della settimana', async () => {
+    const d = await node.digest(7)
+    expect(d.memories.added).toBe(4)
+    expect(d.memories.byAuthor).toEqual([{ name: 'ada', count: 4 }])
+    expect(d.roots.added.map((r) => r.title)).toEqual(['Architettura del servizio ordini'])
+    expect(d.gaps).toEqual([]) // l'unica lacuna è chiusa
+  })
 })

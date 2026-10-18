@@ -214,6 +214,47 @@ export class ApiController {
     return this.node.remember({ ...memory, source: { type: 'cli' } } as any)
   }
 
+  // ═══════════════════════ Lacune e riepilogo (B4) ═══════════════════════
+
+  /** Le tue ricerche senza risposta (solo su questo PC). */
+  @Get('gaps/mine')
+  myGaps () {
+    return this.node.myGaps()
+  }
+
+  @Delete('gaps/mine/:key')
+  dismissGap (@Param('key') key: string) {
+    this.node.dismissGap(key)
+    return { ok: true }
+  }
+
+  /** Segnala al team una tua lacuna (o una domanda scritta a mano: { question }). */
+  @Post('gaps/report')
+  @HttpCode(200)
+  reportGap (@Body() body: unknown) {
+    const { key, question } = z.object({ key: z.string().max(400).default(''), question: z.string().max(300).optional() }).parse(body ?? {})
+    return this.node.reportGap(key, question)
+  }
+
+  /** Lacune segnalate al team. */
+  @Get('gaps')
+  teamGaps () {
+    return this.node.teamGaps()
+  }
+
+  @Post('gaps/:id/close')
+  @HttpCode(200)
+  closeGap (@Param('id') id: string, @Body() body: unknown) {
+    const { memory } = z.object({ memory: z.string().max(64).optional() }).default({}).parse(body ?? {})
+    return this.node.closeGap(id, memory)
+  }
+
+  /** Riepilogo degli ultimi giorni (default 7). */
+  @Get('digest')
+  digest (@Query('days') days = '7') {
+    return this.node.digest(Math.min(Math.max(Number(days) || 7, 1), 90))
+  }
+
   // ═══════════════════════════ Ricordi personali (B4) ═══════════════════════════
 
   @Get('personal')

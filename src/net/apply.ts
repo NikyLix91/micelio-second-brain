@@ -22,7 +22,7 @@ import Hyperbee from 'hyperbee'
 import b4a from 'b4a'
 import { TeamEvent, memoryId } from '../core/events'
 import { verifyMembership } from '../core/identity'
-import type { InviteRecord, MemberRecord, MemoryRecord, RootRecord, TeamRecord } from '../core/model'
+import type { GapRecord, InviteRecord, MemberRecord, MemoryRecord, RootRecord, TeamRecord } from '../core/model'
 
 /**
  * Chiavi della vista. Il prefisso raggruppa i record dello stesso tipo, così si possono
@@ -46,7 +46,9 @@ export const KEYS = {
   /** Chi ha "vinto" il sogno di un'epoca. */
   dreamClaim: (epoch: string) => `dream/${epoch}`,
   /** Diario del sogno di un'epoca. */
-  dreamLog: (epoch: string) => `dreamlog/${epoch}`
+  dreamLog: (epoch: string) => `dreamlog/${epoch}`,
+  /** Lacuna di conoscenza segnalata al team (B4). */
+  gap: (id: string) => `gap/${id}`
 } as const
 
 /**
@@ -62,7 +64,8 @@ export const RANGES = {
   roots: { gt: 'root/', lt: 'root0' },
   usage: { gt: 'usage/', lt: 'usage0' },
   links: { gt: 'link/', lt: 'link0' },
-  dreamLogs: { gt: 'dreamlog/', lt: 'dreamlog0' }
+  dreamLogs: { gt: 'dreamlog/', lt: 'dreamlog0' },
+  gaps: { gt: 'gap/', lt: 'gap0' }
 } as const
 
 /**
@@ -203,6 +206,25 @@ async function applyEvent (ev: TeamEvent, author: string, view: any, host: any):
       await host.removeWriter(buf(ev.key))
       // Il record resta, marcato `removed`: serve allo storico e all'albero degli inviti.
       await view.put(KEYS.member(ev.key), { ...target, removed: true })
+      return
+    }
+
+    // ── gap.report / gap.close (B4) ──────────────────────────────────────────────────
+    // Qualunque membro segnala o chiude. Una lacuna chiusa e segnalata di nuovo si riapre: il
+    // bisogno è tornato (es. il ricordo che la colmava è stato archiviato).
+    case 'gap.report': {
+      const g = await get<GapRecord>(view, KEYS.gap(ev.id))
+      if (!g) {
+        await view.put(KEYS.gap(ev.id), { id: ev.id, question: ev.question, by: author, ts: ev.ts, askers: [author], status: 'open' } satisfies GapRecord)
+      } else if (g.status === 'closed' || !g.askers.includes(author)) {
+        await view.put(KEYS.gap(ev.id), { ...g, status: 'open', askers: g.askers.includes(author) ? g.askers : [...g.askers, author] })
+      }
+      return
+    }
+    case 'gap.close': {
+      const g = await get<GapRecord>(view, KEYS.gap(ev.id))
+      if (!g || g.status === 'closed') return
+      await view.put(KEYS.gap(ev.id), { ...g, status: 'closed', closedBy: author, closedAt: ev.ts, ...(ev.memory ? { memory: ev.memory } : {}) })
       return
     }
 

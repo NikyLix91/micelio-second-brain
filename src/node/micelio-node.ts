@@ -25,7 +25,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { LocalizedError } from '../core/errors'
 import { MemoryInput, memoryId, type MemoryData, ROOT_CATEGORIES, type RootCategory } from '../core/events'
-import type { InviteRecord, MemberRecord, NodeStatus, RecallHit, RootRecord } from '../core/model'
+import type { GapRecord, InviteRecord, MemberRecord, NodeStatus, RecallHit, RootRecord } from '../core/model'
 import type { NodePaths } from '../core/paths'
 import { writeExport } from '../export/markdown'
 import { buildGraph, type Graph, type GraphLink } from '../graph/constellation'
@@ -56,6 +56,8 @@ import { distillQuality, type DistillQuality, MAX_MEMORIES_RANGE, maxMemoriesOf 
 import { localRepos, reviewRoots, type ReviewNote } from '../roots/review'
 import { computeStaleness, stalenessFactor } from '../rank/code-staleness'
 import { promptContext, sessionContext } from '../context/agent-context'
+import { computeDigest, type Digest } from '../insight/digest'
+import { gapId, gapKey } from '../insight/gaps'
 import { repoInfo } from '../ingest/git-changes'
 import { type Identity, signMembership } from '../core/identity'
 import { checkDecision, WRITE_CANDIDATES, WriteDecision, writeUpdateInput, writeUpdateSystem } from '../ingest/write-update'
@@ -106,7 +108,14 @@ export class UserError extends LocalizedError {}
  * - inbox, jobs, decisions: archivio privato (inbox, coda di ingestione, registro);
  * - settings:  impostazioni locali (cartelle abilitate, LLM).
  */
-export type ChangeTopic = 'status' | 'memories' | 'members' | 'inbox' | 'jobs' | 'decisions' | 'settings' | 'roots' | 'security'
+export type ChangeTopic = 'status' | 'memories' | 'members' | 'inbox' | 'jobs' | 'decisions' | 'settings' | 'roots' | 'security' | 'gaps'
+
+/** Una lacuna del team come la mostrano UI e CLI (B4). */
+export interface GapView extends GapRecord {
+  askerNames: string[]
+  /** Un ricordo che forse la colma (ricerca per parole chiave), se la lacuna è aperta. */
+  answer: { id: string, title: string } | null
+}
 
 /** Impostazioni LOCALI modificabili dalla UI (config.json). */
 export interface NodeSettings {
@@ -662,6 +671,8 @@ export class MicelioNode extends EventEmitter {
     // L'uso dei ricordi personali non si conta: verrebbe pubblicato al team (usage.report)
     const used = hits.filter((h) => !this.personalIds.has(h.id)).map((h) => h.id)
     if (track && used.length) this.privateStore.countUsage(used)
+    // B4: una ricerca esplicita senza risultati è una lacuna di conoscenza (solo su questo PC)
+    if (track && hits.length === 0) await this.recordMiss(query)
     return hits
   }
 
@@ -1113,6 +1124,95 @@ export class MicelioNode extends EventEmitter {
     const [q] = await this.embedder.embed([text.slice(0, 2000)], 'query')
     const ids = nearest(q, this.index.vectors(this.embedder.model), n, semanticThreshold(this.embedder.model)).map((r) => r.id)
     return this.enrich(this.index.getMany(ids))
+  }
+
+  // ═══════════════════════ Lacune e riepilogo settimanale (B4) ═══════════════════════
+
+  /** Registra una ricerca senza risultato, dopo la redazione dei segreti (src/insight/gaps.ts). */
+  private async recordMiss (query: string): Promise<void> {
+    const key = gapKey(query)
+    if (!key) return
+    try {
+      const { text } = applyFilter(query.trim().slice(0, 300), await this.filterRules())
+      this.privateStore.addSearchMiss(key, text)
+      this.changed('gaps')
+    } catch (err) {
+      this.log(`lacuna non registrata: ${(err as Error).message}`)
+    }
+  }
+
+  /**
+   * Le TUE ricerche senza risposta (solo su questo PC), dalle più frequenti. `answer` = un ricordo
+   * arrivato nel frattempo che forse la colma (ricerca per parole chiave).
+   */
+  myGaps (): { key: string, query: string, count: number, first: number, last: number, answer: { id: string, title: string } | null }[] {
+    return this.privateStore.searchMisses('open').map((m) => {
+      const [id] = this.index.keywordIds(m.query, 1)
+      const hit = id ? this.index.get(id) : null
+      return { key: m.key, query: m.query, count: m.count, first: m.first, last: m.last, answer: hit ? { id: hit.id, title: hit.title } : null }
+    })
+  }
+
+  /** Ignora una tua lacuna (non riapparirà). */
+  dismissGap (key: string): void {
+    this.privateStore.setSearchMissStatus(key, 'dismissed')
+    this.changed('gaps')
+  }
+
+  /** Segnala al team una tua lacuna: tutti la vedono e chi ha lo stesso bisogno si aggiunge. */
+  async reportGap (key: string, question?: string): Promise<GapView[]> {
+    const team = this.requireTeam()
+    const mine = this.privateStore.searchMisses('open', 1000).find((m) => m.key === key)
+    const text = (question ?? mine?.query ?? '').trim()
+    if (text.length < 3) throw new UserError('Scrivi la domanda (almeno 3 caratteri)', 'Write the question (at least 3 characters)')
+    const { text: clean, blocked } = applyFilter(text, await this.filterRules())
+    if (blocked) throw new UserError('La domanda contiene parole che non possono andare al team: riformulala', 'The question contains words that cannot go to the team: rephrase it')
+    await team.append({ type: 'gap.report', id: gapId(gapKey(clean) || key), question: clean.slice(0, 300) })
+    if (mine) this.privateStore.setSearchMissStatus(key, 'reported')
+    await this.sync()
+    this.changed('gaps')
+    return this.teamGaps()
+  }
+
+  /** Lacune segnalate al team, aperte prima, con chi le condivide e un possibile ricordo che le colma. */
+  async teamGaps (): Promise<GapView[]> {
+    const team = this.requireTeam()
+    const names = new Map((await team.members()).map((m) => [m.key, m.name]))
+    return (await team.gaps()).map((g) => {
+      const [id] = g.status === 'open' ? this.index.keywordIds(g.question, 1) : []
+      const hit = id ? this.index.get(id) : null
+      return { ...g, askerNames: g.askers.map((k) => names.get(k) ?? k.slice(0, 8)), answer: hit ? { id: hit.id, title: hit.title } : null }
+    }).sort((a, b) => (a.status === b.status ? b.askers.length - a.askers.length || b.ts - a.ts : a.status === 'open' ? -1 : 1))
+  }
+
+  /** Chiude una lacuna del team, facoltativamente con il ricordo che la colma. */
+  async closeGap (id: string, memory?: string): Promise<GapView[]> {
+    const team = this.requireTeam()
+    const found = (await team.gaps()).find((g) => g.id === id || g.id.startsWith(id))
+    if (!found) throw new UserError(`Nessuna lacuna con id ${id}`, `No gap with id ${id}`)
+    const mem = memory ? this.requireMemory(memory).id : undefined
+    await team.append({ type: 'gap.close', id: found.id, ...(mem ? { memory: mem } : {}) })
+    await this.sync()
+    this.changed('gaps')
+    return this.teamGaps()
+  }
+
+  /** Riepilogo degli ultimi `days` giorni (src/insight/digest.ts). */
+  async digest (days = 7, now = Date.now()): Promise<Digest> {
+    const team = this.requireTeam()
+    const signals = this.index.signals()
+    const lastUsed = new Map<string, number>()
+    for (const [id, s] of signals) if (s.lastUsed) lastUsed.set(id, s.lastUsed)
+    return computeDigest({
+      now,
+      days,
+      memories: this.enrich(this.teamMemories(), signals),
+      roots: [...this.rootsById.values()],
+      lastUsed,
+      gaps: await team.gaps(),
+      myMisses: this.privateStore.searchMisses('open', 1000),
+      dreams: await team.dreamLogs()
+    })
   }
 
   // ═══════════════════════════ Ricordi personali (B4) ═══════════════════════════
@@ -1730,6 +1830,7 @@ export class MicelioNode extends EventEmitter {
     const me = members.find((m) => m.key === team.localKey)
     return {
       configured: true,
+      localOnly: this.localOnly,
       nodeName: this.nodeName,
       nodeKey: team.localKey,
       team: await team.team(),

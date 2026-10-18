@@ -192,11 +192,17 @@ app.whenReady().then(async () => {
 
   createTray(info)
   showWindow()
+  // Settimana dell'ultimo riepilogo notificato (B4): su disco, così un riavvio non lo ripete
+  const weekFile = path.join(app.getPath('userData'), 'micelio-digest-week.txt')
+  const weekState = {
+    get: () => { try { return fs.readFileSync(weekFile, 'utf8').trim() || null } catch { return null } },
+    set: (week: string) => { try { fs.writeFileSync(weekFile, week) } catch {} }
+  }
   watchDaemon(info, (n) => {
     const notification = new Notification({ title: n.title, body: n.body, icon })
     notification.on('click', () => showWindow(n.route))
     notification.show()
-  })
+  }, weekState)
 }).catch((err) => {
   log(`errore all'avvio: ${err?.stack ?? err}`)
   app.quit()

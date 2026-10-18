@@ -2,10 +2,11 @@
  * @file Notifiche di sistema (decisione D15), calcolate nel processo principale ascoltando lo
  * stream di eventi del daemon (GET /api/events), anche quando la finestra è nascosta.
  *
- * Tre notifiche:
+ * Quattro notifiche:
  * - nuovi elementi in inbox (aumento del conteggio);
- * - nodo isolato da più di 10 minuti (nessun peer connesso);
- * - budget LLM oltre il 90% (una volta al giorno).
+ * - nodo isolato da più di 10 minuti (nessun peer connesso), tranne in modalità solo locale (B4);
+ * - budget LLM oltre il 90% (una volta al giorno);
+ * - riepilogo settimanale (B4): il lunedì dalle 9, una volta a settimana, se c'è qualcosa da dire.
  *
  * La logica di "quando notificare" è in `NotificationRules`, pura e testabile; il resto è
  * collegamento allo stream.
@@ -53,6 +54,18 @@ export class NotificationRules {
     return null
   }
 
+  /**
+   * Riepilogo settimanale: true se è ora di notificarlo (lunedì dalle 9, non ancora fatto questa
+   * settimana). `lastWeek` arriva da disco (vedi watchDaemon), così un riavvio non lo ripete.
+   * @returns la settimana da ricordare come notificata, o null
+   */
+  weekly (lastWeek: string | null, now = Date.now()): string | null {
+    const d = new Date(now)
+    if (d.getDay() !== 1 || d.getHours() < 9) return null
+    const week = d.toISOString().slice(0, 10) // il lunedì identifica la settimana
+    return week === lastWeek ? null : week
+  }
+
   /** Budget: una notifica al giorno quando si supera il 90%. */
   budget (used: number, limit: number, now = Date.now()): Notice | null {
     const day = new Date(now).toISOString().slice(0, 10)
@@ -66,7 +79,7 @@ export class NotificationRules {
  * Ascolta il daemon e chiama `notify` quando una regola scatta. Si riconnette da solo.
  * @returns funzione per fermare l'ascolto
  */
-export function watchDaemon (info: DaemonInfo, notify: (n: Notice) => void): () => void {
+export function watchDaemon (info: DaemonInfo, notify: (n: Notice) => void, weekState?: { get: () => string | null, set: (week: string) => void }): () => void {
   const rules = new NotificationRules()
   let stopped = false
   let controller: AbortController | null = null
@@ -82,9 +95,16 @@ export function watchDaemon (info: DaemonInfo, notify: (n: Notice) => void): () 
         if (b) notify(b)
       }
       if (topic === 'status' || topic === 'init' || topic === 'tick') {
-        const st = await get<{ configured: boolean, peers: number }>(info, '/api/status')
-        const p = st.configured ? rules.peers(st.peers) : null
+        const st = await get<{ configured: boolean, peers: number, localOnly?: boolean }>(info, '/api/status')
+        // Solo locale: nessun peer è la normalità, non un problema da segnalare
+        const p = st.configured ? rules.peers(st.localOnly ? 1 : st.peers) : null
         if (p) notify(p)
+        const week = st.configured && weekState ? rules.weekly(weekState.get()) : null
+        if (week) {
+          weekState!.set(week)
+          const d = await get<{ memories: { added: number }, gaps: unknown[] }>(info, '/api/digest?days=7')
+          if (d.memories.added || d.gaps.length) notify({ title: t().digestTitle, body: t().digestBody(d.memories.added, d.gaps.length), route: '/riepilogo' })
+        }
       }
     } catch {
       // daemon momentaneamente non raggiungibile: riproveremo al prossimo evento

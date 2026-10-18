@@ -27,7 +27,7 @@ import crypto from 'hypercore-crypto'
 import b4a from 'b4a'
 import z32 from 'z32'
 import { envelope, type EventPayload } from '../core/events'
-import type { InviteRecord, MemberRecord, MemoryRecord, RootRecord, TeamRecord } from '../core/model'
+import type { GapRecord, InviteRecord, MemberRecord, MemoryRecord, RootRecord, TeamRecord } from '../core/model'
 import { KEYS, RANGES, applyNodes, openView } from './apply'
 
 /**
@@ -500,6 +500,11 @@ export class TeamNode extends EventEmitter {
       out.set(id, { count: prev.count + v.count, last: Math.max(prev.last, v.last) })
     }
     return out
+  }
+
+  /** Lacune di conoscenza segnalate al team (B4). */
+  async gaps (): Promise<GapRecord[]> {
+    return this.scan<GapRecord>(RANGES.gaps)
   }
 
   /** Inviti non ancora usati né annullati. */
