@@ -26,6 +26,19 @@ const InitBody = z.object({
   network: z.enum(['public', 'local']).optional()
 })
 const JoinBody = z.object({ code: z.string().trim().min(10), name: z.string().trim().min(1).max(100).optional() })
+/** Richiesta di contesto degli hook di Claude Code (B4). */
+const ContextBody = z.object({
+  event: z.enum(['session-start', 'prompt']),
+  cwd: z.string().min(1).max(1000),
+  session_id: z.string().max(200).optional(),
+  prompt: z.string().max(50_000).optional()
+})
+/** Impostazioni del contesto automatico (B4). */
+const ContextSettingsBody = z.object({
+  sessionStart: z.boolean().optional(),
+  prompt: z.boolean().optional(),
+  maxChars: z.number().int().min(500).max(20_000).optional()
+})
 /** Registrazione MCP per una cartella di progetto, sul team della richiesta (B3). */
 const ProjectBody = z.object({ path: z.string().min(1) })
 /** Payload dell'hook SessionEnd di Claude Code, inoltrato da `micelio hook session-end`. */
@@ -72,7 +85,7 @@ const SecurityRulesBody = z.object({
 const SecurityTestBody = z.object({ text: z.string().max(100_000).default(''), file: z.string().max(500).optional() })
 const RedactBody = z.object({ reason: z.string().max(500).default('') }).default({ reason: '' })
 const VoteBody = z.object({ delta: z.union([z.literal(-1), z.literal(0), z.literal(1)]) })
-const SetupBody = z.object({ hook: z.boolean().default(true) }).default({ hook: true })
+const SetupBody = z.object({ hook: z.boolean().default(true), context: z.boolean().default(true) }).default({ hook: true, context: true })
 
 @Controller('api')
 export class ApiController {
@@ -406,6 +419,17 @@ export class ApiController {
     return this.micelio.host.ingestSession({ sessionId: s.session_id, transcriptPath: s.transcript_path, cwd: s.cwd })
   }
 
+  /**
+   * Contesto da inserire nella conversazione di un agente (hook `micelio hook session-start` e
+   * `micelio hook prompt`). Il team è quello della cartella di lavoro. `context: ''` = niente.
+   */
+  @Post('context')
+  @HttpCode(200)
+  async context (@Body() body: unknown) {
+    const b = ContextBody.parse(body)
+    return { context: await this.micelio.host.agentContext({ event: b.event, cwd: b.cwd, sessionId: b.session_id, prompt: b.prompt }) }
+  }
+
   @Get('ingest/status')
   ingestStatus () {
     return this.node.ingestStatus()
@@ -535,6 +559,12 @@ export class ApiController {
     return this.node.settings()
   }
 
+  /** Contesto automatico per gli agenti: cosa inseriscono gli hook (B4). */
+  @Put('settings/context')
+  updateContext (@Body() body: unknown) {
+    return this.node.updateContextSettings(ContextSettingsBody.parse(body))
+  }
+
   /** Modifica modelli e budget LLM (effetto immediato, senza riavvio). */
   @Put('settings/llm')
   updateLlm (@Body() body: unknown) {
@@ -590,11 +620,11 @@ export class ApiController {
   @Post('setup/claude-code')
   @HttpCode(200)
   setupClaudeCode (@Body() body: unknown) {
-    const { hook } = SetupBody.parse(body ?? {})
+    const { hook, context } = SetupBody.parse(body ?? {})
     const { host, port, token } = this.options.config
     const h = host === '0.0.0.0' ? '127.0.0.1' : host
     try {
-      return setupClaudeCode({ mcpUrl: `http://${h}:${port}/mcp`, token, home: this.options.paths.home, hook })
+      return setupClaudeCode({ mcpUrl: `http://${h}:${port}/mcp`, token, home: this.options.paths.home, hook, context })
     } catch (err) {
       // Errori di configurazione (claude assente, settings.json non valido) → 400 leggibile.
       throw err instanceof IntegrationError ? new UserError(err.message, err.en) : err

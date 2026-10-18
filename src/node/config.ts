@@ -93,6 +93,19 @@ const DreamConfig = z.object({
   slotMinutes: z.number().int().min(1).default(30)
 }).prefault({})
 
+/**
+ * Contesto automatico per gli agenti (B4, src/context/agent-context.ts): cosa inseriscono gli
+ * hook di Claude Code. Vale per la macchina (gli hook sono dell'utente, non di un team).
+ */
+const ContextConfig = z.object({
+  /** A inizio sessione: Radici e ricordi più utili del progetto. */
+  sessionStart: z.boolean().default(true),
+  /** A ogni richiesta: ricordi e Radici pertinenti al testo, se lo sono davvero. */
+  prompt: z.boolean().default(true),
+  /** Caratteri massimi inseriti ogni volta. */
+  maxChars: z.number().int().min(500).max(20_000).default(4000)
+}).prefault({})
+
 /** Formato di un nodo di avvio: "host:porta" (host senza spazi né due punti). */
 export const BOOTSTRAP_RE = /^[^\s:]+:\d{1,5}$/
 
@@ -131,6 +144,7 @@ const Config = z.object({
   embeddings: EmbeddingsConfig,
   dream: DreamConfig,
   network: NetworkConfig,
+  context: ContextConfig,
   /**
    * Team usato quando una richiesta non ne indica uno (B3): id locale della cartella `teams/<id>`.
    * Assente = il primo team in ordine di creazione.

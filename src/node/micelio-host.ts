@@ -262,6 +262,16 @@ export class MicelioHost extends EventEmitter {
   }
 
   /**
+   * Contesto automatico per un agente (B4): dal team della cartella di lavoro, o dal predefinito
+   * se la cartella non è abilitata in nessun team (lo stesso team che l'agente vede via `/mcp`).
+   */
+  async agentContext (o: { event: 'session-start' | 'prompt', cwd: string, sessionId?: string, prompt?: string }): Promise<string> {
+    const owner = this.ownerOf(o.cwd)
+    const node = owner ? this.nodes.get(owner) : this.node()
+    return node ? node.agentContext(o) : ''
+  }
+
+  /**
    * Team a cui appartiene una cartella di lavoro: quello con la cartella abilitata più specifica
    * che la contiene (null se nessuno). Vedi il commento del file.
    */

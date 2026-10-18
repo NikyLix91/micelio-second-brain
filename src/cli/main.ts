@@ -829,13 +829,14 @@ ingest.command('run').description('elabora subito il prossimo lavoro in coda')
  */
 program.command('hook')
   .description('(interno) hook per Claude Code')
-  .argument('<event>', 'session-end')
+  .argument('<event>', 'session-end | session-start | prompt')
   .action(async (event: string) => {
     try {
       // Anti-loop: le sessioni lanciate da Micelio stesso per classificare/distillare non si raccolgono.
-      if (process.env.MICELIO_INTERNAL || event !== 'session-end') return
+      if (process.env.MICELIO_INTERNAL || !['session-end', 'session-start', 'prompt'].includes(event)) return
       const raw = await Promise.race([readStdin(), new Promise<string>((r) => setTimeout(() => r(''), 2000))])
       const input = JSON.parse(raw || '{}')
+      if (event === 'session-start' || event === 'prompt') return await contextHook(event, input)
       if (!input.session_id || !input.transcript_path) return
       // Daemon spento? Lo accendiamo noi invece di perdere la sessione. Se non fa in tempo, non è
       // grave: appena avviato, il daemon recupera da solo le sessioni finite (session-scanner).
@@ -856,6 +857,25 @@ program.command('hook')
       } catch {}
     }
   })
+
+/**
+ * Contesto automatico (B4): chiede al daemon Radici e ricordi pertinenti e li passa a Claude Code
+ * come `additionalContext` (JSON su stdout, il formato degli hook SessionStart e UserPromptSubmit).
+ * Mai rallentare l'utente: daemon spento = nessun contesto (a inizio sessione lo si avvia per le
+ * richieste successive), risposta lenta = nessun contesto.
+ */
+async function contextHook (event: 'session-start' | 'prompt', input: { session_id?: string, cwd?: string, prompt?: string }): Promise<void> {
+  const p = paths()
+  if (!(await new DaemonClient(p).health())) {
+    if (event === 'session-start') await startInBackground(p, 8000)
+    if (!(await new DaemonClient(p).health())) return
+  }
+  const r = await client().call<{ context: string }>('POST', '/api/context', {
+    event, cwd: input.cwd ?? process.cwd(), session_id: input.session_id, prompt: input.prompt
+  }, 5000)
+  if (!r.context) return
+  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: event === 'prompt' ? 'UserPromptSubmit' : 'SessionStart', additionalContext: r.context } }))
+}
 
 // ═══════════════════════════════ Integrazioni ═══════════════════════════════
 
@@ -896,8 +916,9 @@ program.command('setup')
   .argument('<client>', 'claude-code (configura) | codex | vscode | webstorm (stampa la configurazione da incollare)')
   .option('--print', 'mostra cosa verrebbe fatto senza modificare nulla')
   .option('--no-hook', 'non installare l\'hook di fine sessione (solo MCP)')
+  .option('--no-context', 'non installare il contesto automatico (hook di inizio sessione e di ogni richiesta)')
   .option('--project <dir>', 'solo per questa cartella di progetto: Claude Code avviato lì usa il team indicato con --team (B3)')
-  .action(async (target: string, o: { print?: boolean, hook: boolean, project?: string }) => {
+  .action(async (target: string, o: { print?: boolean, hook: boolean, context: boolean, project?: string }) => {
     if (o.project && target === 'claude-code') {
       // MCP del team per un solo progetto, ambito "local" di Claude Code (vedi registerProjectMcp)
       const r = await client().call<{ dir: string, mcpUrl: string }>('POST', '/api/setup/project', { path: path.resolve(o.project) })
@@ -919,11 +940,12 @@ program.command('setup')
       const args = mcpAddArgs(c.mcpUrl, c.config.token)
       console.log(`claude ${args.map((a) => (/\s/.test(a) ? JSON.stringify(a) : a)).join(' ')}`)
       if (o.hook) console.log(`+ hook SessionEnd in ${claudeSettingsFile()}:\n  ${hookCommand(p.home)}`)
+      if (o.context) console.log(`+ hook SessionStart e UserPromptSubmit (contesto automatico):\n  ${hookCommand(p.home, undefined, 'session-start')}\n  ${hookCommand(p.home, undefined, 'prompt')}`)
       return
     }
     try {
       // Stessa logica del pulsante nelle Impostazioni della UI (src/node/integrations.ts).
-      const r = setupClaudeCode({ mcpUrl: c.mcpUrl, token: c.config.token, home: p.home, hook: o.hook })
+      const r = setupClaudeCode({ mcpUrl: c.mcpUrl, token: c.config.token, home: p.home, hook: o.hook, context: o.context })
       console.log(`Server MCP registrato: ${r.mcpUrl}`)
       if (r.hookFile) console.log(`Hook di fine sessione installato in ${r.hookFile} (copia di backup accanto)`)
     } catch (err) {

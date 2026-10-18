@@ -55,6 +55,8 @@ import { checkNetwork, type NetworkCheck } from '../net/diagnose'
 import { distillQuality, type DistillQuality, MAX_MEMORIES_RANGE, maxMemoriesOf } from '../ingest/quality'
 import { localRepos, reviewRoots, type ReviewNote } from '../roots/review'
 import { computeStaleness, stalenessFactor } from '../rank/code-staleness'
+import { promptContext, sessionContext } from '../context/agent-context'
+import { repoInfo } from '../ingest/git-changes'
 import { type Identity, signMembership } from '../core/identity'
 import { checkDecision, WRITE_CANDIDATES, WriteDecision, writeUpdateInput, writeUpdateSystem } from '../ingest/write-update'
 
@@ -115,6 +117,8 @@ export interface NodeSettings {
   port: number
   /** Rete P2P: DHT pubblica o privata del team (vedi server/README.md). */
   network: NetworkSettings
+  /** Contesto automatico per gli agenti (B4). */
+  context: { sessionStart: boolean, prompt: boolean, maxChars: number }
 }
 
 /** Impostazioni di rete come le mostra la UI. */
@@ -263,6 +267,12 @@ function duplicateThreshold (model: string): number {
 /** Ogni quanto il nodo controlla se è il suo turno di sognare. */
 const DREAM_CHECK_MS = 10 * 60 * 1000
 
+/** Contesto automatico (B4): Radici e ricordi a inizio sessione, ricordi per richiesta, lunghezza minima della richiesta. */
+const CONTEXT_ROOTS = 8
+const CONTEXT_MEMORIES = 6
+const CONTEXT_PER_PROMPT = 4
+const CONTEXT_MIN_PROMPT = 15
+
 /** Ricordi e codice (B4): primo controllo dopo l'avvio, poi ogni 6 ore. */
 const STALE_FIRST_CHECK_MS = 60 * 1000
 const STALE_CHECK_MS = 6 * 60 * 60 * 1000
@@ -286,6 +296,8 @@ export class MicelioNode extends EventEmitter {
   /** Ricordi il cui codice citato è cambiato (B4, src/rank/code-staleness.ts), da private.db. */
   private staleness = new Map<string, { commits: number, missing: number, checked: number }>()
   private staleTimer: NodeJS.Timeout | null = null
+  /** Contesto automatico (B4): ricordi già mostrati in ogni sessione, per non ripeterli. */
+  private injected = new Map<string, Set<string>>()
   /** Id dei ricordi PERSONALI presenti nell'indice (B4): restano su questo PC. */
   private personalIds = new Set<string>()
   /** Nome del team letto all'ultima materializzazione (vedi teamName). */
@@ -1041,6 +1053,68 @@ export class MicelioNode extends EventEmitter {
     return this.enrich(this.index.recent(limit))
   }
 
+  // ═══════════════════════════ Contesto automatico (B4) ═══════════════════════════
+
+  /**
+   * Contesto da inserire nella conversazione di un agente (hook di Claude Code, vedi
+   * src/context/agent-context.ts). Mai un errore: nel dubbio, nessun contesto.
+   * @param o.event    "session-start" (Radici e ricordi del progetto) o "prompt" (pertinenti al testo)
+   * @param o.cwd      cartella di lavoro dell'agente: dà il progetto
+   * @param o.sessionId per non ripetere nella stessa sessione ciò che è già stato mostrato
+   */
+  async agentContext (o: { event: 'session-start' | 'prompt', cwd: string, sessionId?: string, prompt?: string }): Promise<string> {
+    const cfg = this.config.context
+    if (!this.team) return ''
+    try {
+      const seen = o.sessionId ? (this.injected.get(o.sessionId) ?? new Set<string>()) : new Set<string>()
+      const team = this.teamNameCache ?? ''
+      let text = ''
+      let shown: RecallHit[] = []
+      if (o.event === 'session-start') {
+        if (!cfg.sessionStart) return ''
+        const project = repoInfo(o.cwd)?.project ?? path.basename(o.cwd)
+        // Radici del progetto, più quelle generali (best practice e policy valgono ovunque)
+        const all = await this.roots()
+        const roots = all.filter((r) => r.memory.source?.code?.project?.toLowerCase() === project.toLowerCase() || r.memory.tags.includes(project.toLowerCase()) ||
+          ((r.category === 'practice' || r.category === 'policy') && !r.memory.source?.code?.project)).map((r) => r.memory).slice(0, CONTEXT_ROOTS)
+        const rootIds = new Set(roots.map((r) => r.id))
+        const memories = this.enrich(this.index.all())
+          .filter((h) => !rootIds.has(h.id) && (h.source?.code?.project?.toLowerCase() === project.toLowerCase() || h.tags.includes(project.toLowerCase())))
+          .sort((a, b) => (b.activation ?? 0) - (a.activation ?? 0)).slice(0, CONTEXT_MEMORIES)
+        text = sessionContext({ team, project, roots, memories, maxChars: cfg.maxChars })
+        shown = [...roots, ...memories]
+      } else {
+        if (!cfg.prompt || !o.prompt || o.prompt.trim().length < CONTEXT_MIN_PROMPT) return ''
+        const hits = (await this.relevantTo(o.prompt, CONTEXT_MEMORIES)).filter((h) => !seen.has(h.id))
+        const roots = (await this.relatedRoots(o.prompt, hits.map((h) => h.id), 2)).filter((h) => !seen.has(h.id))
+        shown = [...roots, ...hits].slice(0, CONTEXT_PER_PROMPT)
+        text = promptContext({ team, memories: shown, maxChars: cfg.maxChars })
+      }
+      if (o.sessionId && text) {
+        for (const h of shown) seen.add(h.id)
+        this.injected.set(o.sessionId, seen)
+        // Memoria limitata: le sessioni più vecchie si dimenticano
+        if (this.injected.size > 200) this.injected.delete(this.injected.keys().next().value!)
+      }
+      return text
+    } catch (err) {
+      this.log(`contesto per l'agente non calcolato: ${(err as Error).message}`)
+      return ''
+    }
+  }
+
+  /**
+   * Ricordi PERTINENTI a un testo libero (la richiesta di un utente): solo per significato e sopra
+   * la soglia del modello. Le sole parole chiave su un testo lungo trovano troppo rumore. Senza
+   * embedding: nessun risultato. Non conta come uso (l'agente potrebbe ignorarli).
+   */
+  private async relevantTo (text: string, n: number): Promise<RecallHit[]> {
+    if (!this.embedder) return []
+    const [q] = await this.embedder.embed([text.slice(0, 2000)], 'query')
+    const ids = nearest(q, this.index.vectors(this.embedder.model), n, semanticThreshold(this.embedder.model)).map((r) => r.id)
+    return this.enrich(this.index.getMany(ids))
+  }
+
   // ═══════════════════════════ Ricordi personali (B4) ═══════════════════════════
 
   /** Campo `stale` di un risultato, se il codice citato è cambiato (le Radici hanno la revisione). */
@@ -1246,7 +1320,7 @@ export class MicelioNode extends EventEmitter {
   /** Impostazioni locali correnti (per la schermata Impostazioni). */
   settings (): NodeSettings {
     const { adapter, command, classifyModel, distillModel, dailyBudget } = this.config.llm
-    return { llm: { adapter, command, classifyModel, distillModel, dailyBudget }, watched: this.config.watch.sessions, documents: this.config.watch.documents, port: this.config.port, network: this.networkSettings() }
+    return { llm: { adapter, command, classifyModel, distillModel, dailyBudget }, watched: this.config.watch.sessions, documents: this.config.watch.documents, port: this.config.port, network: this.networkSettings(), context: { ...this.config.context } }
   }
 
   // ═══════════════════════════ Sicurezza (Fase 9) ═══════════════════════════
@@ -1481,6 +1555,17 @@ export class MicelioNode extends EventEmitter {
       if (patch.classifyModel) c.llm.classifyModel = patch.classifyModel
       if (patch.distillModel) c.llm.distillModel = patch.distillModel
       if (patch.dailyBudget !== undefined) c.llm.dailyBudget = patch.dailyBudget
+    })
+    this.changed('settings')
+    return this.settings()
+  }
+
+  /** Contesto automatico per gli agenti (B4): cosa inseriscono gli hook. Vale per la macchina. */
+  updateContextSettings (patch: { sessionStart?: boolean, prompt?: boolean, maxChars?: number }): NodeSettings {
+    this.config = updateConfig(this.paths, (c) => {
+      if (patch.sessionStart !== undefined) c.context.sessionStart = patch.sessionStart
+      if (patch.prompt !== undefined) c.context.prompt = patch.prompt
+      if (patch.maxChars !== undefined) c.context.maxChars = patch.maxChars
     })
     this.changed('settings')
     return this.settings()

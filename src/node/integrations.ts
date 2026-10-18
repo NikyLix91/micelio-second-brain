@@ -5,7 +5,10 @@
  * nella schermata Impostazioni della UI:
  * 1. registra Micelio come server MCP di Claude Code (ambito utente), con `claude mcp add`;
  * 2. installa in ~/.claude/settings.json l'hook SessionEnd che avvisa il daemon a fine sessione
- *    (raccolta automatica, attiva solo nelle cartelle abilitate).
+ *    (raccolta automatica, attiva solo nelle cartelle abilitate);
+ * 3. (B4) installa gli hook SessionStart e UserPromptSubmit del CONTESTO AUTOMATICO: a inizio
+ *    sessione e a ogni richiesta inseriscono nella conversazione Radici e ricordi pertinenti
+ *    (src/context/agent-context.ts).
  *
  * Entrambe le operazioni sono idempotenti: rieseguirle sostituisce la configurazione precedente.
  */
@@ -24,7 +27,19 @@ export function claudeSettingsFile (): string {
 }
 
 /** Riconosce un hook installato da Micelio (per non duplicarlo e per poterlo sostituire). */
-const isMicelioHook = (h: any) => typeof h?.command === 'string' && h.command.includes('hook session-end') && h.command.includes('micelio')
+const isMicelioHook = (h: any) => typeof h?.command === 'string' && /hook (session-end|session-start|prompt)\b/.test(h.command) && h.command.includes('micelio')
+
+/**
+ * Hook di Micelio per evento di Claude Code: comando `micelio hook <arg>` e timeout in secondi.
+ * - SessionEnd: raccolta (se il daemon è spento lo avvia, quindi più tempo);
+ * - SessionStart / UserPromptSubmit: contesto automatico (B4), brevi per non rallentare l'utente.
+ */
+export const MICELIO_HOOKS = {
+  SessionEnd: { arg: 'session-end', timeout: 30 },
+  SessionStart: { arg: 'session-start', timeout: 15 },
+  UserPromptSubmit: { arg: 'prompt', timeout: 10 }
+} as const
+export type HookEvent = keyof typeof MICELIO_HOOKS
 
 /** Errore di configurazione da mostrare all'utente così com'è. */
 export class IntegrationError extends LocalizedError {}
@@ -33,9 +48,9 @@ export class IntegrationError extends LocalizedError {}
  * Comando dell'hook. Usa percorsi assoluti (funziona anche se `micelio` non è nel PATH) e
  * barre "/" con virgolette, così è interpretabile sia da cmd sia da bash.
  */
-export function hookCommand (home: string, cliMain = CLI_MAIN): string {
+export function hookCommand (home: string, cliMain = CLI_MAIN, arg: string = MICELIO_HOOKS.SessionEnd.arg): string {
   const slash = (p: string) => p.replace(/\\/g, '/')
-  return `"${slash(process.execPath)}" "${slash(cliMain)}" --home "${slash(home)}" hook session-end`
+  return `"${slash(process.execPath)}" "${slash(cliMain)}" --home "${slash(home)}" hook ${arg}`
 }
 
 /**
@@ -44,6 +59,16 @@ export function hookCommand (home: string, cliMain = CLI_MAIN): string {
  * @returns il percorso del file modificato
  */
 export function installSessionEndHook (home: string, cliMain = CLI_MAIN): string {
+  return installHooks(home, ['SessionEnd'], cliMain)
+}
+
+/**
+ * Installa (o reinstalla) gli hook di Micelio indicati; toglie quelli di Micelio per gli eventi
+ * NON indicati (così si possono anche disattivare). Il resto di settings.json non si tocca e se
+ * ne salva prima una copia (`settings.json.micelio-backup`).
+ * @returns il percorso del file modificato
+ */
+export function installHooks (home: string, events: HookEvent[], cliMain = CLI_MAIN): string {
   const file = claudeSettingsFile()
   let settings: any = {}
   if (fs.existsSync(file)) {
@@ -52,13 +77,15 @@ export function installSessionEndHook (home: string, cliMain = CLI_MAIN): string
     fs.writeFileSync(file + '.micelio-backup', raw)
   }
   settings.hooks ??= {}
-  // Rimuove eventuali installazioni precedenti, poi aggiunge quella attuale.
-  const groups: any[] = (settings.hooks.SessionEnd ?? [])
-    .map((g: any) => ({ ...g, hooks: (g.hooks ?? []).filter((h: any) => !isMicelioHook(h)) }))
-    .filter((g: any) => g.hooks.length > 0)
-  // Timeout 30 s: di norma l'hook impiega un istante, ma se il daemon è spento lo avvia.
-  groups.push({ hooks: [{ type: 'command', command: hookCommand(home, cliMain), timeout: 30 }] })
-  settings.hooks.SessionEnd = groups
+  for (const ev of Object.keys(MICELIO_HOOKS) as HookEvent[]) {
+    // Rimuove eventuali installazioni precedenti di Micelio, poi (se richiesto) aggiunge quella attuale.
+    const groups: any[] = (settings.hooks[ev] ?? [])
+      .map((g: any) => ({ ...g, hooks: (g.hooks ?? []).filter((h: any) => !isMicelioHook(h)) }))
+      .filter((g: any) => g.hooks.length > 0)
+    if (events.includes(ev)) groups.push({ hooks: [{ type: 'command', command: hookCommand(home, cliMain, MICELIO_HOOKS[ev].arg), timeout: MICELIO_HOOKS[ev].timeout }] })
+    if (groups.length) settings.hooks[ev] = groups
+    else delete settings.hooks[ev]
+  }
   fs.mkdirSync(path.dirname(file), { recursive: true })
   fs.writeFileSync(file, JSON.stringify(settings, null, 2))
   return file
@@ -94,9 +121,11 @@ export interface ClaudeCodeSetupResult {
  * Configurazione completa di Claude Code: MCP + (facoltativo) hook di fine sessione.
  * @param hook true per installare anche l'hook della raccolta automatica
  */
-export function setupClaudeCode (opts: { mcpUrl: string, token: string, home: string, hook: boolean }): ClaudeCodeSetupResult {
+export function setupClaudeCode (opts: { mcpUrl: string, token: string, home: string, hook: boolean, context?: boolean }): ClaudeCodeSetupResult {
   registerMcp(opts.mcpUrl, opts.token)
-  const hookFile = opts.hook ? installSessionEndHook(opts.home) : null
+  // Contesto automatico (B4): attivo salvo richiesta contraria
+  const events: HookEvent[] = [...(opts.hook ? ['SessionEnd' as const] : []), ...(opts.context !== false ? ['SessionStart' as const, 'UserPromptSubmit' as const] : [])]
+  const hookFile = events.length ? installHooks(opts.home, events) : null
   return { mcpUrl: opts.mcpUrl, hookFile }
 }
 
