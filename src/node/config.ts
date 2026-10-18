@@ -46,7 +46,15 @@ const WatchConfig = z.object({
    * Cartelle di documenti sorvegliate (Fase 4). `shareable`: se true, gli originali dei documenti
    * possono essere scaricati dai membri del team su richiesta (decisione D10).
    */
-  documents: z.array(z.object({ path: z.string(), shareable: z.boolean().default(false) })).default([]),
+  documents: z.array(z.object({
+    path: z.string(),
+    shareable: z.boolean().default(false),
+    /**
+     * Cartella "di Radici" (Fase 8): i ricordi distillati dai suoi documenti diventano Radici
+     * automaticamente (es. la cartella dell'architettura, delle policy, il vault delle regole).
+     */
+    roots: z.boolean().default(false)
+  })).default([]),
   /**
    * Raccolta delle sessioni IN CORSO e recupero di quelle perse (vedi src/ingest/session-scanner.ts):
    * ogni `intervalMinutes` si distilla la parte nuova delle sessioni in pausa da `idleMinutes`.

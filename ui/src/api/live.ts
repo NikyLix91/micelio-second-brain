@@ -24,7 +24,8 @@ export const TOPIC_QUERIES: Record<string, string[][]> = {
   inbox: [['inbox'], ['ingest']],
   jobs: [['ingest'], ['documents']],
   decisions: [['decisions']],
-  settings: [['settings'], ['ingest'], ['documents'], ['network']]
+  settings: [['settings'], ['ingest'], ['documents'], ['network']],
+  roots: [['roots'], ['rootSuggestions']]
 }
 
 /** Un evento SSE già interpretato. */

@@ -24,7 +24,7 @@ const JoinBody = z.object({ code: z.string().trim().min(10), name: z.string().tr
 const SessionBody = z.object({ session_id: z.string().min(1), transcript_path: z.string().min(1), cwd: z.string().min(1) })
 const WatchBody = z.object({ path: z.string().min(1) })
 /** Cartella di documenti: percorso e se gli originali sono scaricabili dai colleghi (D10). */
-const DocFolderBody = z.object({ path: z.string().min(1), shareable: z.boolean().default(false) })
+const DocFolderBody = z.object({ path: z.string().min(1), shareable: z.boolean().default(false), roots: z.boolean().default(false) })
 const ConfigBody = z.object({ key: z.string().min(1).max(100), value: z.unknown() })
 /** Modifiche facoltative in approvazione di un elemento dell'inbox. */
 const ApproveBody = z.object({
@@ -203,6 +203,19 @@ export class ApiController {
     return this.node.roots({ project, category, files: files ? files.split(',').map((f) => f.trim()).filter(Boolean) : undefined, query: q })
   }
 
+  /** Radici suggerite dal distillatore su questo nodo, da promuovere o ignorare. */
+  @Get('roots/suggestions')
+  rootSuggestions () {
+    return this.node.rootSuggestions()
+  }
+
+  /** Ignora un suggerimento di Radice. */
+  @Delete('roots/suggestions/:id')
+  dismissRootSuggestion (@Param('id') id: string) {
+    this.node.dismissRootSuggestion(id)
+    return { ok: true }
+  }
+
   /** Promuove un ricordo a Radice o ne cambia la categoria (qualunque membro). */
   @Post('roots/:id')
   @HttpCode(200)
@@ -291,8 +304,8 @@ export class ApiController {
   @Post('documents/folders')
   @HttpCode(200)
   documentsAdd (@Body() body: unknown) {
-    const { path, shareable } = DocFolderBody.parse(body)
-    return this.node.documentsAdd(path, shareable)
+    const { path, shareable, roots } = DocFolderBody.parse(body)
+    return this.node.documentsAdd(path, shareable, roots)
   }
 
   @Delete('documents/folders')

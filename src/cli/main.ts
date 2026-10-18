@@ -440,6 +440,14 @@ roots.command('list', { isDefault: true })
     }
   })
 
+roots.command('suggested')
+  .description('Radici suggerite dal distillatore su questo PC (promuovile con `roots add`)')
+  .action(async () => {
+    const list = await client().call<{ id: string, category: string, title: string }[]>('GET', '/api/roots/suggestions')
+    if (!list.length) return console.log('Nessun suggerimento.')
+    for (const s of list) console.log(`  ${s.title}  (id:${s.id.slice(0, 12)})  → micelio roots add ${s.id.slice(0, 12)} ${s.category}`)
+  })
+
 roots.command('add')
   .description('promuove un ricordo a Radice (o ne cambia la categoria)')
   .argument('<id>', 'id del ricordo (anche abbreviato)')
@@ -552,9 +560,10 @@ docs.action(async () => {
 })
 docs.command('add').description('sorveglia una cartella di documenti').argument('[dir]', 'cartella', '.')
   .option('--shareable', 'i colleghi possono scaricare gli originali su richiesta')
-  .action(async (dir: string, o: { shareable?: boolean }) => {
-    const list = await client().call<{ path: string, shareable: boolean }[]>('POST', '/api/documents/folders', { path: path.resolve(dir), shareable: !!o.shareable })
-    console.log('Cartelle di documenti:\n' + list.map((f) => `${f.path}${f.shareable ? '  [condivisibile]' : ''}`).join('\n'))
+  .option('--roots', 'cartella "di Radici": i ricordi dei suoi documenti diventano Radici (architettura, policy, regole…)')
+  .action(async (dir: string, o: { shareable?: boolean, roots?: boolean }) => {
+    const list = await client().call<{ path: string, shareable: boolean, roots: boolean }[]>('POST', '/api/documents/folders', { path: path.resolve(dir), shareable: !!o.shareable, roots: !!o.roots })
+    console.log('Cartelle di documenti:\n' + list.map((f) => `${f.path}${f.shareable ? '  [condivisibile]' : ''}${f.roots ? '  [Radici]' : ''}`).join('\n'))
   })
 docs.command('remove').description('smette di sorvegliare una cartella').argument('[dir]', 'cartella', '.')
   .action(async (dir: string) => {

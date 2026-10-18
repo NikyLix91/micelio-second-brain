@@ -62,6 +62,8 @@ CREATE TABLE IF NOT EXISTS documents (
 CREATE INDEX IF NOT EXISTS documents_hash ON documents(hash);
 -- Fase 5: uso locale dei ricordi (contatori cumulativi) e quanto è già stato pubblicato al team.
 CREATE TABLE IF NOT EXISTS usage_local (id TEXT PRIMARY KEY, count INTEGER NOT NULL, last INTEGER NOT NULL, reported INTEGER NOT NULL DEFAULT 0);
+-- Radici suggerite dal distillatore (Fase 8): restano qui finché l'utente non le promuove o le ignora.
+CREATE TABLE IF NOT EXISTS root_suggestions (id TEXT PRIMARY KEY, category TEXT NOT NULL, title TEXT NOT NULL, created INTEGER NOT NULL);
 `
 
 /** Dopo quanto un elemento non deciso esce dall'inbox (D9). */
@@ -217,6 +219,23 @@ export class PrivateStore {
   getDocument (file: string): DocumentRecord | null {
     const r = this.db.prepare('SELECT * FROM documents WHERE path = ?').get(file) as any
     return r ? rowToDocument(r) : null
+  }
+
+  // ── Radici suggerite (Fase 8) ──────────────────────────────────────────────────
+
+  /** Registra un suggerimento (lo stesso ricordo suggerito due volte resta uno). */
+  addRootSuggestion (id: string, category: string, title: string, now = Date.now()): void {
+    this.db.prepare('INSERT OR IGNORE INTO root_suggestions (id, category, title, created) VALUES (?, ?, ?, ?)').run(id, category, title, now)
+  }
+
+  /** Suggerimenti in attesa, dal più recente. */
+  rootSuggestions (): { id: string, category: string, title: string, created: number }[] {
+    return this.db.prepare('SELECT id, category, title, created FROM root_suggestions ORDER BY created DESC').all() as any[]
+  }
+
+  /** Toglie un suggerimento (promosso o ignorato). */
+  removeRootSuggestion (id: string): void {
+    this.db.prepare('DELETE FROM root_suggestions WHERE id = ?').run(id)
   }
 
   /** Tutti i documenti noti (anche rimossi): usati dalla revisione delle Radici. */

@@ -77,14 +77,14 @@ export class UserError extends Error {}
  * - inbox, jobs, decisions: archivio privato (inbox, coda di ingestione, registro);
  * - settings:  impostazioni locali (cartelle abilitate, LLM).
  */
-export type ChangeTopic = 'status' | 'memories' | 'members' | 'inbox' | 'jobs' | 'decisions' | 'settings'
+export type ChangeTopic = 'status' | 'memories' | 'members' | 'inbox' | 'jobs' | 'decisions' | 'settings' | 'roots'
 
 /** Impostazioni LOCALI modificabili dalla UI (config.json). */
 export interface NodeSettings {
   llm: { adapter: string, command: string, classifyModel: string, distillModel: string, dailyBudget: number }
   watched: string[]
-  /** Cartelle di documenti sorvegliate e se i loro originali sono scaricabili dai colleghi. */
-  documents: { path: string, shareable: boolean }[]
+  /** Cartelle di documenti sorvegliate: originali scaricabili dai colleghi? cartella "di Radici"? */
+  documents: { path: string, shareable: boolean, roots: boolean }[]
   port: number
   /** Rete P2P: DHT pubblica o privata del team (vedi server/README.md). */
   network: NetworkSettings
@@ -271,7 +271,15 @@ export class MicelioNode extends EventEmitter {
       language: async () => (await this.team?.config<string>('memory.language')) ?? 'it',
       gitChanges: () => this.config.watch.gitChanges,
       log: this.log,
-      notify: (topic) => this.changed(topic)
+      notify: (topic) => this.changed(topic),
+      // Radici (Fase 8): suggerimenti del distillatore e cartelle di documenti "di Radici"
+      suggestRoot: (id, category, title) => {
+        if (this.rootsById.has(id)) return
+        this.privateStore.addRootSuggestion(id, category, title)
+        this.changed('roots')
+      },
+      promoteRoot: async (id, category) => { await this.team?.append({ type: 'root.set', id, category }) },
+      rootFolder: (folder) => this.config.watch.documents.some((d) => d.roots && canonicalPath(d.path) === canonicalPath(folder))
     })
     this.documents = new DocumentWatcher(this.pipeline, this.privateStore, this.log)
     this.embedder = opts.embedder !== undefined ? opts.embedder : createEmbedder(this.config)
@@ -618,8 +626,26 @@ export class MicelioNode extends EventEmitter {
     if (!ROOT_CATEGORIES.includes(category)) throw new UserError(`Categoria sconosciuta: ${category} (${ROOT_CATEGORIES.join(', ')})`)
     const rec = this.requireMemory(id)
     await this.requireTeam().append({ type: 'root.set', id: rec.id, category })
+    this.privateStore.removeRootSuggestion(rec.id)
+    this.changed('roots')
     await this.sync()
     return this.requireRoot(rec.id)
+  }
+
+  /**
+   * Radici suggerite dal distillatore su QUESTO nodo (archivio privato), ancora da decidere.
+   * Si escludono i ricordi spariti (archiviati, sostituiti) o già diventati Radici.
+   */
+  rootSuggestions (): { id: string, category: RootCategory, title: string, created: number }[] {
+    return this.privateStore.rootSuggestions()
+      .filter((s) => this.index.get(s.id) && !this.rootsById.has(s.id))
+      .map((s) => ({ ...s, category: s.category as RootCategory }))
+  }
+
+  /** Ignora un suggerimento di Radice (resta un ricordo normale). */
+  dismissRootSuggestion (id: string): void {
+    this.privateStore.removeRootSuggestion(id)
+    this.changed('roots')
   }
 
   /** Il ricordo smette di essere una Radice. */
@@ -1059,12 +1085,13 @@ export class MicelioNode extends EventEmitter {
   /**
    * Aggiunge una cartella di documenti sorvegliata.
    * @param shareable se true, i colleghi possono scaricare gli originali su richiesta (D10)
+   * @param roots se true, i ricordi distillati dai documenti della cartella diventano Radici (Fase 8)
    */
-  async documentsAdd (dir: string, shareable: boolean): Promise<NodeSettings['documents']> {
+  async documentsAdd (dir: string, shareable: boolean, roots = false): Promise<NodeSettings['documents']> {
     if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) throw new UserError(`Cartella inesistente: ${path.resolve(dir)}`)
     const abs = canonicalPath(dir)
     this.config = updateConfig(this.paths, (c) => {
-      c.watch.documents = [...c.watch.documents.filter((d) => canonicalPath(d.path) !== abs), { path: abs, shareable }]
+      c.watch.documents = [...c.watch.documents.filter((d) => canonicalPath(d.path) !== abs), { path: abs, shareable, roots }]
     })
     await this.documents.start(this.config.watch.documents)
     this.changed('settings')

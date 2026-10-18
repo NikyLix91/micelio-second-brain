@@ -2,13 +2,15 @@
  * @file Estrazione del testo dai documenti (DESIGN §6.2, Fase 4).
  *
  * Formati Office/PDF/OpenDocument passano da `officeparser` (puro JavaScript, nessun programma
- * esterno). Testo e Markdown si leggono direttamente.
+ * esterno). Testo e Markdown si leggono direttamente, come PlantUML e Mermaid; dei diagrammi
+ * draw.io e SVG si estraggono le etichette (diagrams.ts).
  *
  * Il testo estratto serve SOLO alla pipeline (filtro, classificazione, distillazione): non viene
  * salvato né replicato. Nella rete viaggia solo ciò che la distillazione ne ricava.
  */
 import fs from 'node:fs'
 import path from 'node:path'
+import { drawioText, svgText } from './diagrams'
 
 /** Estensioni supportate → tipo MIME (usato nel riferimento alla fonte dei ricordi). */
 export const SUPPORTED: Record<string, string> = {
@@ -23,14 +25,21 @@ export const SUPPORTED: Record<string, string> = {
   '.md': 'text/markdown',
   '.txt': 'text/plain',
   '.csv': 'text/csv',
-  '.html': 'text/html'
+  '.html': 'text/html',
+  // Diagrammi (Fase 8): schemi di architettura e mappe di rete, vedi diagrams.ts
+  '.drawio': 'application/vnd.jgraph.mxfile',
+  '.svg': 'image/svg+xml',
+  '.puml': 'text/x-plantuml',
+  '.plantuml': 'text/x-plantuml',
+  '.mmd': 'text/vnd.mermaid',
+  '.mermaid': 'text/vnd.mermaid'
 }
 
 /** Documenti più grandi di così vengono ignorati (es. dump, archivi esportati). */
 export const MAX_DOCUMENT_BYTES = 20 * 1024 * 1024
 
 /** Formati letti come testo semplice, senza parser. */
-const PLAIN = new Set(['.md', '.txt', '.csv'])
+const PLAIN = new Set(['.md', '.txt', '.csv', '.puml', '.plantuml', '.mmd', '.mermaid'])
 
 /** true se il file ha un'estensione supportata e non è un file temporaneo di Office. */
 export function isSupported (file: string): boolean {
@@ -52,6 +61,9 @@ export async function extractText (file: string): Promise<string> {
   const ext = path.extname(file).toLowerCase()
   if (!(ext in SUPPORTED)) throw new Error(`formato non supportato: ${ext}`)
   if (PLAIN.has(ext)) return fs.readFileSync(file, 'utf8')
+  // Diagrammi XML: solo le etichette, non la geometria
+  if (ext === '.drawio') return `DIAGRAMMA (draw.io)\n${drawioText(fs.readFileSync(file, 'utf8'))}`
+  if (ext === '.svg') return `DIAGRAMMA (SVG)\n${svgText(fs.readFileSync(file, 'utf8'))}`
   // Import pigro: officeparser è grande e serve solo quando ci sono documenti da leggere.
   const { parseOffice } = require('officeparser') as typeof import('officeparser')
   const ast = await parseOffice(file)

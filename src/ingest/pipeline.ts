@@ -30,7 +30,7 @@
  */
 import { existsSync } from 'node:fs'
 import path from 'node:path'
-import { MemoryInput, type MemoryData } from '../core/events'
+import { MemoryInput, type MemoryData, type RootCategory } from '../core/events'
 import { LlmBudgetExceededError, LlmUnavailableError } from '../llm/types'
 import type { LlmRunner } from '../llm/runner'
 import { applyFilter, type FilterRules } from '../privacy/filter'
@@ -67,6 +67,12 @@ export interface PipelineDeps {
   blockedPaths: () => Promise<string[]>
   /** Lingua dei ricordi del team (`memory.language`). */
   language: () => Promise<string>
+  /** Il distillatore suggerisce una Radice (Fase 8): la decide l'utente (vista Radici). */
+  suggestRoot?: (id: string, category: RootCategory, title: string) => void
+  /** Promozione diretta a Radice: ricordi dalle cartelle di documenti "di Radici". */
+  promoteRoot?: (id: string, category: RootCategory) => Promise<void>
+  /** true se la cartella di documenti è marcata "di Radici". */
+  rootFolder?: (folder: string) => boolean
   /** Aggiungere alle sessioni il riassunto delle modifiche git (config `watch.gitChanges`); default sì. */
   gitChanges?: () => boolean
   log: (msg: string) => void
@@ -271,6 +277,7 @@ export class IngestPipeline {
       if (r === 'team' && !fm.blocked) {
         const res = await this.deps.publish(fm.memory)
         log(`ricordo ${res.duplicate ? 'già presente' : 'pubblicato'} dalla sessione ${sessionId.slice(0, 8)}: ${fm.memory.title}`)
+        if (raw.root !== 'none') this.deps.suggestRoot?.(res.id, raw.root, fm.memory.title)
       } else {
         const reason = fm.blocked ? `parole chiave: ${fm.reasons.join(', ')}` : `da verificare: ${c.reason}`
         this.addInbox(fm.memory, source, reason)
@@ -383,8 +390,12 @@ export class IngestPipeline {
           if (!parsed.success) continue
           const fm = filterMemory(parsed.data, rules)
           if (r === 'team' && !fm.blocked) {
-            await this.deps.publish(fm.memory)
+            const res = await this.deps.publish(fm.memory)
             memories++
+            // Cartella "di Radici": promozione diretta (la scelta l'ha fatta chi ha marcato la
+            // cartella); altrimenti, se il distillatore lo ritiene sapere fondante, un suggerimento.
+            if (this.deps.rootFolder?.(folder)) await this.deps.promoteRoot?.(res.id, raw.root !== 'none' ? raw.root : 'other')
+            else if (raw.root !== 'none') this.deps.suggestRoot?.(res.id, raw.root, fm.memory.title)
           } else {
             this.addInbox(fm.memory, source, fm.blocked ? `parole chiave: ${fm.reasons.join(', ')}` : `da verificare: ${c.reason}`)
           }

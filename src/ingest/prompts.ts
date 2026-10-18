@@ -5,7 +5,7 @@
  * va rieseguito il set di valutazione (npm run eval:ingest).
  */
 import { z } from 'zod'
-import { MEMORY_KINDS } from '../core/events'
+import { MEMORY_KINDS, ROOT_CATEGORIES } from '../core/events'
 
 /** Output della classificazione (Haiku). L'instradamento lo decide poi `route()` nella pipeline. */
 export const Classification = z.object({
@@ -44,7 +44,10 @@ export const Distilled = z.object({
     // La pipeline li verifica (commit esistenti, percorsi relativi) prima di salvarli.
     files: z.array(z.string()),
     symbols: z.array(z.string()),
-    commits: z.array(z.string())
+    commits: z.array(z.string()),
+    // Suggerimento di RADICE (Fase 8): categoria se il ricordo è sapere fondante, altrimenti "none".
+    // È solo un suggerimento: la promozione la decide una persona (salvo cartelle "di Radici").
+    root: z.enum([...ROOT_CATEGORIES, 'none'])
   }))
 })
 export type Distilled = z.infer<typeof Distilled>
@@ -79,6 +82,12 @@ Dalla sessione estrai da 0 a 5 ricordi atomici di conoscenza riutilizzabile dal 
   commits = hash brevi dei commit in cui è stata fatta la modifica, SOLO se compaiono nella sezione MODIFICHE AL CODICE.
   Indica solo riferimenti che compaiono nella sessione e riguardano davvero quel ricordo; liste vuote se non ce ne sono.
   Nel body cita il file o il simbolo principale quando aiuta a orientarsi.
+- root: se il ricordo è sapere FONDANTE del team, che ogni sviluppatore deve conoscere e che non va mai
+  dimenticato anche se si consulta di rado, indica la categoria:
+  architecture (paradigmi e scelte architetturali), network (mappe di rete, infrastruttura),
+  interface (interfacce applicative, contratti, API fra sistemi), domain (modello di dominio),
+  practice (best practice, regole di sviluppo), policy (sicurezza, conformità), other.
+  Altrimenti "none". Sii parsimonioso: la soluzione a un bug, un gotcha o una procedura puntuale NON sono Radici.
 - Scrivi in ${lang}; identificatori, nomi di API, comandi e codice restano invariati.
 - title: una riga autoesplicativa. body: Markdown conciso (massimo ~120 parole). tags: 1-5 tag minuscoli.
 - kind: fact | howto | decision | gotcha | snippet | reference.`
