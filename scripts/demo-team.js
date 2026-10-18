@@ -86,6 +86,26 @@ const MEMORIES = [
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
+/** true se il daemon di un nodo demo risponde sulla sua porta. */
+async function isUp (node) {
+  try { return (await fetch(`http://127.0.0.1:${node.port}/api/health`, { signal: AbortSignal.timeout(1000) })).ok } catch { return false }
+}
+
+/**
+ * Chiusura ORDINATA di un daemon demo tramite la sua API, e attesa che la porta si liberi.
+ * Su Windows Ctrl+C e `child.kill()` non bastano: il daemon non riceve i segnali POSIX (vedi
+ * src/daemon/shutdown.ts) e poteva sopravvivere allo script, tenendo bloccati i suoi dati
+ * ("File descriptor could not be locked" al giro successivo).
+ */
+async function shutdownNode (node) {
+  if (!(await isUp(node))) return
+  try {
+    const token = JSON.parse(fs.readFileSync(path.join(node.home, 'config.json'), 'utf8')).token
+    await fetch(`http://127.0.0.1:${node.port}/api/shutdown`, { method: 'POST', headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(2000) })
+  } catch { /* già in chiusura */ }
+  for (let i = 0; i < 40 && await isUp(node); i++) await sleep(250)
+}
+
 /** Chiamata all'API di un nodo demo (il token si legge dalla sua config.json). */
 async function call (node, method, route, body) {
   const token = JSON.parse(fs.readFileSync(path.join(node.home, 'config.json'), 'utf8')).token
@@ -106,9 +126,19 @@ async function main () {
   const bootstrap = testnet.bootstrap.map((b) => `${b.host}:${b.port}`).join(',')
   console.log('DHT privata avviata (i nodi demo non escono su internet)')
 
+  // Daemon demo rimasti accesi da un giro precedente (es. script chiuso male): vanno spenti PRIMA,
+  // altrimenti i nuovi non possono aprire i dati e questo script parlerebbe con quelli vecchi.
+  for (const n of NODES) n.home = path.join(DEMO, n.name)
+  const stale = []
+  for (const n of NODES) if (await isUp(n)) stale.push(n)
+  if (stale.length) {
+    console.log(`Chiusura dei daemon demo rimasti accesi: ${stale.map((n) => n.name).join(', ')}…`)
+    await Promise.all(stale.map(shutdownNode))
+    await sleep(1000) // il sistema operativo rilascia i lock dei file
+  }
+
   const children = []
   for (const n of NODES) {
-    n.home = path.join(DEMO, n.name)
     fs.mkdirSync(n.home, { recursive: true })
     // La porta va salvata in config.json: così anche CLI e app desktop la trovano.
     const cfgFile = path.join(n.home, 'config.json')
@@ -120,7 +150,13 @@ async function main () {
     })
     children.push(child)
   }
+  let stopping = false
   const stopAll = async () => {
+    if (stopping) return
+    stopping = true
+    console.log('\nChiusura del team demo…')
+    // Prima la chiusura ordinata via API, poi kill per sicurezza
+    await Promise.all(NODES.map(shutdownNode))
     for (const c of children) c.kill()
     await testnet.destroy()
     process.exit(0)
