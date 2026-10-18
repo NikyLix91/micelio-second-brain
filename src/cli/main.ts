@@ -559,7 +559,7 @@ roots.command('review')
       console.log(`\n⚠ ${f.title}`)
       for (const reason of f.reasons) console.log(`   - ${reason}`)
     }
-    for (const n of r.notes) console.log(`\nNota: ${n}`)
+    for (const n of r.notes) console.log(`\nNota: ${n.text}`)
     if (r.flagged.length) console.log('\nDopo aver controllato: micelio roots confirm <id> (ancora valida) oppure correggi il ricordo.')
   })
 

@@ -52,7 +52,7 @@ import { type Decision, type DocumentRecord, type InboxItem, PrivateStore, type 
 import { BOOTSTRAP_RE, canonicalPath, type Config, dhtBootstrap, isInsideWatched, loadConfig, loadState, networkMode, parseBootstrap, saveState, updateConfig } from './config'
 import { checkNetwork, type NetworkCheck } from '../net/diagnose'
 import { distillQuality, type DistillQuality, MAX_MEMORIES_RANGE, maxMemoriesOf } from '../ingest/quality'
-import { reviewRoots } from '../roots/review'
+import { reviewRoots, type ReviewNote } from '../roots/review'
 
 export interface MicelioNodeOptions {
   /** Nodi bootstrap DHT (test o rete privata); assente = DHT pubblica. */
@@ -190,8 +190,8 @@ export interface RootReviewResult {
   checked: number
   /** Radici segnalate "da rivedere" in questa revisione, con i motivi. */
   flagged: { id: string, title: string, reasons: string[] }[]
-  /** Cosa non è stato possibile verificare da questo PC, e perché. */
-  notes: string[]
+  /** Cosa non è stato possibile verificare da questo PC, e perché (codice, valori e testo italiano). */
+  notes: ReviewNote[]
 }
 
 /** Filtri per l'elenco delle Radici (tool MCP `architecture`, API, CLI). */

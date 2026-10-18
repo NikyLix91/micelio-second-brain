@@ -39,12 +39,22 @@ const MAX_COMMIT_REFS = 10
 /** Una segnalazione da pubblicare (`root.flag`). */
 export interface RootFinding { id: string, reason: string, refs: string[] }
 
+/**
+ * Nota sul resoconto: cosa NON è stato possibile verificare da questo PC. Codice e valori (per
+ * comporre il testo nella lingua dell'interfaccia) più il testo in italiano (CLI).
+ */
+export interface ReviewNote {
+  code: 'missing-projects' | 'no-vectors' | 'llm-skipped'
+  params: { projects?: string[], count?: number, max?: number }
+  text: string
+}
+
 export interface ReviewReport {
   /** Radici esaminate. */
   checked: number
   findings: RootFinding[]
   /** Cosa non è stato possibile verificare, e perché (repository assenti, budget LLM…). */
-  notes: string[]
+  notes: ReviewNote[]
 }
 
 export interface ReviewDeps {
@@ -184,7 +194,7 @@ export function recentSimilar (root: RootRecord, memories: RecallHit[], rootIds:
 /** Esegue la revisione delle Radici indicate (vedi la descrizione del file). */
 export async function reviewRoots (d: ReviewDeps): Promise<ReviewReport> {
   const findings: RootFinding[] = []
-  const notes: string[] = []
+  const notes: ReviewNote[] = []
   const byId = new Map(d.memories.map((m) => [m.id, m]))
   const rootIds = new Set(d.roots.map((r) => r.id))
   const repos = localRepos(d.folders)
@@ -239,8 +249,11 @@ export async function reviewRoots (d: ReviewDeps): Promise<ReviewReport> {
     }
   }
 
-  if (missingProjects.size) notes.push(`Codice non verificato per i progetti assenti da questo PC: ${[...missingProjects].join(', ')}. Abilita la cartella del progetto o lancia la revisione dal PC di un collega che ce l'ha.`)
-  if (!d.vectors) notes.push('Ricerca semantica non disponibile: contraddizioni cercate solo fra i collegamenti del dreaming.')
-  if (llmSkipped) notes.push(`${llmSkipped} Radici non confrontate con i ricordi recenti (LLM assente, budget esaurito o limite di ${MAX_LLM_CHECKS} confronti per revisione).`)
+  if (missingProjects.size) {
+    const projects = [...missingProjects]
+    notes.push({ code: 'missing-projects', params: { projects }, text: `Codice non verificato per i progetti assenti da questo PC: ${projects.join(', ')}. Abilita la cartella del progetto o lancia la revisione dal PC di un collega che ce l'ha.` })
+  }
+  if (!d.vectors) notes.push({ code: 'no-vectors', params: {}, text: 'Ricerca semantica non disponibile: contraddizioni cercate solo fra i collegamenti del dreaming.' })
+  if (llmSkipped) notes.push({ code: 'llm-skipped', params: { count: llmSkipped, max: MAX_LLM_CHECKS }, text: `${llmSkipped} Radici non confrontate con i ricordi recenti (LLM assente, budget esaurito o limite di ${MAX_LLM_CHECKS} confronti per revisione).` })
   return { checked: d.roots.length, findings, notes }
 }

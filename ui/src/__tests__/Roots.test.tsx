@@ -42,7 +42,7 @@ describe('Roots', () => {
     const m = mockFetch({
       'GET /api/roots': [root('r1', 'Architettura a eventi', 'architecture', 'review', ['1 commit hanno modificato i file citati']), root('r2', 'Segreti nel vault', 'policy', 'ok')],
       'GET /api/roots/suggestions': [],
-      'POST /api/roots/review': { checked: 2, flagged: [{ id: 'r1', title: 'Architettura a eventi', reasons: ['Contraddetta: ora chiamate sincrone'] }], notes: ['Codice non verificato per i progetti assenti da questo PC: fatture.'] }
+      'POST /api/roots/review': { checked: 2, flagged: [{ id: 'r1', title: 'Architettura a eventi', reasons: ['Contraddetta: ora chiamate sincrone'] }], notes: [{ code: 'missing-projects', params: { projects: ['fatture'] }, text: 'testo per la CLI' }] }
     })
     wrap(Roots)
     expect(await screen.findByText('Architettura a eventi')).toBeTruthy()
