@@ -217,6 +217,17 @@ export class ApiController {
     return { ok: true }
   }
 
+  /**
+   * Revisione manuale delle Radici (tutte, o quelle in `ids`). Può richiedere tempo: usa git e,
+   * per le contraddizioni, l'LLM (al massimo 30 confronti).
+   */
+  @Post('roots/review')
+  @HttpCode(200)
+  rootReview (@Body() body: unknown) {
+    const { ids } = z.object({ ids: z.array(z.string().max(64)).max(500).optional() }).default({}).parse(body ?? {})
+    return this.node.rootReview(ids)
+  }
+
   /** Radice rivista e confermata: segnalazioni azzerate. */
   @Post('roots/:id/confirm')
   @HttpCode(200)

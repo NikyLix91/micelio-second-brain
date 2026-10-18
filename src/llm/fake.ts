@@ -11,6 +11,7 @@
  *             "[incerto]" nel testo → confidenza 0.5 (caso dubbio → inbox).
  * - distill:  un ricordo per ogni riga "LEZIONE: titolo | corpo [| rif: file, simbolo, commit]";
  * - consolidate (dreaming): "[collega]" nel testo → link; altrimenti fonde il gruppo.
+ * - root-review: un ricordo recente con "[contraddice]" nel testo → contradicts; altrimenti consistent.
  */
 import type { LlmAdapter, LlmTask } from './types'
 
@@ -54,6 +55,14 @@ export class FakeAdapter implements LlmAdapter {
         }
       })
       return task.schema.parse({ memories })
+    }
+    if (task.name === 'root-review') {
+      // Ricordi recenti nel formato "[<id>] titolo\ncorpo": contraddice quello che contiene il marcatore
+      const blocks = task.input.split(/\n(?=\[[0-9a-f]{64}\] )/).filter((b) => /^\[[0-9a-f]{64}\] /.test(b))
+      const hits = blocks.filter((b) => b.includes('[contraddice]')).map((b) => b.slice(1, 65))
+      return task.schema.parse(hits.length
+        ? { verdict: 'contradicts', ids: hits, reason: 'contraddizione finta (test)' }
+        : { verdict: 'consistent', ids: [], reason: 'nessun conflitto (test)' })
     }
     if (task.name === 'consolidate') {
       if (task.input.includes('[collega]')) return task.schema.parse({ action: 'link', reason: 'correlati (finto)' })

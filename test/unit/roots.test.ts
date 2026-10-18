@@ -3,14 +3,20 @@
  * - apply: promozione, categoria, segnalazioni (senza doppioni), conferma, rimozione; le Radici
  *   non si fondono e non si archiviano;
  * - attivazione: mai sotto ROOT_FLOOR;
- * - dreaming: le Radici sono escluse da fusioni e decadimento.
+ * - dreaming: le Radici sono escluse da fusioni e decadimento;
+ * - revisione: repository locali, commit successivi alla revisione, file scomparsi, documenti.
  */
+import { spawnSync } from 'node:child_process'
+import fs from 'node:fs'
+import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { envelope, memoryId, type EventPayload } from '../../src/core/events'
 import type { RecallHit, RootRecord } from '../../src/core/model'
 import { decayCandidates, duplicateGroups } from '../../src/dream/dreamer'
 import { applyNodes, KEYS } from '../../src/net/apply'
 import { activation, ROOT_FLOOR } from '../../src/rank/activation'
+import { codeFindings, documentFinding, findRepo, localRepos } from '../../src/roots/review'
+import { tmpHome } from '../helpers'
 
 /** Vista finta in memoria con l'interfaccia minima di Hyperbee usata da apply. */
 function fakeView () {
@@ -89,5 +95,69 @@ describe('attivazione e dreaming', () => {
     const groups = duplicateGroups([hit('r', true), hit('x', false), hit('y', false)], vectors, 0.9)
     expect(groups.flat()).not.toContain('r')
     expect(decayCandidates([hit('r', true), hit('x', false)]).map((m) => m.id)).toEqual(['x'])
+  })
+})
+
+// ═══════════════════════════════ Revisione (8.3) ═══════════════════════════════
+
+describe('revisione: codice e documenti', () => {
+  /** git nel repository di prova; `at` = data del commit. */
+  const git = (cwd: string, args: string[], at?: number) => {
+    const date = at !== undefined ? new Date(at).toISOString() : undefined
+    const r = spawnSync('git', ['-c', 'user.name=T', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', ...args], { cwd, encoding: 'utf8', env: { ...process.env, ...(date ? { GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date } : {}) } })
+    if (r.status !== 0) throw new Error(r.stderr)
+    return r.stdout
+  }
+  const commit = (repo: string, file: string, text: string, at: number) => {
+    fs.mkdirSync(path.dirname(path.join(repo, file)), { recursive: true })
+    fs.writeFileSync(path.join(repo, file), text)
+    git(repo, ['add', '-A'])
+    git(repo, ['commit', '-q', '-m', `modifica ${file}`], at)
+  }
+  /** Cartella "progetti" con un repository "ordini" dentro (come chi abilita C:\progetti). */
+  const setup = () => {
+    const parent = tmpHome('progetti')
+    const repo = path.join(parent, 'ordini')
+    fs.mkdirSync(repo)
+    git(repo, ['init', '-q'])
+    git(repo, ['remote', 'add', 'origin', 'https://dev.azure.com/org/prj/_git/ordini'])
+    return { parent, repo }
+  }
+  const HOUR = 3600_000
+  const rootAt = (reviewedAt: number): RootRecord => ({ id: ID, category: 'architecture', by: A, ts: reviewedAt, reviewedAt, reviewedBy: A, status: 'ok', flags: [] })
+
+  it('localRepos trova i repository nelle sotto-cartelle; findRepo per remote o per nome', () => {
+    const { parent, repo } = setup()
+    const repos = localRepos([parent])
+    expect(repos.map((r) => r.project)).toEqual(['ordini'])
+    expect(findRepo({ repo: 'https://dev.azure.com/org/prj/_git/ordini.git', files: [], symbols: [], commits: [] }, repos)?.root).toBe(repos[0].root)
+    expect(findRepo({ project: 'ORDINI', files: [], symbols: [], commits: [] }, repos)).not.toBeNull()
+    expect(findRepo({ project: 'fatture', files: [], symbols: [], commits: [] }, repos)).toBeNull()
+    expect(fs.existsSync(repo)).toBe(true)
+  })
+
+  it('codeFindings: solo i commit DOPO la revisione sui file citati, e i file scomparsi', () => {
+    const { repo } = setup()
+    const now = Date.now()
+    commit(repo, 'src/orders/a.ts', 'v1', now - 5 * HOUR) // prima della revisione: non conta
+    commit(repo, 'src/billing/b.ts', 'x', now - HOUR) // dopo, ma su un altro file: non conta
+    const [info] = localRepos([repo])
+    const code = { project: 'ordini', files: ['src/orders/', 'src/gone.ts'], symbols: [], commits: [] }
+    let f = codeFindings(rootAt(now - 2 * HOUR), code, info)
+    expect(f.map((x) => x.reason)).toEqual(['File citati non più presenti: src/gone.ts'])
+
+    commit(repo, 'src/orders/a.ts', 'v2', now - HOUR / 2) // dopo la revisione, su un file citato
+    f = codeFindings(rootAt(now - 2 * HOUR), code, info)
+    expect(f[0].reason).toMatch(/^1 commit hanno modificato i file citati/)
+    expect(f[0].refs).toHaveLength(1)
+  })
+
+  it('documentFinding: documento proprio modificato o rimosso; altrui o invariato → nulla', () => {
+    const mem = { id: ID, source: { type: 'document', ref: 'h1', name: 'architettura.pdf' } } as unknown as RecallHit
+    const doc = (hash: string, status: 'done' | 'removed') => ({ path: `C:/docs/${'architettura.pdf'}`, hash, size: 1, folder: 'C:/docs', status, chunksDone: 1, memories: 1, updated: 0 })
+    expect(documentFinding(rootAt(0), mem, [doc('h1', 'done')])).toBeNull()
+    expect(documentFinding(rootAt(0), mem, [])).toBeNull()
+    expect(documentFinding(rootAt(0), mem, [doc('h2', 'done')])?.reason).toMatch(/modificato/)
+    expect(documentFinding(rootAt(0), mem, [doc('h1', 'removed')])?.reason).toMatch(/rimosso/)
   })
 })

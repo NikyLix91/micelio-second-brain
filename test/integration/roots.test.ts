@@ -1,9 +1,13 @@
 // Radici (Fase 8) su due nodi veri: promozione replicata, filtri (progetto, categoria, file,
-// testo), "Radici pertinenti" in coda alle ricerche, marcatura nel grafo, conferma e rimozione.
+// testo), "Radici pertinenti" in coda alle ricerche, marcatura nel grafo, conferma e rimozione,
+// revisione manuale (codice cambiato, contraddizione) con segnalazione replicata.
+import { spawnSync } from 'node:child_process'
+import fs from 'node:fs'
+import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { MicelioNode } from '../../src/node/micelio-node'
 import { ROOT_FLOOR } from '../../src/rank/activation'
-import { eventually, localDht, makeNode, published } from '../helpers'
+import { eventually, localDht, makeNode, published, tmpHome } from '../helpers'
 
 describe('Radici fra due nodi', () => {
   let dht: Awaited<ReturnType<typeof localDht>>
@@ -79,5 +83,39 @@ describe('Radici fra due nodi', () => {
     const c = await alice.rootConfirm(arch)
     expect(c.status).toBe('ok')
     await expect(alice.rootConfirm(gotcha)).rejects.toThrow(/non è una Radice/)
+  })
+
+  it('revisione manuale: codice cambiato e ricordo recente che la contraddice → "da rivedere" per tutti', async () => {
+    // Il repository del progetto "ordini" sta in una cartella abilitata su questo PC
+    const parent = tmpHome('progetti')
+    const repo = path.join(parent, 'ordini')
+    fs.mkdirSync(path.join(repo, 'src', 'orders'), { recursive: true })
+    const git = (args: string[], at?: number) => spawnSync('git', ['-c', 'user.name=T', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', ...args], {
+      cwd: repo, env: { ...process.env, ...(at ? { GIT_AUTHOR_DATE: new Date(at).toISOString(), GIT_COMMITTER_DATE: new Date(at).toISOString() } : {}) }
+    })
+    git(['init', '-q'])
+    fs.writeFileSync(path.join(repo, 'src', 'orders', 'order.service.ts'), 'export class OrderService {}\n')
+    git(['add', '-A'])
+    git(['commit', '-q', '-m', 'OrderService chiama i pagamenti in modo sincrono'], Date.now() + 60_000) // dopo la revisione
+    alice.watchAdd(parent)
+
+    // Un collega scrive un ricordo che contraddice la Radice
+    await bruno.remember({ kind: 'decision', title: 'Gestionale ordini: chiamate sincrone fra servizi', body: 'Il gestionale ordini ora usa chiamate sincrone fra servizi al posto degli eventi di dominio sul bus. [contraddice]' })
+    await eventually(() => alice.recall('chiamate sincrone').length === 1, nodes)
+
+    // Gli embedding si calcolano in background: si riprova finché anche la contraddizione è trovata
+    let result = await alice.rootReview()
+    await eventually(async () => {
+      result = await alice.rootReview()
+      return (result.flagged.find((f) => f.id === arch)?.reasons.length ?? 0) >= 2
+    }, nodes)
+    const reasons = result.flagged.find((f) => f.id === arch)!.reasons
+    expect(reasons.some((r) => /1 commit hanno modificato i file citati/.test(r))).toBe(true)
+    expect(reasons.some((r) => /^Contraddetta/.test(r))).toBe(true)
+
+    // La segnalazione arriva a tutti; la conferma la azzera
+    await eventually(async () => (await bruno.roots()).find((r) => r.id === arch)?.status === 'review', nodes)
+    await bruno.rootConfirm(arch)
+    await eventually(async () => (await alice.roots()).find((r) => r.id === arch)?.status === 'ok', nodes)
   })
 })

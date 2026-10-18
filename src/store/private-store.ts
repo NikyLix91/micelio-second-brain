@@ -219,6 +219,11 @@ export class PrivateStore {
     return r ? rowToDocument(r) : null
   }
 
+  /** Tutti i documenti noti (anche rimossi): usati dalla revisione delle Radici. */
+  allDocuments (): DocumentRecord[] {
+    return (this.db.prepare('SELECT * FROM documents').all() as any[]).map(rowToDocument)
+  }
+
   /** Documenti con un certo contenuto (hash), ancora presenti sul disco. */
   documentsByHash (hash: string): DocumentRecord[] {
     return (this.db.prepare("SELECT * FROM documents WHERE hash = ? AND status != 'removed'").all(hash) as any[]).map(rowToDocument)

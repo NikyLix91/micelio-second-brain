@@ -24,7 +24,7 @@ import { checkNetwork } from '../net/diagnose'
 import { autostartOff, autostartOn, autostartStatus } from '../node/autostart'
 import { BOOTSTRAP_RE, dhtBootstrap, loadConfig, networkMode, updateConfig } from '../node/config'
 import { claudeSettingsFile, hookCommand, IntegrationError, mcpAddArgs, setupClaudeCode } from '../node/integrations'
-import type { IngestStatus, NetworkSettings, RootView } from '../node/micelio-node'
+import type { IngestStatus, NetworkSettings, RootReviewResult, RootView } from '../node/micelio-node'
 import type { Decision, InboxItem } from '../store/private-store'
 import { DaemonClient, DaemonError } from './client'
 
@@ -460,6 +460,21 @@ roots.command('confirm')
   .action(async (id: string) => {
     const r = await client().call<RootView>('POST', `/api/roots/${encodeURIComponent(id)}/confirm`)
     console.log(`✔ Confermata: «${r.memory.title}»`)
+  })
+
+roots.command('review')
+  .description('revisione: segnala le Radici il cui codice o documento è cambiato, o che ricordi recenti contraddicono')
+  .argument('[ids...]', 'Radici da rivedere (default: tutte)')
+  .action(async (ids: string[]) => {
+    console.log('Revisione in corso (git e, per le contraddizioni, Claude)…')
+    const r = await client().call<RootReviewResult>('POST', '/api/roots/review', { ids: ids.length ? ids : undefined }, 600_000)
+    console.log(`${r.checked} Radici esaminate, ${r.flagged.length} da rivedere.`)
+    for (const f of r.flagged) {
+      console.log(`\n⚠ ${f.title}`)
+      for (const reason of f.reasons) console.log(`   - ${reason}`)
+    }
+    for (const n of r.notes) console.log(`\nNota: ${n}`)
+    if (r.flagged.length) console.log('\nDopo aver controllato: micelio roots confirm <id> (ancora valida) oppure correggi il ricordo.')
   })
 
 program.command('get')

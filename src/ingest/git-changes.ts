@@ -27,8 +27,8 @@ export const MAX_SUMMARY_CHARS = 4000
 /** Dichiarazioni elencate al massimo per file. */
 const MAX_DECLS_PER_FILE = 8
 
-/** Esegue git in una cartella; null se fallisce (non è un repo, git assente, timeout). */
-function git (cwd: string, args: string[]): string | null {
+/** Esegue git in una cartella; null se fallisce (non è un repo, git assente, timeout). Usata anche dalla revisione delle Radici. */
+export function git (cwd: string, args: string[]): string | null {
   const r = spawnSync('git', args, { cwd, encoding: 'utf8', timeout: 15_000, windowsHide: true, maxBuffer: 20 * 1024 * 1024 })
   return r.status === 0 && !r.error ? r.stdout : null
 }

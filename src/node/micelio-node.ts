@@ -50,6 +50,7 @@ import { MemoryIndex } from '../store/memory-index'
 import { type Decision, type DocumentRecord, type InboxItem, PrivateStore } from '../store/private-store'
 import { BOOTSTRAP_RE, canonicalPath, type Config, dhtBootstrap, isInsideWatched, loadConfig, loadState, networkMode, parseBootstrap, saveState, updateConfig } from './config'
 import { checkNetwork, type NetworkCheck } from '../net/diagnose'
+import { reviewRoots } from '../roots/review'
 
 export interface MicelioNodeOptions {
   /** Nodi bootstrap DHT (test o rete privata); assente = DHT pubblica. */
@@ -146,6 +147,16 @@ export interface RootView extends RootRecord {
   /** Nome di chi l'ha promossa / confermata per ultimo (null se non più membro). */
   byName: string | null
   reviewedByName: string | null
+}
+
+/** Resoconto di una revisione delle Radici, come lo mostrano UI e CLI. */
+export interface RootReviewResult {
+  /** Radici esaminate. */
+  checked: number
+  /** Radici segnalate "da rivedere" in questa revisione, con i motivi. */
+  flagged: { id: string, title: string, reasons: string[] }[]
+  /** Cosa non è stato possibile verificare da questo PC, e perché. */
+  notes: string[]
 }
 
 /** Filtri per l'elenco delle Radici (tool MCP `architecture`, API, CLI). */
@@ -692,6 +703,45 @@ export class MicelioNode extends EventEmitter {
     if (strict) return ranked
     // Elenco completo: prima le pertinenti, poi le altre nell'ordine dato
     return [...ranked, ...ids.filter((id) => !ranked.includes(id))]
+  }
+
+  /**
+   * Revisione delle Radici, lanciata A MANO (vedi src/roots/review.ts): cerca codice o documenti
+   * d'origine cambiati e ricordi più recenti che le contraddicono, e pubblica le segnalazioni
+   * (`root.flag`). Le Radici segnalate diventano "da rivedere"; nessuna viene cambiata da sola.
+   * @param ids Radici da rivedere (default: tutte)
+   */
+  async rootReview (ids?: string[]): Promise<RootReviewResult> {
+    const team = this.requireTeam()
+    const wanted = ids?.length ? new Set(ids.map((i) => this.requireRoot(i).id)) : null
+    const roots = [...this.rootsById.values()].filter((r) => !wanted || wanted.has(r.id))
+    const model = this.embedder?.model
+    const report = await reviewRoots({
+      roots,
+      memories: this.enrich(this.index.all()),
+      localKey: team.localKey,
+      // I repository dei progetti si cercano nelle cartelle che l'utente ha abilitato su questo PC
+      folders: [...this.config.watch.sessions, ...this.config.watch.documents.map((d) => d.path)],
+      documents: () => this.privateStore.allDocuments(),
+      links: this.dreamLinks,
+      vectors: model ? this.index.vectors(model) : null,
+      threshold: model ? semanticThreshold(model) : 1,
+      llm: this.llm,
+      model: this.config.llm.distillModel,
+      language: (await team.config<string>('memory.language')) ?? 'it',
+      log: this.log
+    })
+    for (const f of report.findings) await team.append({ type: 'root.flag', id: f.id, reason: f.reason, refs: f.refs })
+    if (report.findings.length) await this.sync()
+    // Raggruppa le segnalazioni per Radice, con il titolo
+    const flagged = new Map<string, { id: string, title: string, reasons: string[] }>()
+    for (const f of report.findings) {
+      const e = flagged.get(f.id) ?? { id: f.id, title: this.index.get(f.id)?.title ?? f.id, reasons: [] }
+      e.reasons.push(f.reason)
+      flagged.set(f.id, e)
+    }
+    this.log(`revisione Radici: ${report.checked} esaminate, ${flagged.size} da rivedere`)
+    return { checked: report.checked, flagged: [...flagged.values()], notes: report.notes }
   }
 
   private requireRoot (id: string): RootView {
