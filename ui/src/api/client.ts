@@ -12,6 +12,7 @@ import type { InviteRecord, MemberRecord, NodeStatus, RecallHit } from '../../..
 import type { ExplicitOutcome } from '../../../src/ingest/pipeline'
 import type { DistillQuality } from '../../../src/ingest/quality'
 import type { Graph, GraphLink, GraphNode } from '../../../src/graph/constellation'
+import type { Galaxy } from '../../../src/graph/communities'
 import type { GapView, IngestStatus, NetworkSettings, NodeSettings, RootReviewResult, RootView, SecurityFinding, SecurityRules, SecurityTestResult, StorageReport } from '../../../src/node/micelio-node'
 import type { Digest } from '../../../src/insight/digest'
 import type { NetworkCheck } from '../../../src/net/diagnose'
@@ -21,7 +22,7 @@ import { getToken } from './auth'
 import { TEAM_HEADER, teamHeaders } from './team'
 import { currentLang } from '../i18n'
 
-export type { DistillQuality, Graph, GraphLink, GraphNode }
+export type { DistillQuality, Galaxy, Graph, GraphLink, GraphNode }
 export type { NetworkCheck, NetworkSettings, RootReviewResult, RootView, SecurityFinding, SecurityLogEntry, SecurityRules, SecurityTestResult, StorageReport }
 export type { Digest, GapView }
 
