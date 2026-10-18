@@ -130,7 +130,7 @@ export const api = {
   agentFiles: () => call<{ dir: string, format: AgentFileFormat, project: string, file: string, exists: boolean }[]>('GET', '/api/roots/agent-files'),
   exportAgentFile: (o: { dir: string, format: AgentFileFormat, project?: string, keep?: boolean }) => call<{ file: string, changed: boolean }>('POST', '/api/roots/agent-files', o),
   removeAgentFile: (dir: string, format: AgentFileFormat) => call<{ ok: true }>('DELETE', '/api/roots/agent-files', { dir, format }),
-  importRoots: (path: string, category?: string) => call<{ imported: number, duplicates: number, blocked: string[] }>('POST', '/api/roots/import', { path, category }),
+  importRoots: (path: string, category?: string) => call<{ imported: number, updated: number, duplicates: number, blocked: string[] }>('POST', '/api/roots/import', { path, category }),
 
   // Inbox e privato
   inbox: () => call<InboxItem[]>('GET', '/api/inbox'),

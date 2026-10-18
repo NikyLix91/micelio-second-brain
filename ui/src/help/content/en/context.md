@@ -20,7 +20,7 @@ Each entry is one line: kind or category, title, first line of the text and id. 
 
 ## At every request {#prompt}
 
-Micelio compares the **meaning** of the request with memories and Roots (local vectors) and inserts only what passes the relevance threshold: keywords alone on a free sentence would find too much noise. Very short requests ("ok", "thanks") produce nothing, and what was already shown in the same session is not repeated. These insertions do not count as a "use" of the memory.
+Micelio compares the **meaning** of the request with memories and Roots (local vectors) and inserts only what passes a relevance threshold **higher than the search one** (better no context than an off-topic one): keywords alone on a free sentence would find too much noise. Very short requests ("ok", "thanks") produce nothing, and what was already shown in the same session is not repeated. These insertions do not count as a "use" of the memory.
 
 ## Settings {#settings}
 

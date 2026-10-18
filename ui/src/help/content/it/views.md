@@ -13,7 +13,7 @@ La home: una sfera olografica navigabile.
 - **Esplorazione guidata**: la camera vola da un argomento all'altro (i tag più diffusi), con una didascalia.
 - **Accendi un argomento**: i ricordi pertinenti si accendono e la camera ci vola.
 - **Colori**: olografico (intensità secondo l'attivazione), per autore o per tipo; nelle ultime due la legenda è cliccabile e isola una voce.
-- **Radici**: al centro della sfera, con un anello bianco (rosso se da rivedere); «◆ Radici» le isola.
+- **Radici**: al centro della sfera, con un anello bianco (rosso se da rivedere); «◆ Radici» le isola. Con molte Radici il nucleo si allarga e ognuna brilla un po' meno, così restano distinguibili.
 
 ## La Mappa 2D {#map}
 

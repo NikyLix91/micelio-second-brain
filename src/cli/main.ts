@@ -922,8 +922,8 @@ roots.command('import')
   .argument('<percorso>', 'file o cartella')
   .option('-c, --category <categoria>', `categoria: ${ROOT_CATEGORIES.join(' | ')} (default: architecture per gli ADR, practice per il resto)`)
   .action(async (target: string, o: { category?: string }) => {
-    const r = await client().call<{ imported: number, duplicates: number, blocked: string[] }>('POST', '/api/roots/import', { path: path.resolve(target), category: o.category })
-    console.log(`Importate ${r.imported} Radici${r.duplicates ? `, ${r.duplicates} già presenti (rese Radici)` : ''}.`)
+    const r = await client().call<{ imported: number, updated: number, duplicates: number, blocked: string[] }>('POST', '/api/roots/import', { path: path.resolve(target), category: o.category })
+    console.log(`Importate ${r.imported} Radici${r.updated ? `, ${r.updated} aggiornate (file cambiati)` : ''}${r.duplicates ? `, ${r.duplicates} già presenti` : ''}.`)
     if (r.blocked.length) console.log(`Non importati (contenuti personali o riservati):\n  ${r.blocked.join('\n  ')}`)
   })
 

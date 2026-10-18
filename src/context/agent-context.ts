@@ -26,9 +26,9 @@ const ROOT_LABEL: Record<string, string> = {
   architecture: 'architettura', network: 'rete', interface: 'interfacce', domain: 'dominio', practice: 'best practice', policy: 'policy', other: 'altro'
 }
 
-/** Prima riga significativa del corpo, accorciata. */
+/** Prima riga significativa del corpo, accorciata (saltando un'eventuale intestazione YAML). */
 export function firstLine (body: string, max = 160): string {
-  const line = body.split('\n').map((l) => l.replace(/^[#>*\-\s]+/, '').trim()).find((l) => l.length > 0) ?? ''
+  const line = body.replace(/^---[ \t]*\n[\s\S]*?\n---[ \t]*(?:\n|$)/, '').split('\n').map((l) => l.replace(/^[#>*\-\s]+/, '').trim()).find((l) => l.length > 0) ?? ''
   return line.length > max ? line.slice(0, max - 1) + '…' : line
 }
 

@@ -110,6 +110,16 @@ describe('contesto automatico', () => {
     const roots = await node.roots()
     expect(roots.find((x) => x.memory.title === 'API REST versionate')).toMatchObject({ category: 'architecture' })
     // reimportare non duplica
-    expect(await node.importRoots(dir)).toMatchObject({ imported: 0, duplicates: 1 })
+    expect(await node.importRoots(dir)).toMatchObject({ imported: 0, updated: 0, duplicates: 1 })
+    // file cambiato: reimportare AGGIORNA la Radice (la versione vecchia va nello storico)
+    const before = (await node.roots()).find((x) => x.memory.title === 'API REST versionate')!
+    fs.writeFileSync(path.join(dir, '0002-api-rest.md'), '---\ntitle: API REST versionate\ntags: [api]\n---\nTutte le API pubbliche hanno la versione nel percorso (/v1/, /v2/).')
+    expect(await node.importRoots(dir)).toMatchObject({ imported: 0, updated: 1, duplicates: 0 })
+    const after = (await node.roots()).find((x) => x.memory.title === 'API REST versionate')!
+    expect(after.id).not.toBe(before.id)
+    expect(after).toMatchObject({ category: 'architecture' })
+    expect(after.memory.body).toContain('/v2/')
+    expect(after.memory.tags).toEqual(['api'])
+    expect(node.archived().find((m) => m.id === before.id)).toMatchObject({ status: 'superseded' })
   })
 })

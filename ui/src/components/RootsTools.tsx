@@ -35,7 +35,7 @@ const S = defineStrings({
     auto: 'Categoria automatica',
     autoTitle: 'Architettura per gli ADR, best practice per il resto',
     import: 'Importa',
-    imported: (n: number, d: number) => `Importate ${n} Radici${d ? `, ${d} già presenti rese Radici` : ''}.`,
+    imported: (n: number, u: number, d: number) => `Importate ${n} Radici${u ? `, ${u} aggiornate (file cambiati)` : ''}${d ? `, ${d} già presenti` : ''}.`,
     blocked: 'Non importati (contenuti riservati):'
   },
   en: {
@@ -58,7 +58,7 @@ const S = defineStrings({
     auto: 'Automatic category',
     autoTitle: 'Architecture for ADRs, best practice for the rest',
     import: 'Import',
-    imported: (n: number, d: number) => `Imported ${n} Roots${d ? `, ${d} already present made Roots` : ''}.`,
+    imported: (n: number, u: number, d: number) => `Imported ${n} Roots${u ? `, ${u} updated (changed files)` : ''}${d ? `, ${d} already present` : ''}.`,
     blocked: 'Not imported (confidential content):'
   }
 })
@@ -145,7 +145,7 @@ function ImportCard () {
       </div>
       {run.data && (
         <div className='notice ok small' style={{ marginTop: 10 }}>
-          {s.imported(run.data.imported, run.data.duplicates)}
+          {s.imported(run.data.imported, run.data.updated, run.data.duplicates)}
           {run.data.blocked.length > 0 && <div style={{ marginTop: 4 }}>{s.blocked} {run.data.blocked.join(' · ')}</div>}
         </div>
       )}

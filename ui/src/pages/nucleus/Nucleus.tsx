@@ -37,7 +37,7 @@ import { KIND_LABEL } from '../../format'
 import { HelpButton } from '../../help'
 import { defineStrings, useLang, useStrings } from '../../i18n'
 import { authorColor, KIND_COLOR, registerAuthors, ROOT_STAR, rootRing } from '../colors'
-import { animateHologram, createHologram, HOLO, rootMarker, SPHERE_RADIUS, sphericalForce, starSprite } from './hologram'
+import { animateHologram, createHologram, HOLO, rootCrowding, rootMarker, SPHERE_RADIUS, sphericalForce, starSprite } from './hologram'
 import { cameraFor, caption, centroid, computeTourStops, type TourStop } from './tour'
 
 type ColorMode = 'holo' | 'author' | 'kind'
@@ -96,6 +96,8 @@ export default function Nucleus () {
   const s = useStrings(S)
   const { lang } = useLang()
   const graph = useQuery({ queryKey: ['graph'], queryFn: api.graph })
+  // Con molte Radici ognuna è un po' meno luminosa: insieme non devono accecare (vedi rootCrowding)
+  const crowd = useMemo(() => rootCrowding((graph.data?.nodes ?? []).filter((n) => n.root).length), [graph.data])
   const status = useQuery({ queryKey: ['status'], queryFn: api.status })
   const fgRef = useRef<any>(null)
   const boxRef = useRef<HTMLDivElement>(null)
@@ -301,10 +303,12 @@ export default function Nucleus () {
     if (n.root) {
       // Radice: stella ciano in olografico (colore di modalità altrimenti) + anello luminoso
       const star = on ? (colored ? colorOf(n) : ROOT_STAR) : '#5a6a6a'
-      return rootMarker(star, rootRing(n.root.status), (colored ? size * 0.85 : size) * 1.15, on ? 1 : 0.4)
+      // La Radice selezionata o accesa dalla ricerca resta piena; le altre si attenuano se sono tante
+      const c = n.id === selected?.id || (on && lit) ? 1 : crowd
+      return rootMarker(star, rootRing(n.root.status), (colored ? size * 0.85 : size) * 1.15 * (0.7 + 0.3 * c), (on ? 1 : 0.4) * c, c)
     }
     return starSprite(on ? colorOf(n) : '#8a6a3a', colored ? size * 0.85 : size, on ? (colored ? 0.9 : 1) : 0.4)
-  }, [lit, degree, selected, colorOf, mode])
+  }, [lit, degree, selected, colorOf, mode, crowd])
 
   const linkOn = (l: any) => !lit || (lit.has(l.source.id ?? l.source) && lit.has(l.target.id ?? l.target))
 

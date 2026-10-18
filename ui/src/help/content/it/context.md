@@ -20,7 +20,7 @@ Ogni voce è una riga: tipo o categoria, titolo, prima riga del testo e id. Per 
 
 ## A ogni richiesta {#prompt}
 
-Micelio confronta il **significato** della richiesta con i ricordi e le Radici (vettori locali) e inserisce solo ciò che supera la soglia di pertinenza: le sole parole chiave su una frase libera troverebbero troppo rumore. Richieste brevissime («ok», «grazie») non producono nulla, e ciò che è già stato mostrato nella stessa sessione non si ripete. Questi inserimenti non contano come «uso» del ricordo.
+Micelio confronta il **significato** della richiesta con i ricordi e le Radici (vettori locali) e inserisce solo ciò che supera una soglia di pertinenza **più alta di quella della ricerca** (meglio nessun contesto che uno fuori tema): le sole parole chiave su una frase libera troverebbero troppo rumore. Richieste brevissime («ok», «grazie») non producono nulla, e ciò che è già stato mostrato nella stessa sessione non si ripete. Questi inserimenti non contano come «uso» del ricordo.
 
 ## Impostazioni {#settings}
 

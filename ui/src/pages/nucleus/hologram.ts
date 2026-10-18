@@ -94,18 +94,23 @@ function ringTexture (): THREE.Texture {
  * @param ringColor colore dell'anello (bianco ghiaccio, rosso se "da rivedere")
  * @param size      dimensione della stella; l'anello è circa il doppio
  */
-export function rootMarker (starColor: string, ringColor: string, size: number, opacity = 1): THREE.Group {
+/**
+ * @param crowd attenuazione degli anelli quando le Radici sono tante (1 = nessuna, vedi rootCrowding):
+ *              gli anelli sono la parte più grande e luminosa, e sommandosi coprono tutto
+ */
+export function rootMarker (starColor: string, ringColor: string, size: number, opacity = 1, crowd = 1): THREE.Group {
   const group = new THREE.Group()
   group.add(starSprite(starColor, size, opacity))
   const ring = new THREE.Sprite(new THREE.SpriteMaterial({
     map: ringTexture(),
     color: new THREE.Color(ringColor),
     transparent: true,
-    opacity: opacity * 0.9,
+    opacity: opacity * 0.9 * crowd,
     depthWrite: false,
     blending: THREE.AdditiveBlending
   }))
-  ring.scale.set(size * 2.3, size * 2.3, 1)
+  const r = size * (1.5 + 0.8 * crowd)
+  ring.scale.set(r, r, 1)
   group.add(ring)
   return group
 }
@@ -215,8 +220,29 @@ export function animateHologram (group: THREE.Object3D): void {
  * Forza d3 che spinge ogni nodo verso il proprio raggio "preferito" dentro la sfera, tra il
  * 45% e il 100% di `radius`. Il raggio preferito dipende dall'id del nodo (stabile fra un
  * avvio e l'altro), così i ricordi riempiono un guscio spesso invece di ammassarsi al centro.
- * Le Radici invece hanno un raggio fra l'8% e il 28%: formano il nucleo al centro della sfera.
+ * Le Radici invece formano il nucleo al centro della sfera. Il nucleo si allarga con il numero di
+ * Radici (radice cubica: il volume cresce come il loro numero), fino al 42% del raggio, sempre
+ * dentro il guscio dei ricordi: con un raggio fisso, decine di Radici (es. un vault importato)
+ * finivano ammassate in un punto e il bagliore le fondeva in una palla bianca.
  */
+/**
+ * Spessore del nucleo delle Radici, in frazioni del raggio della sfera: 8–28% fino a 8 Radici, poi
+ * cresce con la radice cubica del loro numero, fino a 15–42%.
+ */
+export function rootCore (count: number): { inner: number, outer: number } {
+  const scale = Math.max(1, Math.cbrt(count / 8))
+  return { inner: Math.min(0.15, 0.08 * scale), outer: Math.min(0.42, 0.28 * scale) }
+}
+
+/**
+ * Quanto attenuare ogni Radice quando sono tante (1 = nessuna attenuazione, minimo 0,35): i loro
+ * sprite si sommano (fusione additiva) e il bloom amplifica, quindi oltre la decina la luce totale
+ * va contenuta.
+ */
+export function rootCrowding (count: number): number {
+  return Math.max(0.35, Math.sqrt(10 / Math.max(10, count)))
+}
+
 export function sphericalForce (radius = SPHERE_RADIUS, strength = 0.08) {
   let nodes: any[] = []
   const preferred = new Map<string, number>()
@@ -232,12 +258,13 @@ export function sphericalForce (radius = SPHERE_RADIUS, strength = 0.08) {
   }
   force.initialize = (ns: any[]) => {
     nodes = ns
+    const core = rootCore(ns.filter((n) => n.root).length)
     for (const n of ns) {
       let h = 0
       for (let i = 0; i < n.id.length; i++) h = (h * 31 + n.id.charCodeAt(i)) >>> 0
       const f = (h % 1000) / 1000
-      // Radici: nel cuore della sfera (8–28% del raggio); gli altri ricordi nel guscio (45–100%).
-      preferred.set(n.id, radius * (n.root ? 0.08 + f * 0.2 : 0.45 + f * 0.55))
+      // Radici: nel nucleo (vedi rootCore); gli altri ricordi nel guscio (45–100% del raggio).
+      preferred.set(n.id, radius * (n.root ? core.inner + f * (core.outer - core.inner) : 0.45 + f * 0.55))
     }
   }
   return force

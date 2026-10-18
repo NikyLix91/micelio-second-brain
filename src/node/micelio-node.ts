@@ -59,7 +59,7 @@ import { promptContext, sessionContext } from '../context/agent-context'
 import { computeDigest, type Digest } from '../insight/digest'
 import { gapId, gapKey } from '../insight/gaps'
 import { AGENT_FILE_FORMATS, type AgentFileFormat, renderRootsBlock, writeAgentFile } from '../roots/agent-files'
-import { readImport } from '../roots/import'
+import { type ImportItem, readImport } from '../roots/import'
 import { repoInfo } from '../ingest/git-changes'
 import { type Identity, signMembership } from '../core/identity'
 import { checkDecision, WRITE_CANDIDATES, WriteDecision, writeUpdateInput, writeUpdateSystem } from '../ingest/write-update'
@@ -268,6 +268,15 @@ const USAGE_FLUSH_MS = 30 * 60 * 1000
  */
 function semanticThreshold (model: string): number {
   return model.includes('e5') ? 0.83 : 0.3
+}
+
+/**
+ * Soglia per il contesto automatico di ogni richiesta (B4): più alta di quella della ricerca. Una
+ * richiesta in linguaggio libero «somiglia» un po' a molti ricordi, e inserirli tutti sarebbe solo
+ * rumore nella conversazione: meglio nessun contesto che un contesto fuori tema.
+ */
+function promptThreshold (model: string): number {
+  return model.includes('e5') ? 0.86 : 0.45
 }
 
 /** Soglia "quasi duplicato" per il dreaming: più alta di quella di pertinenza. */
@@ -1100,9 +1109,10 @@ export class MicelioNode extends EventEmitter {
         shown = [...roots, ...memories]
       } else {
         if (!cfg.prompt || !o.prompt || o.prompt.trim().length < CONTEXT_MIN_PROMPT) return ''
+        // Ricordi e Radici con la STESSA soglia stretta: le Radici non passano più da relatedRoots,
+        // che è volutamente larga (serve a recall) e su una frase libera portava Radici fuori tema
         const hits = (await this.relevantTo(o.prompt, CONTEXT_MEMORIES)).filter((h) => !seen.has(h.id))
-        const roots = (await this.relatedRoots(o.prompt, hits.map((h) => h.id), 2)).filter((h) => !seen.has(h.id))
-        shown = [...roots, ...hits].slice(0, CONTEXT_PER_PROMPT)
+        shown = [...hits.filter((h) => h.root), ...hits.filter((h) => !h.root)].slice(0, CONTEXT_PER_PROMPT)
         text = promptContext({ team, memories: shown, maxChars: cfg.maxChars })
       }
       if (o.sessionId && text) {
@@ -1186,23 +1196,42 @@ export class MicelioNode extends EventEmitter {
    * Importa come Radici file già scritti dal team (ADR, CLAUDE.md / AGENTS.md a sezioni, vault
    * Markdown), senza LLM: src/roots/import.ts. Passano dal filtro dei segreti; i contenuti
    * bloccati (personali/HR) non entrano. Un ricordo già presente diventa comunque Radice.
+   * Reimportare AGGIORNA: un file già importato (stessa chiave, o stesso nome per gli import
+   * precedenti alle chiavi) con contenuto diverso sostituisce la versione precedente, che resta
+   * nello storico (root.unset → memory.supersede → root.set, nello stesso ordine nel log).
    */
-  async importRoots (target: string, category?: RootCategory): Promise<{ imported: number, duplicates: number, blocked: string[], ids: string[] }> {
+  async importRoots (target: string, category?: RootCategory): Promise<{ imported: number, updated: number, duplicates: number, blocked: string[], ids: string[] }> {
     const team = this.requireTeam()
     if (category && !ROOT_CATEGORIES.includes(category)) throw new UserError(`Categoria sconosciuta: ${category}`, `Unknown category: ${category}`)
     let items
     try { items = readImport(target) } catch (err) { throw new UserError((err as Error).message, `Path not found: ${target}`) }
     if (!items.length) throw new UserError('Nessun file Markdown da importare', 'No Markdown file to import')
     const rules = await this.filterRules()
-    const out = { imported: 0, duplicates: 0, blocked: [] as string[], ids: [] as string[] }
+    const out = { imported: 0, updated: 0, duplicates: 0, blocked: [] as string[], ids: [] as string[] }
+    // Ricordi già importati, per chiave (source.ref) e, per gli import precedenti, per nome del file
+    const previous = this.teamMemories().filter((m) => m.source?.type === 'import')
+    const findPrevious = (it: ImportItem) => previous.find((m) => m.source?.ref === it.key) ??
+      (!it.key.includes('#') ? previous.find((m) => !m.source?.ref && m.source?.name === it.file) : undefined)
     for (const it of items) {
-      const fm = filterMemory(MemoryInput.parse({ kind: it.kind, title: it.title, body: it.body, tags: ['import'], source: { type: 'import', name: it.file } }), rules)
+      const fm = filterMemory(MemoryInput.parse({ kind: it.kind, title: it.title, body: it.body, tags: it.tags, source: { type: 'import', name: it.file, ref: it.key } }), rules)
       if (fm.blocked) { out.blocked.push(`${it.file}: ${it.title}`); continue }
       const id = memoryId(fm.memory)
-      if (this.index.get(id)?.id === id) out.duplicates++
-      else { await team.append({ type: 'memory.add', memory: fm.memory }); out.imported++ }
       // ADR → decisioni architetturali; il resto → best practice, salvo categoria indicata
-      await team.append({ type: 'root.set', id, category: category ?? (it.kind === 'decision' ? 'architecture' : 'practice') })
+      const old = findPrevious(it)
+      let cat: RootCategory = category ?? (it.kind === 'decision' ? 'architecture' : 'practice')
+      if (this.index.get(id)?.id === id) {
+        out.duplicates++
+      } else if (old && old.id !== id && !this.index.signals().get(old.id)?.pinned) {
+        // Versione nuova di un file già importato: sostituisce la precedente (che resta nello storico)
+        const oldRoot = this.rootsById.get(old.id)
+        if (oldRoot) { cat = category ?? oldRoot.category; await team.append({ type: 'root.unset', id: old.id }) }
+        await team.append({ type: 'memory.supersede', old: [old.id], memory: fm.memory, reason: 'reimportato: il file è cambiato' })
+        out.updated++
+      } else {
+        await team.append({ type: 'memory.add', memory: fm.memory })
+        out.imported++
+      }
+      await team.append({ type: 'root.set', id, category: cat })
       out.ids.push(id)
     }
     await this.sync()
@@ -1211,14 +1240,15 @@ export class MicelioNode extends EventEmitter {
   }
 
   /**
-   * Ricordi PERTINENTI a un testo libero (la richiesta di un utente): solo per significato e sopra
-   * la soglia del modello. Le sole parole chiave su un testo lungo trovano troppo rumore. Senza
-   * embedding: nessun risultato. Non conta come uso (l'agente potrebbe ignorarli).
+   * Ricordi e Radici PERTINENTI a un testo libero (la richiesta di un utente): solo per significato
+   * e sopra una soglia PIÙ ALTA di quella della ricerca (promptThreshold). Le sole parole chiave su
+   * un testo lungo trovano troppo rumore. Senza embedding: nessun risultato. Non conta come uso
+   * (l'agente potrebbe ignorarli).
    */
   private async relevantTo (text: string, n: number): Promise<RecallHit[]> {
     if (!this.embedder) return []
     const [q] = await this.embedder.embed([text.slice(0, 2000)], 'query')
-    const ids = nearest(q, this.index.vectors(this.embedder.model), n, semanticThreshold(this.embedder.model)).map((r) => r.id)
+    const ids = nearest(q, this.index.vectors(this.embedder.model), n, promptThreshold(this.embedder.model)).map((r) => r.id)
     return this.enrich(this.index.getMany(ids))
   }
 
