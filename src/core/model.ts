@@ -99,6 +99,13 @@ export interface RecallHit {
   uses?: number
   /** Fissato: non decade e non viene archiviato. */
   pinned?: boolean
+  /** Ricordo PERSONALE (B4): sta solo su questo PC, il team non lo vede. */
+  personal?: boolean
+  /**
+   * Il codice citato è cambiato dopo la scrittura del ricordo (B4, repository di questo PC):
+   * commit successivi sui file citati e file non più presenti.
+   */
+  stale?: { commits: number, missing: number }
   /** Presente se il ricordo è una Radice: categoria e stato di revisione. */
   root?: { category: RootCategory, status: 'ok' | 'review' }
 }

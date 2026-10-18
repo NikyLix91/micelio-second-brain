@@ -35,7 +35,7 @@ import type { Embedder } from '../embed/embedder'
 import { LlmRunner } from '../llm/runner'
 import type { LlmAdapter } from '../llm/types'
 import { PrivateStore } from '../store/private-store'
-import { canonicalPath, dhtBootstrap, isInsideWatched, loadConfig, loadState, readConfigFile, updateMachineConfig, writeConfigFile } from './config'
+import { canonicalPath, dhtBootstrap, isInsideWatched, loadConfig, loadState, type NetworkMode, readConfigFile, updateMachineConfig, writeConfigFile } from './config'
 import { type ChangeTopic, createAdapter, createEmbedder, MicelioNode, UserError } from './micelio-node'
 
 export interface MicelioHostOptions {
@@ -196,11 +196,14 @@ export class MicelioHost extends EventEmitter {
   /**
    * Crea un nuovo team su questo PC (si aggiunge a quelli esistenti).
    * @param nodeName nome con cui presentarsi; assente = quello dell'identità personale
+   * @param network  rete del nuovo team; assente = quella di default (DHT pubblica)
    */
-  async createTeam (teamName: string, nodeName?: string): Promise<{ id: string, status: NodeStatus }> {
+  async createTeam (teamName: string, nodeName?: string, network?: NetworkMode): Promise<{ id: string, status: NodeStatus }> {
     const name = this.nameFor(nodeName)
     const node = await this.pendingNode()
     const id = this.pendingId!
+    // Rete scelta alla creazione (es. «Solo per me» = nessuna rete, B4)
+    if (network) node.prepareNetwork(network)
     const status = await node.init(teamName, name)
     this.configuredJoined(id)
     return { id, status }

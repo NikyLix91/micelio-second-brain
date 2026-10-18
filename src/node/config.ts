@@ -103,11 +103,12 @@ export const BOOTSTRAP_RE = /^[^\s:]+:\d{1,5}$/
  */
 const NetworkConfig = z.object({
   /**
-   * "public" = DHT pubblica di Holepunch; "private" = DHT del team (nodi in `bootstrap`).
+   * "public" = DHT pubblica di Holepunch; "private" = DHT del team (nodi in `bootstrap`);
+   * "local" = SOLO LOCALE (B4): nessuna rete, per chi usa Micelio da solo finché non invita qualcuno.
    * Facoltativo per compatibilità con i config.json scritti prima della scelta esplicita:
    * se manca vale "private" quando `bootstrap` non è vuota (vedi networkMode).
    */
-  mode: z.enum(['public', 'private']).optional(),
+  mode: z.enum(['public', 'private', 'local']).optional(),
   /**
    * Nodi di avvio della DHT privata, come "host:porta". Restano salvati anche passando alla
    * DHT pubblica, così si può tornare indietro senza riscriverli.
@@ -116,6 +117,8 @@ const NetworkConfig = z.object({
   bootstrap: z.array(z.string().regex(BOOTSTRAP_RE, 'formato host:porta')).default([])
 }).prefault({})
 export type NetworkConfig = z.infer<typeof NetworkConfig>
+/** Rete di un team: DHT pubblica, DHT privata del team o nessuna rete (solo locale). */
+export type NetworkMode = 'public' | 'private' | 'local'
 
 const Config = z.object({
   /** Interfaccia di ascolto: 127.0.0.1 (solo questa macchina); 0.0.0.0 nei container. */
@@ -286,12 +289,12 @@ export function parseBootstrap (list: string[]): { host: string, port: number }[
 export function dhtBootstrap (config?: Config): { host: string, port: number }[] | undefined {
   const env = process.env.MICELIO_DHT_BOOTSTRAP
   if (env) return parseBootstrap(env.split(','))
-  if (!config || networkMode(config.network) === 'public') return undefined
+  if (!config || networkMode(config.network) !== 'private') return undefined
   return config.network.bootstrap.length ? parseBootstrap(config.network.bootstrap) : undefined
 }
 
 /** DHT scelta: esplicita se indicata, altrimenti dedotta dalla presenza di nodi di avvio. */
-export function networkMode (n: NetworkConfig): 'public' | 'private' {
+export function networkMode (n: NetworkConfig): NetworkMode {
   return n.mode ?? (n.bootstrap.length ? 'private' : 'public')
 }
 

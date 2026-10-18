@@ -24,7 +24,7 @@ import type { ExplicitOutcome } from '../ingest/pipeline'
 import type { DistillQuality } from '../ingest/quality'
 import { checkNetwork } from '../net/diagnose'
 import { autostartOff, autostartOn, autostartStatus } from '../node/autostart'
-import { BOOTSTRAP_RE, dhtBootstrap, loadConfig, networkMode, updateConfig } from '../node/config'
+import { BOOTSTRAP_RE, dhtBootstrap, loadConfig, networkMode, type NetworkMode, updateConfig } from '../node/config'
 import { claudeSettingsFile, hookCommand, IntegrationError, mcpAddArgs, setupClaudeCode } from '../node/integrations'
 import type { TeamSummary } from '../node/micelio-host'
 import type { IngestStatus, NetworkSettings, RootReviewResult, RootView, SecurityFinding, SecurityRules, SecurityTestResult } from '../node/micelio-node'
@@ -89,7 +89,9 @@ function printStatus (s: NodeStatus): void {
 function printHit (h: RecallHit, full = false): void {
   console.log(`\n■ ${h.title}`)
   const prio = h.activation !== undefined ? ` · attivazione ${Math.round(h.activation * 100)}%${h.votes ? ` · voti ${h.votes > 0 ? '+' : ''}${h.votes}` : ''}${h.pinned ? ' · 📌' : ''}` : ''
-  console.log(`  [${h.kind}] id:${h.id.slice(0, 12)} · ${h.authorName ?? short(h.author)} · ${date(h.ts)}${h.tags.length ? ' · #' + h.tags.join(' #') : ''}${prio}`)
+  // B4: ricordo personale (solo su questo PC) e codice citato cambiato dopo il ricordo
+  const marks = `${h.personal ? ' · 🔒 personale' : ''}${h.stale && (h.stale.commits || h.stale.missing) ? ` · ⚠ codice cambiato (${h.stale.commits} commit${h.stale.missing ? `, ${h.stale.missing} file spariti` : ''})` : ''}`
+  console.log(`  [${h.kind}] id:${h.id.slice(0, 12)} · ${h.authorName ?? short(h.author)} · ${date(h.ts)}${h.tags.length ? ' · #' + h.tags.join(' #') : ''}${prio}${marks}`)
   // Riferimenti al codice (progetto, file, simboli, commit): dove approfondire
   for (const l of formatCodeRefs(h.source?.code, full)) console.log(`  ↳ ${l.replace(/`/g, '')}`)
   console.log(indent(h.body))
@@ -214,11 +216,11 @@ const network = program.command('network').description('rete P2P: DHT pubblica o
  * Applica una scelta di rete: via daemon se risponde, altrimenti direttamente su config.json.
  * @param bootstrap nodi della DHT privata (undefined = lascia quelli salvati)
  */
-async function applyNetwork (mode: 'public' | 'private', bootstrap?: string[]): Promise<void> {
+async function applyNetwork (mode: NetworkMode, bootstrap?: string[]): Promise<void> {
   const c = client()
   if (await c.health()) {
     const n = await c.call<NetworkSettings>('PUT', '/api/network', { mode, bootstrap })
-    console.log(n.mode === 'private' ? `DHT privata del team: ${n.bootstrap.join(', ')}` : 'DHT pubblica di Holepunch')
+    console.log(networkLabel(n.mode, n.bootstrap))
     console.log('Applicata subito: il nodo si è ricollegato. Verifica con: micelio network check')
     return
   }
@@ -230,9 +232,19 @@ async function applyNetwork (mode: 'public' | 'private', bootstrap?: string[]): 
     if (bootstrap) c.network.bootstrap = bootstrap
   })
   if (mode === 'private' && cfg.network.bootstrap.length === 0) throw new DaemonError('Per la DHT privata serve almeno un nodo di avvio: micelio network set <host:porta>')
-  console.log(mode === 'private' ? `DHT privata del team: ${cfg.network.bootstrap.join(', ')}` : 'DHT pubblica di Holepunch')
+  console.log(networkLabel(mode, cfg.network.bootstrap))
   console.log('Il daemon è spento: varrà al prossimo `micelio start`.')
 }
+
+/** Descrizione leggibile della rete scelta. */
+function networkLabel (mode: NetworkMode, bootstrap: string[]): string {
+  if (mode === 'local') return 'Solo locale: nessuna rete (per invitare qualcuno scegli `micelio network public` o `set`)'
+  return mode === 'private' ? `DHT privata del team: ${bootstrap.join(', ')}` : 'DHT pubblica di Holepunch'
+}
+
+network.command('local')
+  .description('solo locale: nessuna rete, per chi usa Micelio da solo (gli inviti richiedono una rete)')
+  .action(() => applyNetwork('local'))
 
 network.command('show', { isDefault: true })
   .description('DHT in uso e nodi di avvio salvati')
@@ -240,7 +252,8 @@ network.command('show', { isDefault: true })
     const cfg = loadConfig(offlinePaths())
     const env = process.env.MICELIO_DHT_BOOTSTRAP
     const saved = cfg.network.bootstrap.length ? cfg.network.bootstrap.join(', ') : 'nessuno'
-    if (env) console.log(`DHT da MICELIO_DHT_BOOTSTRAP: ${env} (prevale su config.json)`)
+    if (networkMode(cfg.network) === 'local') console.log(networkLabel('local', []))
+    else if (env) console.log(`DHT da MICELIO_DHT_BOOTSTRAP: ${env} (prevale su config.json)`)
     else if (networkMode(cfg.network) === 'private') console.log(`DHT privata del team: ${saved}`)
     else console.log(`DHT pubblica di Holepunch (server del team salvati: ${saved})`)
   })
@@ -292,8 +305,9 @@ program.command('init')
   .description('crea un nuovo team (si aggiunge a quelli già presenti su questo PC): ne diventi fondatore e admin')
   .argument('<team>', 'nome del team')
   .option('-n, --name <name>', 'il tuo nome nel team (default: quello della tua identità, la prima volta il nome del PC)')
-  .action(async (team: string, o: { name?: string }) => {
-    const s = await client().call<NodeStatus & { teamId: string }>('POST', '/api/team/init', { team, name: memberName(o.name) })
+  .option('--solo', 'solo per te: nessuna rete finché non scegli di invitare qualcuno (micelio network public)')
+  .action(async (team: string, o: { name?: string, solo?: boolean }) => {
+    const s = await client().call<NodeStatus & { teamId: string }>('POST', '/api/team/init', { team, name: memberName(o.name), ...(o.solo ? { network: 'local' } : {}) })
     printStatus(s)
     console.log(`Id del team: ${s.teamId}  (micelio --team ${s.teamId} …)`)
   })
@@ -434,11 +448,43 @@ program.command('remember')
   .option('-b, --body <text>', 'contenuto (Markdown)')
   .option('-k, --kind <kind>', `tipo: ${MEMORY_KINDS.join(' | ')}`, 'fact')
   .option('-t, --tags <tags>', 'tag separati da virgola')
-  .action(async (title: string, o: { body?: string, kind: string, tags?: string }) => {
+  .option('-p, --personal', 'ricordo PERSONALE: resta solo su questo PC, il team non lo vede')
+  .action(async (title: string, o: { body?: string, kind: string, tags?: string, personal?: boolean }) => {
     const body = o.body ?? (await readStdin()).trim()
     if (!body) throw new DaemonError('Serve un contenuto: usa --body "..." oppure passalo da stdin')
     const tags = o.tags ? o.tags.split(',').map((t) => t.trim()).filter(Boolean) : []
+    if (o.personal) {
+      const p = await client().call<{ id: string, duplicate: boolean }>('POST', '/api/memories', { title, body, kind: o.kind, tags, personal: true })
+      console.log(`${p.duplicate ? 'Già presente' : 'Salvato'} come ricordo personale (id:${p.id.slice(0, 12)}): resta solo su questo PC.`)
+      return
+    }
     printOutcome(await client().call<ExplicitOutcome>('POST', '/api/memories', { title, body, kind: o.kind, tags }))
+  })
+
+// ── Ricordi personali (B4) ────────────────────────────────────────────────────────
+const personal = program.command('personal').description('ricordi personali: solo su questo PC (list | share | delete)')
+
+personal.command('list', { isDefault: true })
+  .description('i tuoi ricordi personali')
+  .action(async () => {
+    const list = await client().call<RecallHit[]>('GET', '/api/personal')
+    if (!list.length) return console.log('Nessun ricordo personale. Salvane uno con: micelio remember "<titolo>" -b "<testo>" --personal')
+    for (const h of list) printHit(h)
+  })
+
+personal.command('share')
+  .description('condivide un ricordo personale con il team (passa dal filtro, come un salvataggio)')
+  .argument('<id>', 'id del ricordo (anche abbreviato)')
+  .action(async (id: string) => {
+    printOutcome(await client().call<ExplicitOutcome>('POST', `/api/personal/${encodeURIComponent(id)}/share`))
+  })
+
+personal.command('delete')
+  .description('cancella un ricordo personale')
+  .argument('<id>', 'id del ricordo (anche abbreviato)')
+  .action(async (id: string) => {
+    await client().call('DELETE', `/api/personal/${encodeURIComponent(id)}`)
+    console.log('Ricordo personale cancellato')
   })
 
 program.command('recall')
@@ -670,6 +716,12 @@ inbox.command('approve').description('pubblica nel team (eventualmente correggen
     const r = await client().call<{ id: string, memory: { title: string, body: string } }>('POST', `/api/inbox/${encodeURIComponent(id)}/approve`, { title: o.title, body: o.body })
     console.log(`✔ Pubblicato nel team (id:${r.id.slice(0, 12)})\n${indent(`${r.memory.title}\n${r.memory.body}`)}`)
   })
+inbox.command('keep').description('tienilo per te: diventa un ricordo personale, non va al team').argument('<id>')
+  .action(async (id: string) => {
+    await client().call('POST', `/api/inbox/${encodeURIComponent(id)}/keep`)
+    console.log('Tenuto come ricordo personale (solo su questo PC)')
+  })
+
 inbox.command('reject').description('scarta: non verrà condiviso').argument('<id>')
   .action(async (id: string) => {
     await client().call('POST', `/api/inbox/${encodeURIComponent(id)}/reject`)

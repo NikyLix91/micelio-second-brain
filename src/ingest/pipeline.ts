@@ -501,6 +501,19 @@ export class IngestPipeline {
   }
 
   /** Rifiuta un elemento: non va al team e resta solo una riga nel registro delle decisioni. */
+  /**
+   * Toglie un elemento dall'inbox perché l'utente lo tiene come ricordo PERSONALE (B4): non va al
+   * team, e nel registro risulta come scelta privata.
+   * @returns il ricordo (già redatto dal filtro)
+   */
+  keepPrivately (id: string): MemoryData {
+    const item = this.requireInbox(id)
+    this.logDecision(item.source, 'private', 'tenuto come ricordo personale', item.memory.title)
+    this.deps.store.removeInbox(id)
+    this.notify('inbox')
+    return item.memory
+  }
+
   reject (id: string): void {
     const item = this.requireInbox(id)
     this.logDecision(item.source, 'rejected', 'rifiutato dall\'utente', item.memory.title)

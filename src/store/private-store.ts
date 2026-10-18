@@ -66,6 +66,12 @@ CREATE TABLE IF NOT EXISTS usage_local (id TEXT PRIMARY KEY, count INTEGER NOT N
 CREATE TABLE IF NOT EXISTS security_log (id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, source_type TEXT NOT NULL, source_ref TEXT, label TEXT NOT NULL, kinds TEXT NOT NULL, omitted TEXT NOT NULL);
 -- Radici suggerite dal distillatore (Fase 8): restano qui finché l'utente non le promuove o le ignora.
 CREATE TABLE IF NOT EXISTS root_suggestions (id TEXT PRIMARY KEY, category TEXT NOT NULL, title TEXT NOT NULL, created INTEGER NOT NULL);
+-- B4: ricordi PERSONALI. Restano su questo PC, compaiono nelle ricerche accanto a quelli del team.
+CREATE TABLE IF NOT EXISTS personal (id TEXT PRIMARY KEY, memory TEXT NOT NULL, created INTEGER NOT NULL);
+-- B4: ricerche esplicite senza risultato (lacune di conoscenza). Testo già redatto dal filtro.
+CREATE TABLE IF NOT EXISTS search_misses (key TEXT PRIMARY KEY, query TEXT NOT NULL, count INTEGER NOT NULL, first INTEGER NOT NULL, last INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'open');
+-- B4: quanto i file citati da un ricordo sono cambiati dopo la sua scrittura (repository di questo PC).
+CREATE TABLE IF NOT EXISTS code_staleness (id TEXT PRIMARY KEY, commits INTEGER NOT NULL, missing INTEGER NOT NULL, checked INTEGER NOT NULL);
 `
 
 /** Dopo quanto un elemento non deciso esce dall'inbox (D9). */
@@ -252,6 +258,56 @@ export class PrivateStore {
     return (this.db.prepare('SELECT * FROM security_log ORDER BY id DESC LIMIT ?').all(limit) as any[]).map((r) => ({
       id: r.id, ts: r.ts, source: { type: r.source_type, ref: r.source_ref ?? undefined }, label: r.label, kinds: JSON.parse(r.kinds), omitted: JSON.parse(r.omitted)
     }))
+  }
+
+  // ── Ricordi personali (B4) ─────────────────────────────────────────────────────
+
+  /** Salva un ricordo personale (già redatto). Lo stesso contenuto due volte resta uno. */
+  addPersonal (id: string, memory: MemoryData, now = Date.now()): boolean {
+    return this.db.prepare('INSERT OR IGNORE INTO personal (id, memory, created) VALUES (?, ?, ?)').run(id, JSON.stringify(memory), now).changes > 0
+  }
+
+  /** Tutti i ricordi personali, dal più recente. */
+  personal (): { id: string, memory: MemoryData, created: number }[] {
+    return (this.db.prepare('SELECT id, memory, created FROM personal ORDER BY created DESC').all() as any[])
+      .map((r) => ({ id: r.id, memory: JSON.parse(r.memory) as MemoryData, created: r.created }))
+  }
+
+  removePersonal (id: string): void {
+    this.db.prepare('DELETE FROM personal WHERE id = ?').run(id)
+  }
+
+  // ── Lacune di conoscenza (B4) ──────────────────────────────────────────────────
+
+  /**
+   * Registra una ricerca senza risultato. Ricerche uguali a meno di maiuscole, punteggiatura e
+   * ordine delle parole (`key`) si sommano. Una lacuna ignorata resta ignorata.
+   */
+  addSearchMiss (key: string, query: string, now = Date.now()): void {
+    this.db.prepare(`INSERT INTO search_misses (key, query, count, first, last) VALUES (?, ?, 1, ?, ?)
+      ON CONFLICT(key) DO UPDATE SET count = count + 1, last = excluded.last, query = excluded.query`).run(key, query, now, now)
+  }
+
+  /** Lacune per stato, dalle più frequenti. */
+  searchMisses (status: 'open' | 'dismissed' | 'reported' = 'open', limit = 100): { key: string, query: string, count: number, first: number, last: number, status: string }[] {
+    return this.db.prepare('SELECT key, query, count, first, last, status FROM search_misses WHERE status = ? ORDER BY count DESC, last DESC LIMIT ?').all(status, limit) as any[]
+  }
+
+  setSearchMissStatus (key: string, status: 'open' | 'dismissed' | 'reported'): void {
+    this.db.prepare('UPDATE search_misses SET status = ? WHERE key = ?').run(status, key)
+  }
+
+  // ── Ricordi che invecchiano con il codice (B4) ─────────────────────────────────
+
+  setStaleness (id: string, commits: number, missing: number, now = Date.now()): void {
+    this.db.prepare('INSERT OR REPLACE INTO code_staleness (id, commits, missing, checked) VALUES (?, ?, ?, ?)').run(id, commits, missing, now)
+  }
+
+  /** Ricordo → commit successivi sui file citati e file scomparsi. */
+  staleness (): Map<string, { commits: number, missing: number, checked: number }> {
+    const out = new Map<string, { commits: number, missing: number, checked: number }>()
+    for (const r of this.db.prepare('SELECT id, commits, missing, checked FROM code_staleness').all() as any[]) out.set(r.id, { commits: r.commits, missing: r.missing, checked: r.checked })
+    return out
   }
 
   // ── Radici suggerite (Fase 8) ──────────────────────────────────────────────────

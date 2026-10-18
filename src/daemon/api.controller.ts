@@ -19,7 +19,12 @@ import { DAEMON_OPTIONS, PUBLIC_ROUTE } from './tokens'
 
 // ── Schemi dei body ───────────────────────────────────────────────────────────────────
 /** Nome facoltativo: dal secondo team in poi si usa quello dell'identità personale (B3). */
-const InitBody = z.object({ team: z.string().trim().min(1).max(100), name: z.string().trim().min(1).max(100).optional() })
+const InitBody = z.object({
+  team: z.string().trim().min(1).max(100),
+  name: z.string().trim().min(1).max(100).optional(),
+  /** "local" = team solo per sé, senza rete (B4); assente = DHT pubblica come sempre. */
+  network: z.enum(['public', 'local']).optional()
+})
 const JoinBody = z.object({ code: z.string().trim().min(10), name: z.string().trim().min(1).max(100).optional() })
 /** Registrazione MCP per una cartella di progetto, sul team della richiesta (B3). */
 const ProjectBody = z.object({ path: z.string().min(1) })
@@ -44,7 +49,7 @@ const LlmSettingsBody = z.object({
 })
 /** Scelta della DHT; il formato dei nodi è controllato da MicelioNode.setNetwork. */
 const NetworkBody = z.object({
-  mode: z.enum(['public', 'private']),
+  mode: z.enum(['public', 'private', 'local']),
   bootstrap: z.array(z.string().max(300)).max(10).optional()
 })
 const NetworkCheckBody = NetworkBody.partial().default({})
@@ -109,8 +114,8 @@ export class ApiController {
    */
   @Post('team/init')
   async init (@Body() body: unknown) {
-    const { team, name } = InitBody.parse(body)
-    const { id, status } = await this.micelio.host.createTeam(team, name)
+    const { team, name, network } = InitBody.parse(body)
+    const { id, status } = await this.micelio.host.createTeam(team, name, network)
     return { ...status, teamId: id }
   }
 
@@ -190,7 +195,37 @@ export class ApiController {
    */
   @Post('memories')
   remember (@Body() body: Record<string, unknown>) {
-    return this.node.remember({ ...body, source: { type: 'cli' } } as any)
+    // `personal: true` = ricordo personale (B4): resta su questo PC, non passa al team
+    const { personal, ...memory } = body
+    if (personal === true) return this.node.rememberPersonal({ ...memory, source: { type: 'cli' } } as any)
+    return this.node.remember({ ...memory, source: { type: 'cli' } } as any)
+  }
+
+  // ═══════════════════════════ Ricordi personali (B4) ═══════════════════════════
+
+  @Get('personal')
+  personal () {
+    return this.node.personal()
+  }
+
+  /** Condivide un ricordo personale con il team (filtro e classificazione come un salvataggio). */
+  @Post('personal/:id/share')
+  @HttpCode(200)
+  sharePersonal (@Param('id') id: string) {
+    return this.node.sharePersonal(id)
+  }
+
+  @Delete('personal/:id')
+  async deletePersonal (@Param('id') id: string) {
+    await this.node.deletePersonal(id)
+    return { ok: true }
+  }
+
+  /** Un elemento dell'inbox resta come ricordo personale invece di andare al team. */
+  @Post('inbox/:id/keep')
+  @HttpCode(200)
+  keepPersonal (@Param('id') id: string) {
+    return this.node.keepPersonal(id)
   }
 
   /** Costellazione del sapere per la schermata principale della UI. */

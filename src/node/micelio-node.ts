@@ -35,7 +35,7 @@ import { hybridRank, nearest } from '../rank/hybrid'
 import { currentEpoch, Dreamer, type DreamReport, dreamOrder } from '../dream/dreamer'
 import type { MemoryRecord } from '../core/model'
 import os from 'node:os'
-import { type ExplicitOutcome, IngestPipeline, InboxNotFoundError } from '../ingest/pipeline'
+import { type ExplicitOutcome, filterMemory, IngestPipeline, InboxNotFoundError } from '../ingest/pipeline'
 import { ClaudeCliAdapter } from '../llm/claude-cli'
 import { FakeAdapter } from '../llm/fake'
 import { LlmRunner } from '../llm/runner'
@@ -50,7 +50,7 @@ import { claudeProjectsDir, SessionScanner } from '../ingest/session-scanner'
 import { FileShare } from '../net/file-share'
 import { MemoryIndex } from '../store/memory-index'
 import { type Decision, type DocumentRecord, type InboxItem, PrivateStore, type SecurityLogEntry } from '../store/private-store'
-import { BOOTSTRAP_RE, canonicalPath, type Config, dhtBootstrap, isInsideWatched, loadConfig, loadState, networkMode, parseBootstrap, saveState, updateConfig } from './config'
+import { BOOTSTRAP_RE, canonicalPath, type Config, dhtBootstrap, isInsideWatched, loadConfig, loadState, networkMode, type NetworkMode, parseBootstrap, saveState, updateConfig } from './config'
 import { checkNetwork, type NetworkCheck } from '../net/diagnose'
 import { distillQuality, type DistillQuality, MAX_MEMORIES_RANGE, maxMemoriesOf } from '../ingest/quality'
 import { reviewRoots, type ReviewNote } from '../roots/review'
@@ -117,8 +117,8 @@ export interface NodeSettings {
 
 /** Impostazioni di rete come le mostra la UI. */
 export interface NetworkSettings {
-  /** DHT scelta in config.json. */
-  mode: 'public' | 'private'
+  /** DHT scelta nelle impostazioni del team ("local" = nessuna rete, B4). */
+  mode: NetworkMode
   /** Nodi di avvio della DHT privata salvati ("host:porta"), anche se ora si usa la pubblica. */
   bootstrap: string[]
   /** Nodi di avvio IN USO adesso ([] = DHT pubblica). */
@@ -277,6 +277,8 @@ export class MicelioNode extends EventEmitter {
   /** Radici del team (Fase 8), dalla vista: id del ricordo → record. */
   private rootsById = new Map<string, RootRecord>()
   private nodeName: string | null = null
+  /** Id dei ricordi PERSONALI presenti nell'indice (B4): restano su questo PC. */
+  private personalIds = new Set<string>()
   /** Nome del team letto all'ultima materializzazione (vedi teamName). */
   private teamNameCache: string | null = null
   private readonly index: MemoryIndex
@@ -356,7 +358,7 @@ export class MicelioNode extends EventEmitter {
       me: () => this.team?.localKey ?? '',
       llm: this.llm,
       model: () => this.config.llm.distillModel,
-      memories: () => this.enrich(this.index.all()),
+      memories: () => this.enrich(this.teamMemories()),
       vectors: () => ({ map: this.embedder ? this.index.vectors(this.embedder.model) : new Map(), duplicate: duplicateThreshold(this.embedder?.model ?? '') }),
       append: (p) => this.requireTeam().append(p),
       sync: () => this.sync(),
@@ -488,7 +490,10 @@ export class MicelioNode extends EventEmitter {
 
   /** Crea un invito (qualunque membro). Vedi TeamNode.createInvite per `replicated`. */
   async invite (): Promise<{ code: string, expires: number, replicated: boolean }> {
-    return this.requireTeam().createInvite()
+    const team = this.requireTeam()
+    // Solo locale: nessuno potrebbe raggiungere questo nodo per usare l'invito
+    if (this.localOnly) throw new UserError('Il team è in modalità solo locale: per invitare qualcuno scegli prima una rete (Impostazioni → Rete)', 'The team is in local-only mode: to invite someone, choose a network first (Settings → Network)')
+    return team.createInvite()
   }
 
   /** Inviti non ancora usati. */
@@ -554,7 +559,7 @@ export class MicelioNode extends EventEmitter {
   async distillQuality (now = Date.now()): Promise<DistillQuality> {
     const team = this.requireTeam()
     const signals = this.index.signals()
-    const active = this.index.all().map((m) => ({ ts: m.ts, status: 'active' as const, source: m.source, votes: signals.get(m.id)?.votes ?? 0, uses: signals.get(m.id)?.uses ?? 0 }))
+    const active = this.teamMemories().map((m) => ({ ts: m.ts, status: 'active' as const, source: m.source, votes: signals.get(m.id)?.votes ?? 0, uses: signals.get(m.id)?.uses ?? 0 }))
     const inactive = this.inactive.map((m) => ({ ts: m.ts, status: (m.status ?? 'archived') as 'superseded' | 'archived' | 'redacted', source: m.source, votes: 0, uses: 0 }))
     return distillQuality([...active, ...inactive], maxMemoriesOf(await team.config('distill.maxMemories')), now)
   }
@@ -579,7 +584,7 @@ export class MicelioNode extends EventEmitter {
 
   /** Costellazione del sapere: ricordi come nodi, correlazioni come collegamenti (src/graph). */
   graph (): Graph {
-    const g = buildGraph(this.index.all(), [...this.semanticLinks(), ...this.explicitLinks()])
+    const g = buildGraph(this.teamMemories(), [...this.semanticLinks(), ...this.explicitLinks()])
     const signals = this.index.signals()
     return {
       ...g,
@@ -620,7 +625,9 @@ export class MicelioNode extends EventEmitter {
     const ranked = hybridRank(keyword, semantic, act).slice(0, limit)
     const hits = this.enrich(this.index.getMany(ranked.map((r) => r.id)), signals)
     ranked.forEach((r, i) => { if (hits[i]) hits[i].score = r.score })
-    if (track && hits.length) this.privateStore.countUsage(hits.map((h) => h.id))
+    // L'uso dei ricordi personali non si conta: verrebbe pubblicato al team (usage.report)
+    const used = hits.filter((h) => !this.personalIds.has(h.id)).map((h) => h.id)
+    if (track && used.length) this.privateStore.countUsage(used)
     return hits
   }
 
@@ -852,7 +859,7 @@ export class MicelioNode extends EventEmitter {
     const model = this.embedder?.model
     const report = await reviewRoots({
       roots,
-      memories: this.enrich(this.index.all()),
+      memories: this.enrich(this.teamMemories()),
       localKey: team.localKey,
       // I repository dei progetti si cercano nelle cartelle che l'utente ha abilitato su questo PC
       folders: [...this.config.watch.sessions, ...this.config.watch.documents.map((d) => d.path)],
@@ -907,13 +914,23 @@ export class MicelioNode extends EventEmitter {
     return hits.map((h) => {
       const s = signals.get(h.id)
       const r = this.rootsById.get(h.id)
-      return { ...h, activation: this.activationOf(h.id, signals), votes: s?.votes ?? 0, uses: s?.uses ?? 0, pinned: !!s?.pinned, ...(r ? { root: { category: r.category, status: r.status } } : {}) }
+      return {
+        ...h,
+        activation: this.activationOf(h.id, signals),
+        votes: s?.votes ?? 0,
+        uses: s?.uses ?? 0,
+        pinned: !!s?.pinned,
+        ...(r ? { root: { category: r.category, status: r.status } } : {}),
+        ...(this.personalIds.has(h.id) ? { personal: true } : {})
+      }
     })
   }
 
+  /** Un ricordo DEL TEAM (le operazioni di team non valgono per i ricordi personali). */
   private requireMemory (id: string): RecallHit {
     const rec = this.index.get(id)
     if (!rec) throw new UserError(`Nessun ricordo con id ${id}`, `No memory with id ${id}`)
+    if (this.personalIds.has(rec.id)) throw new UserError('È un ricordo personale: condividilo prima con il team', 'This is a personal memory: share it with the team first')
     return rec
   }
 
@@ -966,7 +983,73 @@ export class MicelioNode extends EventEmitter {
 
   /** Ultimi ricordi arrivati nel team, dal più recente. */
   recent (limit = 20): RecallHit[] {
-    return this.index.recent(limit)
+    return this.enrich(this.index.recent(limit))
+  }
+
+  // ═══════════════════════════ Ricordi personali (B4) ═══════════════════════════
+
+  /** Ricordi del TEAM nell'indice (senza i personali): per costellazione, dreaming, metriche, export. */
+  private teamMemories (): RecallHit[] {
+    return this.personalIds.size ? this.index.all().filter((m) => !this.personalIds.has(m.id)) : this.index.all()
+  }
+
+  /** I ricordi personali come record dell'indice (autore = questo nodo). */
+  private personalRecords (me: string): MemoryRecord[] {
+    return this.privateStore.personal().map(({ id, memory, created }) => ({
+      id, kind: memory.kind, title: memory.title, body: memory.body, tags: memory.tags, source: memory.source, author: me, ts: created, status: 'active' as const
+    }))
+  }
+
+  /**
+   * Salva un ricordo PERSONALE: resta su questo PC e compare nelle ricerche (anche degli agenti)
+   * insieme a quelli del team. Passa comunque dalla redazione dei segreti (agli agenti arriva il
+   * testo); il blocco dei contenuti personali/HR non si applica, perché non lascia il PC.
+   */
+  async rememberPersonal (input: MemoryInput): Promise<{ id: string, duplicate: boolean }> {
+    this.requireTeam()
+    const parsed = MemoryInput.safeParse(input)
+    if (!parsed.success) throw new UserError(parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '))
+    const { memory } = filterMemory(parsed.data, await this.filterRules())
+    const id = memoryId(memory)
+    const added = this.privateStore.addPersonal(id, memory)
+    await this.materialize()
+    return { id, duplicate: !added }
+  }
+
+  /** I ricordi personali, dal più recente. */
+  personal (): RecallHit[] {
+    return this.enrich(this.index.getMany([...this.personalIds])).sort((a, b) => b.ts - a.ts)
+  }
+
+  /**
+   * Condivide un ricordo personale con il team: esce dai personali e passa dalla stessa strada
+   * di un salvataggio esplicito (filtro e classificazione, D6), quindi può finire in inbox.
+   */
+  async sharePersonal (id: string): Promise<ExplicitOutcome> {
+    const p = this.privateStore.personal().find((x) => x.id === id || x.id.startsWith(id))
+    if (!p) throw new UserError(`Nessun ricordo personale con id ${id}`, `No personal memory with id ${id}`)
+    const outcome = await this.pipeline.ingestExplicit({ ...p.memory, source: { ...p.memory.source, type: 'personal' } })
+    this.privateStore.removePersonal(p.id)
+    await this.materialize()
+    return outcome
+  }
+
+  /** Cancella un ricordo personale (non lascia tracce: non è mai stato nel log). */
+  async deletePersonal (id: string): Promise<void> {
+    const p = this.privateStore.personal().find((x) => x.id === id || x.id.startsWith(id))
+    if (!p) throw new UserError(`Nessun ricordo personale con id ${id}`, `No personal memory with id ${id}`)
+    this.privateStore.removePersonal(p.id)
+    await this.materialize()
+  }
+
+  /** Un elemento dell'inbox non va al team ma resta come ricordo personale. */
+  async keepPersonal (inboxId: string): Promise<{ id: string, duplicate: boolean }> {
+    this.requireTeam()
+    const memory = this.pipeline.keepPrivately(inboxId)
+    const id = memoryId(memory)
+    const added = this.privateStore.addPersonal(id, memory)
+    await this.materialize()
+    return { id, duplicate: !added }
   }
 
   /** Un ricordo per id (anche abbreviato). */
@@ -982,7 +1065,8 @@ export class MicelioNode extends EventEmitter {
     const team = this.requireTeam()
     const id = memoryId(memory)
     // Controllo locale dei duplicati: evita di scrivere nel log un evento che apply ignorerebbe.
-    const duplicate = this.index.get(id)?.id === id
+    // Un ricordo personale con lo stesso contenuto non conta: è proprio quello che si sta condividendo
+    const duplicate = this.index.get(id)?.id === id && !this.personalIds.has(id)
     if (!duplicate) {
       await team.append({ type: 'memory.add', memory })
       await this.sync()
@@ -1122,7 +1206,7 @@ export class MicelioNode extends EventEmitter {
   async securityScan (): Promise<SecurityFinding[]> {
     const rules = await this.filterRules()
     const out: SecurityFinding[] = []
-    for (const m of this.index.all()) {
+    for (const m of this.teamMemories()) {
       const r = applyFilter(`${m.title}\n${m.body}\n${m.tags.join(' ')}`, rules)
       if (Object.keys(r.redactions).length) out.push({ id: m.id, title: m.title, author: m.author, authorName: m.authorName, kinds: r.redactions, root: this.rootsById.has(m.id) })
     }
@@ -1184,16 +1268,17 @@ export class MicelioNode extends EventEmitter {
   }
 
   /**
-   * Sceglie la DHT (pubblica o privata) e la applica SUBITO: salva config.json e, se il nodo è
+   * Sceglie la rete (DHT pubblica, privata, o "local" = nessuna rete) e la applica SUBITO: salva le impostazioni del team e, se il nodo è
    * in un team, chiude e riapre la rete con i nuovi nodi di avvio (i dati locali restano; dopo
    * pochi secondi il nodo ritrova i colleghi che usano la stessa DHT).
    * ATTENZIONE: tutti i membri devono usare la stessa DHT, altrimenti non si trovano.
    * @param bootstrap nodi "host:porta" della DHT privata; con "public" si possono omettere
    *                  (restano quelli salvati, per poter tornare alla privata)
    */
-  async setNetwork (mode: 'public' | 'private', bootstrap?: string[]): Promise<NetworkSettings> {
-    if (process.env.MICELIO_DHT_BOOTSTRAP) throw new UserError('La rete è fissata dalla variabile MICELIO_DHT_BOOTSTRAP: toglila per sceglierla da qui', 'The network is set by the MICELIO_DHT_BOOTSTRAP variable: remove it to choose from here')
-    if (mode !== 'public' && mode !== 'private') throw new UserError('Rete: "public" oppure "private"', 'Network: "public" or "private"')
+  async setNetwork (mode: NetworkMode, bootstrap?: string[]): Promise<NetworkSettings> {
+    // La modalità solo locale si può scegliere anche con la rete fissata dalla variabile (demo, test)
+    if (process.env.MICELIO_DHT_BOOTSTRAP && mode !== 'local' && !this.localOnly) throw new UserError('La rete è fissata dalla variabile MICELIO_DHT_BOOTSTRAP: toglila per sceglierla da qui', 'The network is set by the MICELIO_DHT_BOOTSTRAP variable: remove it to choose from here')
+    if (mode !== 'public' && mode !== 'private' && mode !== 'local') throw new UserError('Rete: "public", "private" oppure "local"', 'Network: "public", "private" or "local"')
     const list = bootstrap?.map((b) => b.trim()).filter(Boolean)
     if (list?.some((b) => !BOOTSTRAP_RE.test(b))) throw new UserError('Formato dei nodi di avvio: host:porta (es. 203.0.113.10:49737)', 'Bootstrap node format: host:port (e.g. 203.0.113.10:49737)')
     if (mode === 'private' && !(list ?? this.config.network.bootstrap).length) throw new UserError('Per la DHT privata serve almeno un nodo di avvio (il server del team)', 'The private DHT needs at least one bootstrap node (the team server)')
@@ -1211,7 +1296,8 @@ export class MicelioNode extends EventEmitter {
    * Diagnosi di una DHT PRIMA di sceglierla (pulsante "Verifica" della UI): non cambia nulla.
    * Senza argomenti verifica la DHT in uso.
    */
-  async checkNetwork (mode?: 'public' | 'private', bootstrap?: string[]): Promise<NetworkCheck> {
+  async checkNetwork (mode?: NetworkMode, bootstrap?: string[]): Promise<NetworkCheck> {
+    if (mode === 'local' || (mode === undefined && this.localOnly)) throw new UserError('In modalità solo locale non c\'è nessuna rete da verificare', 'In local-only mode there is no network to check')
     if (mode === undefined) return checkNetwork(this.opts.bootstrap)
     if (mode === 'public') return checkNetwork(undefined)
     const list = (bootstrap ?? this.config.network.bootstrap).map((b) => b.trim()).filter(Boolean)
@@ -1259,7 +1345,7 @@ export class MicelioNode extends EventEmitter {
     const feeds = this.team ? await this.team.feedSizes(members.map((m) => m.key)) : {}
     // Ricordi attivi per autore, con la loro dimensione in testo
     const byAuthor = new Map<string, { n: number, bytes: number }>()
-    for (const m of this.index.all()) {
+    for (const m of this.teamMemories()) {
       const a = byAuthor.get(m.author) ?? { n: 0, bytes: 0 }
       a.n++
       a.bytes += Buffer.byteLength(m.title + m.body + m.tags.join(' '))
@@ -1465,7 +1551,7 @@ export class MicelioNode extends EventEmitter {
       role: me?.role ?? null,
       peers: team.peers,
       members: members.length,
-      memories: this.index.count()
+      memories: this.index.count() - this.personalIds.size
     }
   }
 
@@ -1478,7 +1564,21 @@ export class MicelioNode extends EventEmitter {
   // ═════════════════════════════════ Interni ═══════════════════════════════════
 
   private newTeamNode (): TeamNode {
-    return new TeamNode({ storeDir: this.paths.store, bootstrap: this.opts.bootstrap, log: this.log })
+    return new TeamNode({ storeDir: this.paths.store, bootstrap: this.opts.bootstrap, log: this.log, offline: this.localOnly })
+  }
+
+  /** true se il team è in modalità solo locale (B4): nessuna rete. */
+  get localOnly (): boolean {
+    return networkMode(this.config.network) === 'local'
+  }
+
+  /**
+   * Sceglie la rete PRIMA di creare il team (es. «Solo per me» nel primo avvio). Dopo la
+   * creazione si usa setNetwork, che riconnette il nodo.
+   */
+  prepareNetwork (mode: NetworkMode): void {
+    if (this.team) throw new UserError('Il team esiste già: cambia la rete dalle Impostazioni', 'The team already exists: change the network from Settings')
+    this.config = updateConfig(this.paths, (c) => { c.network.mode = mode })
   }
 
   /** Collega il TeamNode al nodo: ogni aggiornamento della vista programma una reindicizzazione. */
@@ -1523,11 +1623,16 @@ export class MicelioNode extends EventEmitter {
       const memories = all.filter((m) => (m.status ?? 'active') === 'active')
       this.inactive = all.filter((m) => (m.status ?? 'active') !== 'active')
       this.dreamLinks = links
-      this.index.rebuild(memories, members, { votes, pins, usage })
+      // Nell'indice anche i ricordi personali (B4), così ricerca e agenti li trovano insieme a quelli
+      // del team; restano fuori da export, costellazione, dreaming e metriche (vedi teamMemories).
+      const teamIds = new Set(memories.map((m) => m.id))
+      const personal = this.personalRecords(team.localKey ?? '').filter((p) => !teamIds.has(p.id))
+      this.personalIds = new Set(personal.map((p) => p.id))
+      this.index.rebuild([...memories, ...personal], members, { votes, pins, usage })
       writeExport(this.paths.export, memories, members)
       // Collegamenti per ricordo (servono all'attivazione)
       const degrees = new Map<string, number>()
-      for (const l of buildGraph(this.index.all(), [...this.semanticLinks(), ...this.explicitLinks()]).links) for (const k of [l.source, l.target]) degrees.set(k, (degrees.get(k) ?? 0) + 1)
+      for (const l of buildGraph(this.teamMemories(), [...this.semanticLinks(), ...this.explicitLinks()]).links) for (const k of [l.source, l.target]) degrees.set(k, (degrees.get(k) ?? 0) + 1)
       this.degrees = degrees
       this.scheduleEmbedding()
       this.changed('memories', 'members', 'status')

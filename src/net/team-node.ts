@@ -48,6 +48,12 @@ export interface TeamNodeOptions {
   bootstrap?: { host: string, port: number }[]
   /** Funzione di log; di default silenziosa. */
   log?: (msg: string) => void
+  /**
+   * Modalità SOLO LOCALE (B4): nessuna rete. Il nodo non entra nella DHT, non cerca peer e non
+   * risponde a richieste d'ingresso: utile a chi usa Micelio da solo. Tutto il resto (log,
+   * vista, permessi) funziona come sempre; per invitare qualcuno si sceglie una rete.
+   */
+  offline?: boolean
 }
 
 const hex = (b: Uint8Array) => b4a.toString(b, 'hex') as string
@@ -127,6 +133,7 @@ export class TeamNode extends EventEmitter {
    * @param timeoutMs  quanto aspettare un membro online prima di arrendersi
    */
   async join (inviteCode: string, nodeName: string, timeoutMs = 120_000): Promise<TeamSecrets> {
+    if (this.opts.offline) throw new Error('Per entrare in un team serve la rete: la modalità solo locale non si collega a nessuno')
     await this.startNetwork()
     await this.store.ready()
     // Il "local core" è il feed su cui scriveremo. Ne apriamo solo la chiave e lo richiudiamo:
@@ -175,9 +182,14 @@ export class TeamNode extends EventEmitter {
    * Separato da `openBase` perché durante `join` la rete serve PRIMA che la base esista.
    */
   private async startNetwork (): Promise<void> {
-    if (this.swarm) return
+    if (this.swarm || this.wakeup) return
     await this.store.ready()
     this.wakeup = new Wakeup()
+    // Solo locale: niente swarm né pairing (vedi TeamNodeOptions.offline)
+    if (this.opts.offline) {
+      this.log('modalità solo locale: nessuna connessione di rete')
+      return
+    }
     this.swarm = new Hyperswarm({
       // Chiave stabile del nodo sulla DHT, conservata nel Corestore.
       keyPair: await this.store.createKeyPair('hyperswarm'),
@@ -220,6 +232,8 @@ export class TeamNode extends EventEmitter {
     this.base.on('update', () => this.emit('update'))
     this.base.on('error', (err: Error) => this.log(`errore autobase: ${err.message}`))
     await this.base.ready()
+    // Solo locale: nessun annuncio sulla DHT e nessuna risposta alle richieste d'ingresso
+    if (!this.swarm) return
 
     // Il topic DHT è la discoveryKey della base: un hash della chiave, che non la rivela.
     this.discovery = this.swarm.join(this.base.discoveryKey, { server: true, client: true })

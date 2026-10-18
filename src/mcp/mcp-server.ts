@@ -25,6 +25,9 @@ const INSTRUCTIONS = `Micelio è la memoria condivisa del team di sviluppo: ogni
 - Quando salvi, scrivi SOLO ciò che l'utente ha detto o che è stato dimostrato nella sessione: non aggiungere
   dettagli, cause o raccomandazioni tue. Dopo il salvataggio mostra all'utente il testo salvato.
 - NON salvare mai dati personali, valutazioni di persone, questioni HR, credenziali, segreti o dati di clienti.
+- Se l'utente chiede di ricordare qualcosa "per sé" (non per il team), usa "remember" con personal: true: resta solo
+  sul suo PC. I ricordi PERSONALI compaiono nelle ricerche marcati come tali.
+- Un ricordo marcato "CODICE CAMBIATO" cita file modificati dopo la sua scrittura: verifica sul codice attuale prima di fidarti.
 - Alcuni ricordi finiscono nell'inbox dell'utente per una verifica: puoi proporgli di rivederli con "inbox_review".
 - Se un ricordo viene da un documento e serve approfondire, "fetch_source" scarica l'originale dal collega che lo possiede.
 - Le RADICI sono il sapere fondante del team (architettura, mappe di rete, interfacce, modello di dominio,
@@ -46,7 +49,19 @@ function formatHit (h: RecallHit, full = false): string {
   const doc = h.source?.type === 'document' ? `\nFonte: documento «${h.source.name ?? '?'}» (originale disponibile con fetch_source)` : ''
   // Ricordi distillati da una sessione di codice: dove guardare per approfondire.
   const code = formatCodeRefs(h.source?.code, full).map((l) => '\n' + l).join('')
-  return `### ${h.title}\n[${h.kind}] id:${h.id.slice(0, 12)} · ${who} · ${new Date(h.ts).toISOString().slice(0, 10)}${tags}${rootLine(h)}${doc}${code}\n\n${h.body}`
+  return `### ${h.title}\n[${h.kind}] id:${h.id.slice(0, 12)} · ${who} · ${new Date(h.ts).toISOString().slice(0, 10)}${tags}${rootLine(h)}${personalLine(h)}${staleLine(h)}${doc}${code}\n\n${h.body}`
+}
+
+/** Ricordo personale (B4): solo sul PC dell'utente. */
+function personalLine (h: RecallHit): string {
+  return h.personal ? '\nPERSONALE · solo sul PC dell\'utente, il team non lo vede' : ''
+}
+
+/** Il codice citato è cambiato dopo il ricordo (B4): l'agente deve verificare. */
+function staleLine (h: RecallHit): string {
+  if (!h.stale || (!h.stale.commits && !h.stale.missing)) return ''
+  const parts = [h.stale.commits ? `${h.stale.commits} commit sui file citati` : '', h.stale.missing ? `${h.stale.missing} file citati non più presenti` : ''].filter(Boolean)
+  return `\n⚠ CODICE CAMBIATO dopo questo ricordo (${parts.join(', ')}): verifica sul codice attuale`
 }
 
 /** Lunghezza massima della risposta di `architecture` (le Radici sono testi lunghi). */
@@ -174,10 +189,15 @@ export function createMcpServer (node: MicelioNode): McpServer {
       title: z.string().min(3).max(200).describe('Una riga autoesplicativa'),
       body: z.string().min(1).max(20_000).describe('Contenuto in Markdown, conciso: il cosa e soprattutto il perché'),
       kind: z.enum(MEMORY_KINDS).optional().describe('fact | howto | decision | gotcha | snippet | reference'),
-      tags: z.array(z.string()).max(20).optional().describe('Tecnologie, progetti, domini (es. angular, ci)')
+      tags: z.array(z.string()).max(20).optional().describe('Tecnologie, progetti, domini (es. angular, ci)'),
+      personal: z.boolean().optional().describe('true = ricordo PERSONALE dell\'utente: resta solo sul suo PC, il team non lo vede. Solo se l\'utente lo chiede')
     }
-  }, async ({ title, body, kind, tags }) => {
+  }, async ({ title, body, kind, tags, personal }) => {
     try {
+      if (personal) {
+        const p = await node.rememberPersonal({ title, body, kind, tags, source: { type: 'mcp' } })
+        return text(`${p.duplicate ? 'Già presente' : 'Salvato'} come ricordo PERSONALE (id:${p.id.slice(0, 12)}): resta solo su questo PC.\n\n### ${title}\n${body}`)
+      }
       const r = await node.remember({ title, body, kind, tags, source: { type: 'mcp' } })
       switch (r.outcome) {
         case 'team':
