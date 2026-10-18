@@ -55,6 +55,8 @@ import { checkNetwork, type NetworkCheck } from '../net/diagnose'
 import { distillQuality, type DistillQuality, MAX_MEMORIES_RANGE, maxMemoriesOf } from '../ingest/quality'
 import { localRepos, reviewRoots, type ReviewNote } from '../roots/review'
 import { computeStaleness, stalenessFactor } from '../rank/code-staleness'
+import { SemanticNeighbors } from '../rank/semantic-neighbors'
+import { detectCommunities, galaxyLinks, OTHER_GALAXY } from '../graph/communities'
 import { promptContext, sessionContext } from '../context/agent-context'
 import { computeDigest, type Digest } from '../insight/digest'
 import { gapId, gapKey } from '../insight/gaps'
@@ -308,6 +310,27 @@ const CONTEXT_MEMORIES = 6
 const CONTEXT_PER_PROMPT = 4
 const CONTEXT_MIN_PROMPT = 15
 
+/** Ritardo del ricalcolo del grado dei nodi dopo un aggiornamento (raggruppa le scritture vicine). */
+const DEGREES_DELAY_MS = 2000
+
+/** Oltre questa durata l'aggiornamento della vista finisce nel log con i tempi per fase. */
+const SLOW_MATERIALIZE_MS = 300
+/** Sotto questi ricordi la costellazione vecchia si ricalcola subito alla richiesta (costa poche decine di ms). */
+const SYNC_GRAPH_MAX = 1000
+
+/**
+ * Cronometro per fasi: `lap('nome')` chiude la fase corrente; `report(soglia)` restituisce
+ * "vista 120 ms · indice 80 ms · …" se il totale supera la soglia, altrimenti null.
+ */
+function phaseTimer (): ((name: string) => void) & { report: (thresholdMs: number) => string | null } {
+  const t0 = Date.now()
+  let last = t0
+  const phases: string[] = []
+  const lap = ((name: string) => { const now = Date.now(); phases.push(`${name} ${now - last} ms`); last = now }) as ((name: string) => void) & { report: (t: number) => string | null }
+  lap.report = (threshold) => (Date.now() - t0 >= threshold ? `${phases.join(' · ')} (totale ${Date.now() - t0} ms)` : null)
+  return lap
+}
+
 /** Progetto di una cartella: il repository git che la contiene, altrimenti il nome della cartella. */
 function projectOf (dir: string): string {
   return repoInfo(dir)?.project ?? path.basename(dir)
@@ -333,6 +356,10 @@ export class MicelioNode extends EventEmitter {
   /** Radici del team (Fase 8), dalla vista: id del ricordo → record. */
   private rootsById = new Map<string, RootRecord>()
   private nodeName: string | null = null
+  /** Vicini per significato di ogni ricordo, aggiornati in modo incrementale (src/rank/semantic-neighbors.ts). */
+  private semantic = new SemanticNeighbors(2)
+  /** Ricordi con un vettore nuovo arrivati durante un ricalcolo completo dei vicini. */
+  private semanticPending: string[] = []
   /** Ricordi il cui codice citato è cambiato (B4, src/rank/code-staleness.ts), da private.db. */
   private staleness = new Map<string, { commits: number, missing: number, checked: number }>()
   private staleTimer: NodeJS.Timeout | null = null
@@ -366,6 +393,14 @@ export class MicelioNode extends EventEmitter {
   private config: Config
   /** Timer di accorpamento degli aggiornamenti della vista (vedi scheduleMaterialize). */
   private timer: NodeJS.Timeout | null = null
+  /** Versione della vista all'ultimo aggiornamento dell'indice: se non cambia non si ricalcola nulla. */
+  private materializedVersion = -1
+  /** Timer del ricalcolo in sottofondo di costellazione e grado dei nodi (vedi scheduleGraph). */
+  private degreesTimer: NodeJS.Timeout | null = null
+  /** Costellazione con le galassie, pronta per graph() (null = da ricalcolare). */
+  private graphCache: Graph | null = null
+  /** true se ci sono aggiornamenti della vista non ancora nella costellazione in cache. */
+  private graphStale = false
   /** Catena delle materializzazioni: mai due ricostruzioni dell'indice in parallelo. */
   private materializing: Promise<void> = Promise.resolve()
   private readonly log: (msg: string) => void
@@ -490,6 +525,7 @@ export class MicelioNode extends EventEmitter {
     await this.documents.stop()
     await this.pipeline.stop()
     if (this.timer) clearTimeout(this.timer)
+    if (this.degreesTimer) clearTimeout(this.degreesTimer)
     await this.materializing.catch(() => {})
     await this.team?.close()
     this.team = null
@@ -657,15 +693,48 @@ export class MicelioNode extends EventEmitter {
   }
 
   /** Costellazione del sapere: ricordi come nodi, correlazioni come collegamenti (src/graph). */
+  /**
+   * Costellazione del team con le galassie. Con migliaia di ricordi calcolarla costa (secondi),
+   * quindi si tiene pronta: la ricalcola in sottofondo `scheduleGraph` dopo ogni aggiornamento.
+   * Se viene chiesta prima, si calcola qui.
+   */
   graph (): Graph {
-    const g = buildGraph(this.teamMemories(), [...this.semanticLinks(), ...this.explicitLinks()])
+    // Vecchia (scritture dopo l'ultimo calcolo): nei team piccoli costa poco e si ricalcola subito;
+    // nei grandi si restituisce quella di pochi secondi fa, mentre la nuova arriva in sottofondo
+    const stale = this.graphStale && (this.graphCache?.nodes.length ?? 0) < SYNC_GRAPH_MAX
+    if (!this.graphCache || stale) this.computeGraph()
+    return this.graphCache!
+  }
+
+  /** Calcola costellazione, galassie e grado dei nodi; li tiene pronti per graph() e l'attivazione. */
+  private computeGraph (): void {
+    const lap = phaseTimer()
+    const memories = this.teamMemories()
+    const extra = [...this.semanticLinks(), ...this.explicitLinks()]
+    lap('vicini')
+    const g = buildGraph(memories, extra)
+    lap('costellazione')
+    // Grado dei nodi PRIMA dell'attivazione, che lo usa
+    const degrees = new Map<string, number>()
+    for (const l of g.links) for (const k of [l.source, l.target]) degrees.set(k, (degrees.get(k) ?? 0) + 1)
+    this.degrees = degrees
     const signals = this.index.signals()
-    return {
-      ...g,
-      nodes: g.nodes.map((n) => {
-        const r = this.rootsById.get(n.id)
-        return { ...n, activation: this.activationOf(n.id, signals), ...(r ? { root: { category: r.category, status: r.status } } : {}) }
-      })
+    const nodes = g.nodes.map((n) => {
+      const r = this.rootsById.get(n.id)
+      return { ...n, activation: this.activationOf(n.id, signals, { kind: n.kind as MemoryRecord['kind'], ts: n.ts }), ...(r ? { root: { category: r.category, status: r.status } } : {}) }
+    })
+    // Galassie per la vista d'insieme dei team grandi (src/graph/communities.ts): lineari nei collegamenti
+    lap('attivazione')
+    const c = detectCommunities(nodes, g.links)
+    lap('galassie')
+    const slow = lap.report(SLOW_MATERIALIZE_MS)
+    if (slow) this.log(`costellazione (${nodes.length} ricordi): ${slow}`)
+    this.graphStale = false
+    this.graphCache = {
+      nodes: nodes.map((n) => ({ ...n, galaxy: c.of.get(n.id) ?? OTHER_GALAXY })),
+      links: g.links,
+      galaxies: c.galaxies,
+      galaxyLinks: galaxyLinks(g.links, c.of)
     }
   }
 
@@ -982,9 +1051,13 @@ export class MicelioNode extends EventEmitter {
    * cambiato dopo il ricordo (B4). Radici e ricordi fissati non si riducono: per le Radici c'è la
    * revisione, i fissati sono una scelta esplicita del team.
    */
-  private activationOf (id: string, signals = this.index.signals()): number {
+  /**
+   * @param known tipo e data del ricordo, se già noti: con migliaia di ricordi (costellazione)
+   *              evita una lettura dal database per ognuno
+   */
+  private activationOf (id: string, signals = this.index.signals(), known?: { kind: MemoryRecord['kind'], ts: number }): number {
     const s = signals.get(id)
-    const rec = this.index.get(id)
+    const rec = known ?? this.index.get(id)
     if (!rec) return 0
     const root = this.rootsById.has(id)
     const a = activation({ kind: rec.kind, createdAt: rec.ts, lastUsed: s?.lastUsed ?? undefined, uses: s?.uses ?? 0, votes: s?.votes ?? 0, degree: this.degrees.get(id) ?? 0, pinned: !!s?.pinned, root })
@@ -1004,7 +1077,8 @@ export class MicelioNode extends EventEmitter {
       for (const [id, st] of found) this.privateStore.setStaleness(id, st.commits, st.missing)
       this.staleness = this.privateStore.staleness()
       const stale = [...found.values()].filter((s) => s.commits || s.missing).length
-      if (found.size) this.changed('memories')
+      // L'attivazione è cambiata: anche la costellazione (dimensione delle stelle) va ricalcolata
+      if (found.size) { this.graphCache = null; this.scheduleGraph() }
       return { checked: found.size, stale }
     } catch (err) {
       this.log(`controllo del codice citato non riuscito: ${(err as Error).message}`)
@@ -1024,7 +1098,7 @@ export class MicelioNode extends EventEmitter {
       const r = this.rootsById.get(h.id)
       return {
         ...h,
-        activation: this.activationOf(h.id, signals),
+        activation: this.activationOf(h.id, signals, h),
         votes: s?.votes ?? 0,
         uses: s?.uses ?? 0,
         pinned: !!s?.pinned,
@@ -1058,11 +1132,19 @@ export class MicelioNode extends EventEmitter {
         if (batch.length === 0) break
         const vecs = await embedder.embed(batch.map((b) => b.text), 'passage')
         this.index.setVectors(embedder.model, batch.map((b, i) => ({ id: b.id, vec: vecs[i] })))
+        // Vicini per significato: solo i ricordi nuovi contro gli altri, non tutte le coppie; salvati su disco
+        // Durante un ricalcolo completo in sottofondo si mettono da parte: si aggiungono alla fine
+        if (this.semantic.rebuilding) this.semanticPending.push(...batch.map((b) => b.id))
+        else if (this.semantic.model === embedder.model) {
+          this.semantic.add(batch.map((b) => b.id), this.index.vectors(embedder.model), semanticThreshold(embedder.model))
+          this.index.saveNeighbors(embedder.model, this.semantic.takeDirty())
+        }
         done += batch.length
       }
       if (done > 0) {
         this.log(`embedding calcolati per ${done} ricordi`)
-        this.changed('memories')
+        // Nuovi collegamenti per significato: la costellazione va ricalcolata
+        this.scheduleGraph()
       }
     }).catch((err) => this.log(`embedding non calcolati: ${err.message}`))
   }
@@ -1070,19 +1152,33 @@ export class MicelioNode extends EventEmitter {
   /**
    * Collegamenti per affinità di significato, per la costellazione: per ogni ricordo i 2 più
    * simili sopra la soglia del modello. Peso: quanto la similarità supera la soglia.
+   * Calcolo completo solo la prima volta, se cambia il modello o se troppe liste citano ricordi
+   * non più attivi; per il resto le liste si aggiornano a ogni nuovo vettore (scheduleEmbedding).
    */
   private semanticLinks (): GraphLink[] {
     if (!this.embedder) return []
-    const vectors = this.index.vectors(this.embedder.model)
-    const min = semanticThreshold(this.embedder.model)
-    const links: GraphLink[] = []
-    for (const [id, v] of vectors) {
-      for (const n of nearest(v, vectors, 3, min)) {
-        if (n.id === id || id > n.id) continue // una sola volta per coppia
-        links.push({ source: id, target: n.id, weight: Math.min(1, (n.score - min) / (1 - min) * 2), kind: 'semantic' })
-      }
+    const model = this.embedder.model
+    const min = semanticThreshold(model)
+    const present = new Set(this.index.all().map((m) => m.id))
+    // All'avvio: le liste salvate su disco, se coprono (quasi) tutti i ricordi
+    if (this.semantic.model !== model && !this.semantic.rebuilding) {
+      const saved = this.index.neighbors(model)
+      if (saved.size && saved.size >= present.size * 0.9) this.semantic.load(model, saved)
     }
-    return links
+    // Altrimenti (primo avvio, modello cambiato, troppe liste vecchie): ricalcolo completo A BLOCCHI,
+    // in sottofondo; intanto la costellazione usa ciò che c'è, e si ricalcola alla fine
+    if ((this.semantic.model !== model || this.semantic.staleShare(present) > 0.1) && !this.semantic.rebuilding) {
+      const t0 = Date.now()
+      this.semantic.rebuildAsync(this.index.vectors(model), min, model).then(() => {
+        // Vettori arrivati durante il ricalcolo: non erano nella fotografia di partenza
+        const pending = this.semanticPending.splice(0)
+        if (pending.length) this.semantic.add(pending, this.index.vectors(model), min)
+        this.index.saveNeighbors(model, this.semantic.takeDirty(), true)
+        this.log(`vicini per significato ricalcolati per ${present.size} ricordi in ${Date.now() - t0} ms (in sottofondo)`)
+        this.scheduleGraph(0)
+      }).catch((err) => this.log(`vicini per significato non calcolati: ${err.message}`))
+    }
+    return this.semantic.links(min, present)
   }
 
   /** Collegamenti creati dal dreaming, fra ricordi ancora attivi (peso fisso: sono "decisi"). */
@@ -1391,7 +1487,7 @@ export class MicelioNode extends EventEmitter {
     const { memory } = filterMemory(parsed.data, await this.filterRules())
     const id = memoryId(memory)
     const added = this.privateStore.addPersonal(id, memory)
-    await this.materialize()
+    await this.materialize(true)
     return { id, duplicate: !added }
   }
 
@@ -1409,7 +1505,7 @@ export class MicelioNode extends EventEmitter {
     if (!p) throw new UserError(`Nessun ricordo personale con id ${id}`, `No personal memory with id ${id}`)
     const outcome = await this.pipeline.ingestExplicit({ ...p.memory, source: { ...p.memory.source, type: 'personal' } })
     this.privateStore.removePersonal(p.id)
-    await this.materialize()
+    await this.materialize(true)
     return outcome
   }
 
@@ -1418,7 +1514,7 @@ export class MicelioNode extends EventEmitter {
     const p = this.privateStore.personal().find((x) => x.id === id || x.id.startsWith(id))
     if (!p) throw new UserError(`Nessun ricordo personale con id ${id}`, `No personal memory with id ${id}`)
     this.privateStore.removePersonal(p.id)
-    await this.materialize()
+    await this.materialize(true)
   }
 
   /** Un elemento dell'inbox non va al team ma resta come ricordo personale. */
@@ -1427,7 +1523,7 @@ export class MicelioNode extends EventEmitter {
     const memory = this.pipeline.keepPrivately(inboxId)
     const id = memoryId(memory)
     const added = this.privateStore.addPersonal(id, memory)
-    await this.materialize()
+    await this.materialize(true)
     return { id, duplicate: !added }
   }
 
@@ -1741,7 +1837,7 @@ export class MicelioNode extends EventEmitter {
     const team = this.newTeamNode()
     await team.open(state)
     this.attach(team)
-    await this.materialize()
+    await this.materialize(true)
   }
 
   // ═══════════════════════════ Spazio occupato ═══════════════════════════
@@ -2043,11 +2139,42 @@ export class MicelioNode extends EventEmitter {
    * Ricostruisce indice ed export dalla vista. Le chiamate sono serializzate sulla catena
    * `materializing`, così due ricostruzioni non si sovrappongono mai.
    */
-  private materialize (): Promise<void> {
+  /**
+   * Costellazione, galassie e grado dei nodi (serve all'attivazione), ricalcolati in sottofondo
+   * dopo un aggiornamento, raggruppando le scritture ravvicinate: con migliaia di ricordi costano
+   * e non devono rallentare la scrittura. Un grado vecchio di qualche secondo non cambia la ricerca.
+   */
+  private scheduleGraph (delayMs = DEGREES_DELAY_MS): void {
+    if (this.degreesTimer) return
+    this.degreesTimer = setTimeout(() => {
+      this.degreesTimer = null
+      if (!this.team) return
+      // In un timer un'eccezione non gestita fermerebbe tutto il daemon: qui si registra e basta
+      try {
+        const t0 = Date.now()
+        this.computeGraph()
+        if (Date.now() - t0 > SLOW_MATERIALIZE_MS) this.log(`costellazione e galassie ricalcolate in ${Date.now() - t0} ms (${this.graphCache?.nodes.length} ricordi)`)
+        this.changed('memories')
+      } catch (err) {
+        this.log(`costellazione non calcolata: ${(err as Error).message}`)
+      }
+    }, delayMs)
+    this.degreesTimer.unref()
+  }
+
+  /** @param force ricalcola anche se la versione della vista non è cambiata (ricordi personali, riconnessione) */
+  private materialize (force = false): Promise<void> {
     this.materializing = this.materializing.catch(() => {}).then(async () => {
       const team = this.team
       if (!team) return
+      // Una scrittura produce due richieste di aggiornamento (la sync esplicita e l'evento "vista
+      // cambiata" di Autobase): la seconda non trova nulla di nuovo e si salta
+      if (!force && team.viewVersion === this.materializedVersion) return
+      this.materializedVersion = team.viewVersion
+      // Tempi per fase: finiscono nel log solo se l'aggiornamento è lento (vedi in fondo)
+      const lap = phaseTimer()
       const [all, members, votes, pins, usage, links, roots] = await Promise.all([team.memories(), team.members(), team.votes(), team.pins(), team.usage(), team.links(), team.roots()])
+      lap('vista')
       this.rootsById = roots
       this.teamNameCache = (await team.team())?.name ?? this.teamNameCache
       // Solo i ricordi ATTIVI entrano in ricerca, costellazione ed export; gli altri sono storico.
@@ -2060,11 +2187,16 @@ export class MicelioNode extends EventEmitter {
       const personal = this.personalRecords(team.localKey ?? '').filter((p) => !teamIds.has(p.id))
       this.personalIds = new Set(personal.map((p) => p.id))
       this.index.rebuild([...memories, ...personal], members, { votes, pins, usage })
+      lap('indice')
       writeExport(this.paths.export, memories, members)
-      // Collegamenti per ricordo (servono all'attivazione)
-      const degrees = new Map<string, number>()
-      for (const l of buildGraph(this.teamMemories(), [...this.semanticLinks(), ...this.explicitLinks()]).links) for (const k of [l.source, l.target]) degrees.set(k, (degrees.get(k) ?? 0) + 1)
-      this.degrees = degrees
+      lap('export')
+      // Costellazione, galassie e collegamenti per ricordo: in sottofondo, fuori dalla scrittura.
+      // Intanto graph() restituisce la versione precedente (vecchia di pochi secondi): la UI riceve
+      // "memories" quando quella nuova è pronta e la ricarica.
+      this.graphStale = true
+      this.scheduleGraph()
+      const slow = lap.report(SLOW_MATERIALIZE_MS)
+      if (slow) this.log(`aggiornamento della vista lento (${memories.length} ricordi): ${slow}`)
       this.scheduleEmbedding()
       this.changed('memories', 'members', 'status')
       // B4: i file per gli agenti seguono le Radici (si riscrivono solo se cambiano davvero)

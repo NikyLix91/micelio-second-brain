@@ -13,6 +13,7 @@
  * Il bagliore vero e proprio (bloom) lo aggiunge Nucleus.tsx con UnrealBloomPass.
  */
 import * as THREE from 'three'
+import { ROOT_STAR } from '../colors'
 
 /** Raggio della sfera del nucleo, nelle unità della scena. */
 export const SPHERE_RADIUS = 120
@@ -274,4 +275,51 @@ export function sphericalForce (radius = SPHERE_RADIUS, strength = 0.08) {
     }
   }
   return force
+}
+
+/**
+ * Etichetta di testo nello spazio 3D (sempre rivolta alla camera): il nome di una galassia.
+ * Disegnata su un canvas, una texture per etichetta (le galassie sono al massimo una quarantina).
+ * @param height altezza della scritta in unità della scena
+ */
+export function textSprite (text: string, color: string, height: number, opacity = 1): THREE.Sprite {
+  const font = 48
+  const canvas = document.createElement('canvas')
+  const ctx = canvas.getContext('2d')!
+  ctx.font = `600 ${font}px ui-monospace, Consolas, monospace`
+  canvas.width = Math.ceil(ctx.measureText(text).width) + 16
+  canvas.height = font + 16
+  // Ridimensionare il canvas azzera lo stato del contesto: il font va reimpostato
+  ctx.font = `600 ${font}px ui-monospace, Consolas, monospace`
+  ctx.fillStyle = color
+  ctx.textBaseline = 'middle'
+  ctx.fillText(text, 8, canvas.height / 2)
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, opacity, depthWrite: false }))
+  sprite.scale.set(height * canvas.width / canvas.height, height, 1)
+  return sprite
+}
+
+/**
+ * Una galassia nella vista d'insieme del Nucleo: un ammasso luminoso (più grande con più ricordi),
+ * un anello ciano se contiene Radici, e il nome con il numero di ricordi sotto.
+ * @param size diametro dell'ammasso
+ */
+export function galaxyMarker (color: string, size: number, label: string, opacity = 1, roots = false): THREE.Group {
+  const group = new THREE.Group()
+  // Due aloni sovrapposti: un nucleo pieno e una nebbia larga e tenue (l'aspetto di un ammasso)
+  // (intensità contenute: con il bloom decine di ammassi pieni si fondono in un muro di luce)
+  group.add(starSprite(color, size, opacity * 0.6))
+  group.add(starSprite(color, size * 1.7, opacity * 0.12))
+  if (roots) {
+    const ring = new THREE.Sprite(new THREE.SpriteMaterial({ map: ringTexture(), color: new THREE.Color(ROOT_STAR), transparent: true, opacity: opacity * 0.5, depthWrite: false, blending: THREE.AdditiveBlending }))
+    ring.scale.set(size * 1.5, size * 1.5, 1)
+    group.add(ring)
+  }
+  // Testo color ambra tenue, sotto la soglia del bloom: altrimenti le scritte diventano bianche e sfocate
+  const text = textSprite(label, opacity >= 0.6 ? '#b8894a' : '#5a4422', 5.5, opacity >= 0.6 ? 0.85 : 0.5)
+  text.position.set(0, -size * 0.75 - 5, 0)
+  group.add(text)
+  return group
 }

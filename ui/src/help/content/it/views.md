@@ -19,6 +19,16 @@ La home: una sfera olografica navigabile.
 
 La stessa costellazione in piano, per analisi mirate: colori per autore o per tipo, legenda cliccabile, ricerca che accende, etichette che compaiono avvicinandosi. Le Radici sono rombi. Cliccando un nodo il dettaglio si apre sopra la mappa, in alto a destra.
 
+## Le galassie {#galaxies}
+
+Con molti ricordi (oltre 250) una stella per ricordo diventa un campo indistinto. Allora il Nucleo e la Mappa 2D partono dalla **vista d'insieme**: un ammasso (o un cerchio) per **galassia**, cioè un gruppo di ricordi dello stesso argomento, con il nome e il numero di ricordi.
+- **Entrare**: clic su una galassia; «◀ Tutte le galassie» torna indietro. Dentro una galassia molto grande si disegnano al massimo 600 stelle: le Radici, quelle accese e le più vive (le altre si trovano con la ricerca).
+- **Cercare e filtrare**: con pochi risultati (fino a 250) si vedono solo quelli, da tutte le galassie; con tanti si accendono le galassie che li contengono, con il numero di risultati.
+- **Esplorazione guidata**: nella vista d'insieme vola da una galassia all'altra; dentro una galassia, fra i suoi argomenti.
+- **Ammasso con anello ciano**: la galassia contiene Radici. «senza collegamenti» raccoglie i ricordi non legati a nessun altro.
+
+**Come funziona dietro.** Il daemon raggruppa i ricordi con l'algoritmo di **Louvain** sui collegamenti della costellazione (tag in comune, significato, dreaming): ogni ricordo va nella comunità che rende i gruppi più "compatti", poi i gruppi si riuniscono e si ripete. La risoluzione si sceglie da sola: la più bassa che non produce galassie giganti (non oltre il 10% dei ricordi). Le comunità minuscole confluiscono nella vicina, e le galassie sono al massimo 40. Il **nome** sono i tag più caratteristici: frequenti nella galassia e rari nel resto del team. Il calcolo è deterministico (stessi ricordi, stesse galassie su ogni PC) e avviene in sottofondo dopo ogni aggiornamento (circa mezzo secondo con 5 000 ricordi); intanto le viste usano la versione precedente. I vicini per significato si salvano nell'indice locale (`view.db`) e all'avvio si rileggono invece di ricalcolarli.
+
 ## Prestazioni {#performance}
 
 Il Nucleo usa WebGL (three.js) ed è caricato solo quando serve. Su un PC con grafica debole, `#/?bloom=0` nell'indirizzo toglie il bagliore.

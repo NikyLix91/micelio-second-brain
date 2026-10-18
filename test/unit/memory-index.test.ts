@@ -45,3 +45,24 @@ describe('MemoryIndex', () => {
     expect(toFtsQuery('Build "Angular"!')).toBe('"build"* OR "angular"*')
   })
 })
+
+describe('MemoryIndex incrementale', () => {
+  const members = [{ key: 'k', name: 'alice', role: 'admin' as const, invitedBy: null, removed: false, joinedAt: 1 }]
+  it('aggiunge i nuovi, toglie gli usciti anche dalla ricerca testuale, aggiorna solo i segnali cambiati', () => {
+    const idx = new MemoryIndex(':memory:')
+    const a = mem('a', 'Timeout del gateway', 'keepalive 30 secondi')
+    const b = mem('b', 'Retry SFTP', 'backoff esponenziale')
+    idx.rebuild([a, b], members, { votes: new Map(), pins: new Set(), usage: new Map() })
+    expect(idx.search('gateway').map((h) => h.id)).toEqual(['a'])
+    // b esce (archiviato), c entra, a riceve un voto
+    const c = mem('c', 'Gateway di pagamento', 'circuit breaker')
+    idx.rebuild([a, c], members, { votes: new Map([['a', 2]]), pins: new Set(), usage: new Map() })
+    expect(idx.count()).toBe(2)
+    expect(idx.search('sftp')).toEqual([])
+    expect(idx.search('gateway').map((h) => h.id).sort()).toEqual(['a', 'c'])
+    expect(idx.signals().get('a')?.votes).toBe(2)
+    // stesso stato: nulla da fare, risultato identico
+    idx.rebuild([a, c], members, { votes: new Map([['a', 2]]), pins: new Set(), usage: new Map() })
+    expect(idx.search('gateway')).toHaveLength(2)
+  })
+})

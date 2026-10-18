@@ -21,6 +21,11 @@
  * RADICI (Fase 8): stanno al centro della sfera, con un anello luminoso attorno alla stella (rosso
  * se "da rivedere"); in modalità olografica la stella è ciano. "◆ Radici" isola solo le Radici.
  *
+ * GALASSIE (team grandi, oltre GALAXY_THRESHOLD ricordi; vedi ../galaxies.ts): si parte dalla vista
+ * d'insieme, un ammasso luminoso per galassia con nome e numero di ricordi; un clic ci entra, "◀
+ * tutte le galassie" torna indietro. Il tour vola fra le galassie; ricerca e filtri con pochi
+ * risultati mostrano solo quelli, con tanti accendono le galassie che li contengono.
+ *
  * Questa pagina è caricata in modo pigro (React.lazy in App.tsx): three.js pesa, e le altre
  * schermate non devono pagarne il costo.
  */
@@ -37,7 +42,8 @@ import { KIND_LABEL } from '../../format'
 import { HelpButton } from '../../help'
 import { defineStrings, useLang, useStrings } from '../../i18n'
 import { authorColor, KIND_COLOR, registerAuthors, ROOT_STAR, rootRing } from '../colors'
-import { animateHologram, createHologram, HOLO, rootCrowding, rootMarker, SPHERE_RADIUS, sphericalForce, starSprite } from './hologram'
+import { buildView, galaxyStops, isGalaxyNode, usesGalaxies } from '../galaxies'
+import { animateHologram, createHologram, galaxyMarker, HOLO, rootCrowding, rootMarker, SPHERE_RADIUS, sphericalForce, starSprite } from './hologram'
 import { cameraFor, caption, centroid, computeTourStops, type TourStop } from './tour'
 
 type ColorMode = 'holo' | 'author' | 'kind'
@@ -61,7 +67,16 @@ const S = defineStrings({
     empty: 'Il nucleo si accenderà con i primi ricordi del team.',
     showAll: 'Mostra tutti',
     isolate: 'Isola',
-    showAllBtn: '✕ mostra tutti'
+    showAllBtn: '✕ mostra tutti',
+    galaxyStats: (g: number, m: number, r: number) => `${g} GALASSIE · ${m} RICORDI · ${r} RADICI`,
+    insideStats: (m: number, l: number) => `${m} RICORDI · ${l} SINAPSI`,
+    allGalaxies: '◀ Tutte le galassie',
+    galaxyHint: 'Ogni ammasso è una galassia: ricordi dello stesso argomento. Clic per entrarci.',
+    other: 'senza collegamenti',
+    count: (n: number) => `${n} ricordi`,
+    matches: (n: number) => `${n} pertinenti`,
+    hidden: (n: number) => `+${n} ricordi meno vivi non disegnati: cercali per accenderli`,
+    inGalaxies: (n: number) => `in ${n} galassie`
   },
   en: {
     title: 'NUCLEUS',
@@ -81,7 +96,16 @@ const S = defineStrings({
     empty: 'The nucleus will light up with the first memories of the team.',
     showAll: 'Show all',
     isolate: 'Isolate',
-    showAllBtn: '✕ show all'
+    showAllBtn: '✕ show all',
+    galaxyStats: (g: number, m: number, r: number) => `${g} GALAXIES · ${m} MEMORIES · ${r} ROOTS`,
+    insideStats: (m: number, l: number) => `${m} MEMORIES · ${l} SYNAPSES`,
+    allGalaxies: '◀ All galaxies',
+    galaxyHint: 'Each cluster is a galaxy: memories on the same topic. Click to enter.',
+    other: 'unlinked',
+    count: (n: number) => `${n} memories`,
+    matches: (n: number) => `${n} relevant`,
+    hidden: (n: number) => `+${n} less active memories not drawn: search to light them up`,
+    inGalaxies: (n: number) => `in ${n} galaxies`
   }
 })
 
@@ -113,32 +137,27 @@ export default function Nucleus () {
   const [paused, setPaused] = useState(false)
   /** "◆ Radici": mostra accese solo le Radici. */
   const [rootsOnly, setRootsOnly] = useState(false)
+  /**
+   * Galassia in cui si è entrati, ricordata tramite un suo ricordo ("ancora"): gli id delle galassie
+   * cambiano quando il daemon le ricalcola dopo una scrittura, il ricordo no.
+   */
+  const [anchor, setAnchor] = useState<string | null>(null)
+  const big = usesGalaxies(graph.data)
+  const galaxy = useMemo(() => (big && anchor ? graph.data!.nodes.find((n) => n.id === anchor)?.galaxy ?? null : null), [big, anchor, graph.data])
 
-  // ── Dati ────────────────────────────────────────────────────────────────────────────
-  // Oggetto stabile: la libreria aggiunge x/y/z/vx… ai nodi, va ricreato solo con dati nuovi.
-  const data = useMemo(() => ({
-    nodes: (graph.data?.nodes ?? []).map((n) => ({ ...n })),
-    links: (graph.data?.links ?? []).map((l) => ({ ...l }))
-  }), [graph.data])
-
-  /** Numero di collegamenti per nodo: i ricordi più "connessi" brillano di più. */
-  const degree = useMemo(() => {
-    const d = new Map<string, number>()
-    for (const l of graph.data?.links ?? []) {
-      d.set(l.source, (d.get(l.source) ?? 0) + 1)
-      d.set(l.target, (d.get(l.target) ?? 0) + 1)
-    }
-    return d
-  }, [graph.data])
-
-  const stops = useMemo(() => computeTourStops(graph.data?.nodes ?? []), [graph.data])
+  // Tappe del tour: nella vista d'insieme le galassie; dentro una galassia i suoi argomenti
+  const stops = useMemo<(TourStop & { galaxy?: number })[]>(() => {
+    const nodes = graph.data?.nodes ?? []
+    if (big && galaxy === null) return galaxyStops(graph.data!)
+    return computeTourStops(galaxy !== null ? nodes.filter((n) => n.galaxy === galaxy) : nodes)
+  }, [graph.data, big, galaxy])
   // `#/?tour=1` avvia subito l'esplorazione guidata (usato anche per catturare le schermate).
   useEffect(() => {
     if (params.get('tour') !== '1' || stops.length === 0) return
     const t = setTimeout(() => setTourIndex((i) => i ?? 0), 2500)
     return () => clearTimeout(t)
   }, [params, stops.length])
-  const stop: TourStop | null = tourIndex !== null ? stops[tourIndex] ?? null : null
+  const stop = tourIndex !== null ? stops[tourIndex] ?? null : null
 
   const q = query.trim()
   const search = useQuery({ queryKey: ['memories', 'nucleus-search', q], queryFn: () => api.search(q, 200), enabled: q.length >= 2 })
@@ -152,7 +171,8 @@ export default function Nucleus () {
    */
   const lit = useMemo<Set<string> | null>(() => {
     let set: Set<string> | null = null
-    if (stop) set = new Set(stop.ids)
+    // La tappa di una galassia accende la galassia (vedi buildView), non i singoli ricordi
+    if (stop && stop.galaxy === undefined) set = new Set(stop.ids)
     else if (q.length >= 2 && search.data) set = new Set(search.data.map((h) => h.id))
     if (focus && mode !== 'holo') {
       const match = (graph.data?.nodes ?? []).filter((n) => (mode === 'author' ? n.author : n.kind) === focus).map((n) => n.id)
@@ -165,15 +185,53 @@ export default function Nucleus () {
     return set
   }, [stop, q, search.data, focus, mode, graph.data, rootsOnly])
 
+  // ── Cosa disegnare: tutto, galassie, una galassia o solo i risultati (../galaxies.ts) ──
+  const view = useMemo(() => buildView(graph.data, galaxy, lit, stop?.galaxy ?? null), [graph.data, galaxy, lit, stop])
+  /** Nodi accesi DELLA VISTA (ricordi o galassie); null = tutti. */
+  const vlit = view.lit
+
+  // Oggetto stabile: la libreria aggiunge x/y/z/vx… ai nodi, va ricreato solo quando cambia la
+  // STRUTTURA della vista (view.key) o arrivano dati nuovi, non a ogni accensione.
+  const data = useMemo(() => ({
+    nodes: view.nodes.map((n) => ({ ...n })),
+    links: view.links.map((l) => ({ ...l }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [graph.data, view.key])
+
+  /** Numero di collegamenti per nodo: i ricordi più "connessi" brillano di più. */
+  const degree = useMemo(() => {
+    const d = new Map<string, number>()
+    for (const l of data.links) {
+      d.set(l.source, (d.get(l.source) ?? 0) + 1)
+      d.set(l.target, (d.get(l.target) ?? 0) + 1)
+    }
+    return d
+  }, [data])
+
   /**
    * Con molte Radici ognuna è un po' meno luminosa: insieme non devono accecare (vedi rootCrowding).
    * Conta le Radici ACCESE (tutte se nulla è filtrato): con filtri per autore o tipo, ricerca o tour
    * le Radici accese possono essere decine, e a piena luce tornerebbero una palla bianca.
    */
   const crowd = useMemo(() => {
-    const roots = (graph.data?.nodes ?? []).filter((n) => n.root && (!lit || lit.has(n.id)))
+    const roots = view.nodes.filter((n) => n.root && (!vlit || vlit.has(n.id)))
     return rootCrowding(roots.length)
-  }, [graph.data, lit])
+  }, [view.nodes, vlit])
+
+  // Vista d'insieme: pochi ammassi grandi, vanno tenuti più distanti fra loro
+  useEffect(() => {
+    const fg = fgRef.current
+    if (!fg) return
+    const overview = view.level === 'overview'
+    fg.d3Force('charge')?.strength(overview ? -400 : -18)
+    fg.d3Force('link')?.distance(overview ? 90 : 30)
+    fg.d3ReheatSimulation?.()
+  }, [view.level])
+
+  // Cambio di livello (entrata o uscita da una galassia, risultati filtrati): camera al punto di partenza
+  useEffect(() => {
+    fgRef.current?.cameraPosition({ x: 0, y: 20, z: SPHERE_RADIUS * 2.6 }, { x: 0, y: 0, z: 0 }, 1200)
+  }, [view.level, galaxy])
 
   // Nelle modalità a colori il bagliore pieno satura tutto in bianco e la tinta non si vede:
   // lo attenuiamo; in "olografico" torna pieno.
@@ -265,7 +323,7 @@ export default function Nucleus () {
     fg.controls().autoRotate = false
     // Distanza dal centro: almeno TOUR_DISTANCE, e comunque tale che il gruppo entri tutto
     // nell'inquadratura con margine (gruppi ampi o fitti di Radici, vedi rootCrowding)
-    const spread = Math.max(0, ...pts.map((p) => Math.hypot(p.x - c.x, p.y - c.y, p.z - c.z)))
+    const spread = pts.reduce((m, p) => Math.max(m, Math.hypot(p.x - c.x, p.y - c.y, p.z - c.z)), 0)
     fg.cameraPosition(cameraFor(c, Math.max(TOUR_DISTANCE, Math.hypot(c.x, c.y, c.z) + 3 * spread + 60)), c, ms)
   }, [data])
 
@@ -288,8 +346,8 @@ export default function Nucleus () {
 
   // Ricerca: quando arrivano i risultati voliamo sui ricordi pertinenti.
   useEffect(() => {
-    if (tourIndex === null && lit && lit.size > 0) flyTo(lit, 1600)
-  }, [lit, tourIndex, flyTo])
+    if (tourIndex === null && vlit && vlit.size > 0) flyTo(vlit, 1600)
+  }, [vlit, tourIndex, flyTo])
 
   // ── Aspetto dei ricordi ─────────────────────────────────────────────────────────────
   const colorOf = useCallback((n: GraphNode): string => {
@@ -303,11 +361,18 @@ export default function Nucleus () {
 
   // Ricreato quando cambiano colori, accensioni o selezione: la libreria rigenera gli sprite.
   const nodeObject = useCallback((n: any) => {
-    const on = !lit || lit.has(n.id)
+    const on = !vlit || vlit.has(n.id)
+    if (isGalaxyNode(n)) {
+      // Galassia: ammasso grande quanto la radice quadrata dei ricordi, con nome e numero
+      const g = n.galaxyInfo
+      const name = g.id < 0 ? s.other : g.label || g.tags[0] || '·'
+      const count = g.matches !== null ? s.matches(g.matches) : s.count(g.size)
+      return galaxyMarker(on ? HOLO.amber : '#8a6a3a', 8 + 1.6 * Math.sqrt(g.size), `${name} · ${count}`, on ? 1 : 0.3, g.roots > 0)
+    }
     // Stelle piccole: il fascino è nei dettagli fini, il bloom fa il resto.
     // Dimensione: collegamenti e attivazione (un ricordo vivo e centrale è una stella più grande).
     const base = 3.2 + Math.min(5, (degree.get(n.id) ?? 0) * 0.6) + (n.activation ?? 0.5) * 3
-    const size = n.id === selected?.id ? base * 2.2 : on && lit ? base * 1.5 : base
+    const size = n.id === selected?.id ? base * 2.2 : on && vlit ? base * 1.5 : base
     // I ricordi esclusi da tour/ricerca restano visibili ma tenui: danno il contesto.
     // Nelle modalità a colori stelle un po' più piccole e non sature: la tinta resta leggibile.
     const colored = mode !== 'holo'
@@ -325,12 +390,19 @@ export default function Nucleus () {
       return rootMarker(star, rootRing(n.root.status), (colored ? rs * 0.85 : rs) * 1.15 * (0.5 + 0.5 * c), c, c)
     }
     return starSprite(on ? colorOf(n) : '#8a6a3a', colored ? size * 0.85 : size, on ? (colored ? 0.9 : 1) : 0.4)
-  }, [lit, degree, selected, colorOf, mode, crowd])
+  }, [vlit, degree, selected, colorOf, mode, crowd, s])
 
-  const linkOn = (l: any) => !lit || (lit.has(l.source.id ?? l.source) && lit.has(l.target.id ?? l.target))
+  const linkOn = (l: any) => !vlit || (vlit.has(l.source.id ?? l.source) && vlit.has(l.target.id ?? l.target))
 
-  const rootCount = data.nodes.filter((n) => n.root).length
-  const stats = s.stats(data.nodes.length, rootCount, new Set(data.nodes.map((n) => n.author)).size, data.links.length)
+  const all = graph.data?.nodes ?? []
+  const rootCount = all.filter((n) => n.root).length
+  const stats = view.level === 'overview'
+    ? s.galaxyStats(view.nodes.length, all.length, rootCount)
+    : view.level === 'galaxy'
+      ? s.insideStats(view.nodes.length + view.hidden, data.links.length)
+      : s.stats(data.nodes.length, data.nodes.filter((n) => n.root).length, new Set(data.nodes.map((n) => n.author)).size, data.links.length)
+  /** Nome della galassia in cui si è entrati, per il percorso nell'HUD. */
+  const galaxyName = view.galaxy ? (view.galaxy.id < 0 ? s.other : view.galaxy.label || view.galaxy.tags[0]) : null
 
   return (
     <div className='nucleus' ref={boxRef}>
@@ -357,6 +429,12 @@ export default function Nucleus () {
         cooldownTicks={200}
         onNodeClick={(n: any) => {
           setTourIndex(null)
+          // Galassia: ci si entra (ancorandola al suo ricordo più vivo, vedi `anchor`)
+          if (isGalaxyNode(n)) {
+            setSelected(null)
+            setAnchor(n.galaxyInfo.top[0] ?? null)
+            return
+          }
           setSelected(n)
           // Vola sul ricordo, guardandolo da fuori la sfera.
           const dist = Math.hypot(n.x, n.y, n.z) + 70
@@ -370,6 +448,13 @@ export default function Nucleus () {
       <div className='hud hud-top-left'>
         <div className='hud-title'>{s.title}{status.data?.team ? ` · ${status.data.team.name.toUpperCase()}` : ''} <HelpButton topic='views#nucleus' /></div>
         <div className='hud-sub'>{stats}</div>
+        {galaxyName !== null && (
+          <div className='row' style={{ marginTop: 8 }}>
+            <button className='hud-btn' onClick={() => { setAnchor(null); setSelected(null); setTourIndex(null) }}>{s.allGalaxies}</button>
+            <span className='hud-topic' style={{ fontSize: 16 }}>✦ {galaxyName}</span>
+          </div>
+        )}
+        {view.hidden > 0 && <div className='hud-sub' style={{ marginTop: 6 }}>{s.hidden(view.hidden)}</div>}
       </div>
 
       {/* ── HUD: comandi ──────────────────────────────────────────────────── */}
@@ -406,10 +491,14 @@ export default function Nucleus () {
           <div>{caption(stop, (k) => KIND_LABEL[k] ?? k, lang)}</div>
         </div>
       )}
+      {!stop && !lit && view.level === 'overview' && (
+        <div className='hud hud-caption'><div>{s.galaxyHint}</div></div>
+      )}
       {!stop && lit && (
         <div className='hud hud-caption'>
           <div className='hud-topic'>{s.lit(lit.size, q.length >= 2)}</div>
           <div>
+            {view.level === 'overview' && vlit && <>{s.inGalaxies(vlit.size)} · </>}
             {q.length >= 2 && <>{s.to(q)}</>}
             {rootsOnly && <>{q.length >= 2 || focus ? ' · ' : ''}{s.onlyRoots}</>}
             {focus && <>{q.length >= 2 ? ' · ' : ''}{mode === 'author' ? s.by(graph.data?.nodes.find((n) => n.author === focus)?.authorName ?? focus.slice(0, 8)) : s.ofKind(KIND_LABEL[focus] ?? focus)}</>}

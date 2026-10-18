@@ -20,6 +20,7 @@
     "e2e:docker": "bash test/e2e/docker/scenario.sh",
     "eval:ingest": "vitest run --config vitest.eval.config.ts",
     "demo": "node scripts/demo-team.js",
+    "demo:grande": "node scripts/demo-large.js",
     "desktop": "npm run start -w desktop",
     "test:ui": "npm test -w ui",
     "package:win": "node scripts/package-win.js"
