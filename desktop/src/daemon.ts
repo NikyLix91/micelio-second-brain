@@ -4,14 +4,30 @@
  * L'app NON contiene il nodo: lo avvia come processo separato (lo stesso `micelio daemon` della
  * CLI) se non è già in esecuzione. Così chiudere l'app non ferma la sincronizzazione, e CLI,
  * app e Claude Code parlano tutti con lo stesso daemon.
+ *
+ * Due situazioni:
+ * - **da sorgente** (`npm run desktop`): daemon e CLI compilati stanno in `dist/` della repository;
+ * - **installata** (installer di Windows, scripts/package-win.js): stanno in
+ *   `resources/micelio/dist/`, con un Node.js incluso in `resources/node/` e il comando `micelio`
+ *   in `resources/bin/`. Il Node incluso evita di dipendere da quello (se c'è) installato sul PC.
  */
 import { spawn, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 
-/** Radice del progetto (desktop/dist → ../..): da qui si trovano dist/cli e dist/node. */
-const ROOT = path.join(__dirname, '..', '..')
+/** Cartella `resources` dell'app installata (undefined da sorgente, cioè con Electron "nudo"). */
+const RESOURCES: string | undefined = (process as any).resourcesPath
+/** true se l'app gira dall'installazione (i file di Micelio stanno in resources/micelio). */
+export const PACKAGED = !!RESOURCES && fs.existsSync(path.join(RESOURCES, 'micelio', 'dist', 'cli', 'main.js'))
+
+/**
+ * Radice di Micelio: da qui si trovano dist/cli e dist/node.
+ * Installata: resources/micelio; da sorgente: la repository (desktop/dist → ../..).
+ */
+const ROOT = PACKAGED ? path.join(RESOURCES!, 'micelio') : path.join(__dirname, '..', '..')
 const CLI_MAIN = path.join(ROOT, 'dist', 'cli', 'main.js')
+/** Node.js incluso nell'installazione (null da sorgente o se manca). */
+const BUNDLED_NODE = PACKAGED && fs.existsSync(path.join(RESOURCES!, 'node', 'node.exe')) ? path.join(RESOURCES!, 'node', 'node.exe') : null
 
 // Riusiamo i moduli compilati del daemon per leggere percorsi e configurazione: una sola verità.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -27,7 +43,7 @@ export interface DaemonInfo {
 
 /** Percorsi, URL e token del nodo locale (rispetta MICELIO_HOME). */
 export function daemonInfo (): DaemonInfo {
-  if (!fs.existsSync(CLI_MAIN)) throw new Error(`Daemon non compilato: esegui \`npm run build\` nella cartella del progetto (manca ${CLI_MAIN})`)
+  if (!fs.existsSync(CLI_MAIN)) throw new Error(PACKAGED ? `Installazione incompleta: manca ${CLI_MAIN}. Reinstalla Micelio.` : `Daemon non compilato: esegui \`npm run build\` nella cartella del progetto (manca ${CLI_MAIN})`)
   const paths = nodePaths()
   const cfg = loadConfig(paths)
   const host = cfg.host === '0.0.0.0' ? '127.0.0.1' : cfg.host
@@ -45,11 +61,14 @@ export async function isUp (info: DaemonInfo): Promise<boolean> {
 }
 
 /**
- * Quale Node usare per il daemon: quello di sistema se c'è (lo stesso della CLI), altrimenti
- * il Node incluso in Electron in modalità "solo Node" (ELECTRON_RUN_AS_NODE). Electron 38
- * include Node 22, sufficiente per `node:sqlite`.
+ * Quale Node usare per il daemon:
+ * 1. installata: il Node incluso (stessa versione con cui Micelio è stato provato);
+ * 2. quello di sistema se c'è (lo stesso della CLI);
+ * 3. il Node di Electron in modalità "solo Node" (ELECTRON_RUN_AS_NODE). Electron 38 include
+ *    Node 22, sufficiente per `node:sqlite`.
  */
 function nodeRuntime (): { cmd: string, env: NodeJS.ProcessEnv } {
+  if (BUNDLED_NODE) return { cmd: BUNDLED_NODE, env: {} }
   const probe = spawnSync('node', ['--version'], { encoding: 'utf8', windowsHide: true })
   if (!probe.error && probe.status === 0) return { cmd: 'node', env: {} }
   return { cmd: process.execPath, env: { ELECTRON_RUN_AS_NODE: '1' } }
@@ -65,7 +84,7 @@ export async function ensureDaemon (info: DaemonInfo, log: (m: string) => void):
   const logs = path.join(info.home, 'logs')
   fs.mkdirSync(logs, { recursive: true })
   const out = fs.openSync(path.join(logs, 'daemon.log'), 'a')
-  log(`avvio del daemon con ${cmd === 'node' ? 'node di sistema' : 'Node di Electron'}`)
+  log(`avvio del daemon con ${cmd === BUNDLED_NODE ? 'il Node incluso' : cmd === 'node' ? 'node di sistema' : 'Node di Electron'}`)
   spawn(cmd, [CLI_MAIN, 'daemon'], {
     detached: true,
     stdio: ['ignore', out, out],

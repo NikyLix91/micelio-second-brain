@@ -21,7 +21,8 @@
     "eval:ingest": "vitest run --config vitest.eval.config.ts",
     "demo": "node scripts/demo-team.js",
     "desktop": "npm run start -w desktop",
-    "test:ui": "npm test -w ui"
+    "test:ui": "npm test -w ui",
+    "package:win": "node scripts/package-win.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",

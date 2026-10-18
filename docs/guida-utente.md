@@ -6,6 +6,20 @@ Micelio è la memoria condivisa del team, pensata per gli assistenti AI. Ogni co
 
 ## 1. Installazione
 
+### Windows: installer
+
+`Micelio-Setup-<versione>.exe` installa tutto per il tuo utente, **senza permessi di amministratore** e **senza bisogno di Node.js** (ne include uno):
+
+1. avvia l'installer. Non è firmato digitalmente: se Windows mostra «PC protetto da Windows», scegli **Ulteriori informazioni → Esegui comunque**;
+2. scegli la cartella (default `%LOCALAPPDATA%\Programs\Micelio`) e completa: si apre l'app;
+3. crea il tuo team o entra con un invito; poi **Impostazioni → Claude Code → Configura** per collegare Claude Code (MCP, raccolta e contesto automatico).
+
+Il comando `micelio` è disponibile nei terminali aperti **dopo** l'installazione (la cartella `resources\bin` viene aggiunta al PATH dell'utente). I dati restano in `%USERPROFILE%\.micelio`: disinstallare o aggiornare non li tocca. La disinstallazione ferma il daemon e toglie `micelio` dal PATH.
+
+Se in precedenza usavi Micelio **da sorgente**: ferma quel daemon (`micelio stop`) prima di aprire l'app installata, altrimenti l'app si collega a lui invece di avviare il suo; poi ripeti **Configura** dall'app installata, così gli hook di Claude Code puntano all'installazione e non alla repository.
+
+### Da sorgente (Windows, macOS, Linux)
+
 Requisiti: **Node.js ≥ 22.13** (Windows, macOS o Linux). Per la raccolta automatica serve anche **Claude Code** installato e autenticato: Micelio usa il tuo abbonamento, nessuna API key.
 
 ```bash

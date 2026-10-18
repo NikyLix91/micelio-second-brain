@@ -1,6 +1,6 @@
 # Riga di comando
 
-Il comando `micelio` fa tutto ciò che fa l'app, e qualcosa in più. `micelio --help` e `micelio <comando> --help` elencano opzioni e sottocomandi. `--home <cartella>` usa un nodo diverso da `~/.micelio`.
+Il comando `micelio` fa tutto ciò che fa l'app, e qualcosa in più. `micelio --help` e `micelio <comando> --help` elencano opzioni e sottocomandi. `--home <cartella>` usa un nodo diverso da `~/.micelio`. Con l'installer di Windows il comando sta in `resources\bin` della cartella d'installazione, aggiunta al PATH dell'utente: si usa da qualunque terminale aperto dopo l'installazione.
 
 ## Il daemon {#daemon}
 

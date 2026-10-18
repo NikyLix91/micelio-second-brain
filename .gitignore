@@ -157,3 +157,5 @@ shared/
 .demo/
 # Schermate generate dall'app desktop
 screenshots/
+# Installer di Windows (npm run package:win): risorse di appoggio e output
+build/win/

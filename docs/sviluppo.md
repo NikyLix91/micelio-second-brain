@@ -233,7 +233,26 @@ I prompt ([src/ingest/prompts.ts](../src/ingest/prompts.ts)) e le regole del fil
   - Gli errori della pagina finiscono nel log delle catture (`pagina: …`).
   - Le immagini in `docs/img/` sono state prodotte così, sul team demo.
 - **Nucleo 3D e colori:** con la catena di post-processing (bloom) ogni colore di fondo diverso dal nero viene schiarito (grigio-blu). Lo sfondo resta quindi nero puro, e il bloom va inserito prima dell'eventuale `OutputPass` (vedi commenti in `Nucleus.tsx`).
-- **Electron dal terminale di VS Code:** la variabile `ELECTRON_RUN_AS_NODE` ereditata fa partire Electron senza finestre. `desktop/launch.js` la rimuove: usare sempre `npm run desktop`.
+- **Electron dal terminale di VS Code:** la variabile `ELECTRON_RUN_AS_NODE` ereditata fa partire Electron senza finestre. `desktop/launch.js` la rimuove: usare sempre `npm run desktop`. Lo stesso vale per provare l'app impacchettata dal terminale: `env -u ELECTRON_RUN_AS_NODE build/win/out/win-unpacked/Micelio.exe`.
+
+## Installer di Windows
+
+`npm run package:win` (solo su Windows) produce `build/win/out/Micelio-Setup-<versione>.exe` con electron-builder (NSIS, per utente, x64). Lo script è `scripts/package-win.js`; i passi aggiuntivi dell'installer sono in `desktop/build/installer.nsh`.
+
+| Nell'installazione | Da dove |
+|---|---|
+| `Micelio.exe`, `resources/app.asar` | app desktop (`desktop/dist`), senza `node_modules` |
+| `resources/micelio/` | `dist/` + dipendenze di produzione del daemon **copiate** da `node_modules` (elenco da `npm ls --omit=dev --workspaces=false`: stesse versioni dei test, nessun download), senza binari per altre piattaforme |
+| `resources/node/node.exe` | il Node.js che esegue lo script (stessa versione dei test) |
+| `resources/bin/micelio.cmd` | il comando `micelio` (Node incluso + CLI); aggiunto al PATH dell'utente dall'installer |
+
+Cose da sapere, imparate costruendolo:
+- le risorse extra di electron-builder **escludono sempre** le cartelle `node_modules`: `resources/micelio` si copia nell'hook `afterPack`;
+- in una repository a workspace electron-builder metterebbe il `node_modules` della radice in `app.asar` (850 MB): `files` lo esclude;
+- Windows Defender analizza `Micelio.exe` appena creato e a volte lo tiene aperto («UNKNOWN: unknown error, open …Micelio.exe»): lo script riprova fino a 3 volte;
+- l'app desktop riconosce l'installazione da `process.resourcesPath` (`desktop/src/daemon.ts`, `PACKAGED`) e avvia il daemon con il Node incluso;
+- gli hook di Claude Code usano percorsi assoluti (`process.execPath` del daemon e la CLI dell'installazione), quindi funzionano anche senza PATH;
+- l'installer non è firmato (SmartScreen avvisa). Per una distribuzione vera serve un certificato di firma del codice.
 
 ## Variabili d'ambiente
 

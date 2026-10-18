@@ -1,6 +1,6 @@
 # Command line
 
-The `micelio` command does everything the app does, and a bit more. `micelio --help` and `micelio <command> --help` list options and subcommands. `--home <folder>` uses a node other than `~/.micelio`.
+The `micelio` command does everything the app does, and a bit more. `micelio --help` and `micelio <command> --help` list options and subcommands. `--home <folder>` uses a node other than `~/.micelio`. With the Windows installer the command lives in `resources\bin` of the installation folder, added to the user's PATH: it works from any terminal opened after the installation.
 
 ## The daemon {#daemon}
 
