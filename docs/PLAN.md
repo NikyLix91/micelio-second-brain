@@ -317,6 +317,18 @@ Il motivo del limite non è il costo (con la CLI dell'abbonamento le chiamate no
 
 ---
 
+## Backlog (da affrontare, ognuno su un branch dedicato staccato da `main`)
+
+Richieste dell'utente del 2026-10-18, non ancora iniziate.
+
+| # | Attività | Branch | Note |
+|---|---|---|---|
+| B1 | **UI in inglese** con selettore italiano/inglese | `feature/ui-inglese` | Tutti i testi della UI (e dell'app desktop) in file di traduzione; scelta salvata per utente; lingua di default dal sistema. Da decidere: anche CLI e messaggi del daemon? |
+| B2 | **Guida in linea onnicomprensiva** | `feature/guida-in-linea` | Per ogni schermata, pulsante e funzionalità: non solo *cosa* fa ma *come funziona dietro*. Per esempio, per la distillazione: dove finiscono fisicamente i ricordi (Hypercore/Autobase, corestore, vista Hyperbee, indice SQLite, export Markdown), in che formato, come arrivano agli altri nodi. Aiuti contestuali (icona «?») e una guida completa navigabile |
+| B3 | **Più team nella stessa app (workspace)** | `feature/multi-team` | Un nodo partecipa a più team, con sapere separato (chiavi, log, indici, archivio privato per team). Selettore del team nella UI. Instradamento per cartella di progetto: le sessioni di una cartella vanno al team di quella cartella. Agenti: endpoint MCP per team (`/mcp/<team>`) registrato **per progetto** (es. `.mcp.json` del repository), così un agente vede solo il team del progetto. Da verificare client per client (Claude Code, Codex, VS Code, WebStorm). È il più impegnativo |
+
+---
+
 ## Registro
 
 | Data | Evento |
