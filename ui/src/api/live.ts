@@ -18,8 +18,8 @@ import { getToken } from './auth'
  * Le chiavi sono quelle usate nelle schermate con useQuery.
  */
 export const TOPIC_QUERIES: Record<string, string[][]> = {
-  status: [['status'], ['teamConfig']],
-  memories: [['memories'], ['graph'], ['dreams'], ['archive'], ['storage'], ['roots']],
+  status: [['status'], ['teamConfig'], ['distillQuality']],
+  memories: [['memories'], ['graph'], ['dreams'], ['archive'], ['storage'], ['roots'], ['distillQuality']],
   members: [['members'], ['invites'], ['graph'], ['storage']],
   inbox: [['inbox'], ['ingest']],
   jobs: [['ingest'], ['documents']],

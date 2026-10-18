@@ -316,7 +316,7 @@ L'esempio della mail di valutazione si ferma già al filtro deterministico (paro
 
 ### 6.5 Distillazione (LLM)
 
-Da una sessione o da un documento si producono **0..N ricordi atomici**:
+Da una sessione o da un documento si producono **0..N ricordi atomici**. N è `distill.maxMemories`, un'impostazione di team scelta dall'admin (default 5, da 1 a 20). È nel prompt e viene fatta rispettare dalla pipeline. Ogni ricordo distillato porta in `source` la sua posizione (`rank`) e quanti ne aveva proposti il modello (`batch`). Con questi dati `src/ingest/quality.ts` calcola le metriche di qualità per fascia di posizione e la saturazione del limite (Fase 10):
 
 - ogni ricordo è autosufficiente e comprensibile senza la conversazione d'origine;
 - si generalizza: niente riferimenti a persone, clienti o dati non necessari al sapere tecnico;

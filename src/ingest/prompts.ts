@@ -57,11 +57,13 @@ export type Distilled = z.infer<typeof Distilled>
  * La regola di FEDELTÀ ALLA FONTE nasce da un problema reale (spike B e Fase 1): il modello
  * aggiungeva dettagli plausibili ma non presenti nella sessione.
  * @param language lingua del team (`memory.language`): "it", "en" o altro codice
+ * @param maxMemories ricordi massimi per distillazione (`distill.maxMemories`, scelto dall'admin)
  */
-export function distillSystem (language: string): string {
+export function distillSystem (language: string, maxMemories = 5): string {
   const lang = language === 'en' ? 'inglese' : language === 'it' ? 'italiano' : language
   return `Sei il distillatore di "Micelio", la memoria condivisa di un team di sviluppo software.
-Dalla sessione estrai da 0 a 5 ricordi atomici di conoscenza riutilizzabile dal team. Regole:
+Dalla sessione estrai da 0 a ${maxMemories} ricordi atomici di conoscenza riutilizzabile dal team, dal più importante
+al meno importante. Regole:
 - FEDELTÀ ALLA FONTE: scrivi SOLO ciò che è detto o dimostrato nella sessione. Non aggiungere cause,
   dettagli tecnici, conseguenze o raccomandazioni che non compaiono nel testo, anche se plausibili.
 - Ogni ricordo è autosufficiente: comprensibile senza la conversazione d'origine.

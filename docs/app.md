@@ -93,7 +93,8 @@ Solo i casi dubbi: per ognuno il motivo e la scadenza. Le azioni sono *Pubblica 
 
 - **Inviti:** crea un invito e copialo, con l'avviso se nessun altro membro l'ha ancora ricevuto.
 - **Membri:** albero degli inviti.
-- **Solo per gli admin:** promozione, espulsione con conferma e impostazioni condivise (lingua dei ricordi, parole chiave del filtro).
+- **Solo per gli admin:** promozione, espulsione con conferma e impostazioni condivise (lingua dei ricordi, ricordi massimi per distillazione, parole chiave del filtro).
+- **Qualità della distillazione** (per tutti): per posizione nel distillato, ricordi utili, votati inutili, fusi o archiviati e mai usati, con il punteggio. Mostra anche quanto spesso il limite viene raggiunto, e un'indicazione per alzare, tenere o abbassare il limite.
 
 ### Stato
 

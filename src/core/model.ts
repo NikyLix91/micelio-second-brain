@@ -11,7 +11,7 @@ import type { CodeRefs, MemoryKind, RootCategory } from './events'
 export type Role = 'admin' | 'member'
 
 /** Origine di un ricordo (vedi MemoryInput.source in events.ts). */
-export interface MemorySource { type: string, ref?: string, name?: string, size?: number, mime?: string, code?: CodeRefs }
+export interface MemorySource { type: string, ref?: string, name?: string, size?: number, mime?: string, code?: CodeRefs, rank?: number, batch?: number }
 
 /** Un ricordo del team come appare nella vista. */
 export interface MemoryRecord {

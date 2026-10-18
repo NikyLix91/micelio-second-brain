@@ -3,10 +3,13 @@
  *
  * Le azioni da admin (promuovi, espelli, impostazioni di team) sono mostrate solo agli admin;
  * il daemon le verifica comunque (e apply le verifica di nuovo su ogni nodo).
+ *
+ * Fase 10: l'admin sceglie quanti ricordi distillare al massimo per sessione (`distill.maxMemories`);
+ * la scheda "Qualità della distillazione" (visibile a tutti) dà i dati per decidere.
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { api, type MemberRecord } from '../api/client'
+import { api, type DistillQuality, type MemberRecord } from '../api/client'
 import { Card, ConfirmButton, ErrorBox, PageHeader } from '../components/ui'
 import { dateTime, short } from '../format'
 
@@ -26,6 +29,7 @@ export function Team () {
           {members.data && <MemberTree members={members.data} parent={null} me={status.data?.nodeKey ?? null} isAdmin={isAdmin} />}
         </Card>
         {isAdmin && <TeamSettings />}
+        <DistillQualityCard />
       </div>
     </>
   )
@@ -108,12 +112,19 @@ function TeamSettings () {
   const cfg = useQuery({ queryKey: ['teamConfig'], queryFn: api.teamConfig })
   const [language, setLanguage] = useState<string | null>(null)
   const [keywords, setKeywords] = useState<string | null>(null)
+  const [maxMemories, setMaxMemories] = useState<string | null>(null)
+  const client = useQueryClient()
   const save = useMutation({
     mutationFn: async () => {
       if (language !== null) await api.setTeamConfig('memory.language', language)
       if (keywords !== null) await api.setTeamConfig('filter.blockKeywords', keywords.split(',').map((k) => k.trim()).filter(Boolean))
+      if (maxMemories !== null) await api.setTeamConfig('distill.maxMemories', Number(maxMemories))
     },
-    onSuccess: () => { setLanguage(null); setKeywords(null) }
+    onSuccess: () => {
+      setLanguage(null); setKeywords(null); setMaxMemories(null)
+      void client.invalidateQueries({ queryKey: ['teamConfig'] })
+      void client.invalidateQueries({ queryKey: ['distillQuality'] })
+    }
   })
   if (!cfg.data) return null
 
@@ -127,13 +138,73 @@ function TeamSettings () {
             <option value='en'>Inglese</option>
           </select>
         </div>
+        <div style={{ maxWidth: 420 }}>
+          <label>Ricordi massimi per distillazione (1–20)</label>
+          <input type='number' min={1} max={20} value={maxMemories ?? String(cfg.data.maxMemories)} onChange={(e) => setMaxMemories(e.target.value)} />
+          <div className='muted small'>Quanti ricordi al massimo Claude estrae da una sessione o da una parte di documento. Più ricordi = più sapere ma anche più rumore: decidi con i dati della scheda «Qualità della distillazione».</div>
+        </div>
         <div>
           <label>Parole che bloccano un contenuto (oltre a quelle di default, separate da virgola)</label>
           <input value={keywords ?? cfg.data.blockKeywords.join(', ')} onChange={(e) => setKeywords(e.target.value)} placeholder='es. progetto riservato, NDA' />
         </div>
         <ErrorBox error={save.error} />
-        <div><button className='btn primary' disabled={save.isPending || (language === null && keywords === null)} onClick={() => save.mutate()}>Salva per tutto il team</button></div>
+        <div><button className='btn primary' disabled={save.isPending || (language === null && keywords === null && maxMemories === null)} onClick={() => save.mutate()}>Salva per tutto il team</button></div>
       </div>
+    </Card>
+  )
+}
+
+/** Etichette e stile delle indicazioni sul limite. */
+const ADVICE: Record<DistillQuality['advice']['action'], { label: string, cls: string }> = {
+  raise: { label: 'Conviene alzare il limite', cls: 'ok' },
+  keep: { label: 'Il limite attuale va bene', cls: '' },
+  lower: { label: 'Conviene abbassare il limite', cls: 'warn' },
+  unknown: { label: 'Dati ancora insufficienti', cls: '' }
+}
+
+/**
+ * Qualità della distillazione (Fase 10): per ogni fascia di posizione nel distillato, quanti
+ * ricordi si sono rivelati utili, inutili, fusi/archiviati o mai usati; quanto spesso il limite
+ * viene raggiunto; e un'indicazione per l'admin. Gli stessi dati su ogni PC del team.
+ */
+export function DistillQualityCard () {
+  const q = useQuery({ queryKey: ['distillQuality'], queryFn: api.distillQuality })
+  const d = q.data
+  const pct = (x: number) => `${Math.round(x * 100)}%`
+  if (!d) return <Card title='Qualità della distillazione'><ErrorBox error={q.error} /></Card>
+  const a = ADVICE[d.advice.action]
+  return (
+    <Card title='Qualità della distillazione'>
+      <p className='muted small' style={{ marginTop: 0 }}>
+        Limite in vigore: <strong>{d.maxMemories}</strong> ricordi per distillazione · {d.total} ricordi distillati con posizione nota ·
+        limite raggiunto in <strong>{d.saturation.atLimit}</strong> distillazioni su {d.saturation.batches} ({pct(d.saturation.rate)}).
+        Le percentuali contano i ricordi con più di 3 giorni (prima non hanno avuto il tempo di essere usati).
+      </p>
+      <table className='small'>
+        <thead>
+          <tr><th>Posizione nel distillato</th><th className='num'>Ricordi</th><th className='num'>Utili</th><th className='num'>Votati inutili</th><th className='num'>Fusi o archiviati</th><th className='num'>Mai usati</th><th className='num'>Punteggio</th><th className='num'>Recenti</th></tr>
+        </thead>
+        <tbody>
+          {d.buckets.map((b) => (
+            <tr key={b.label} className={b.from > d.maxMemories ? 'muted' : ''}>
+              <td>{b.label}{b.from > d.maxMemories ? ' (oltre il limite attuale)' : ''}</td>
+              <td className='num'>{b.n}</td>
+              <td className='num'>{b.n ? pct(b.useful) : '–'}</td>
+              <td className='num'>{b.n ? pct(b.notUseful) : '–'}</td>
+              <td className='num'>{b.n ? pct(b.removed) : '–'}</td>
+              <td className='num'>{b.n ? pct(b.unused) : '–'}</td>
+              <td className='num'><strong>{b.n ? b.score.toFixed(2) : '–'}</strong></td>
+              <td className='num muted'>{b.young}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className={`notice ${a.cls}`} style={{ marginTop: 10 }}>
+        <strong>{a.label}.</strong> {d.advice.reason}
+      </div>
+      <p className='muted small' style={{ marginBottom: 0 }}>
+        Punteggio = utili − votati inutili − fusi o archiviati (da −1 a +1). Utile = votato positivamente o usato dagli agenti.
+      </p>
     </Card>
   )
 }

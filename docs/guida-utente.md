@@ -260,6 +260,25 @@ Ogni sessione elaborata costa 2 chiamate a Claude (classificazione + distillazio
 
 (dopo una modifica: `micelio stop && micelio start`)
 
+### Quanti ricordi per sessione
+
+Il distillatore estrae **al massimo 5 ricordi** per sessione (o per parte di documento), dal più importante al meno importante. È una scelta contro il **rumore**, non un limite di costo: con la CLI dell'abbonamento le chiamate non si pagano una a una, ma una memoria piena di ricordi marginali è più difficile da usare, per le persone e per gli agenti.
+
+Il limite è un'**impostazione di team** che sceglie l'**admin**, da 1 a 20: pagina **Team**, oppure `micelio team config distill.maxMemories 8`. Per decidere con i dati c'è la scheda **Qualità della distillazione**, anche da terminale con `micelio quality`. Per ogni **posizione** nel distillato (1ª, 2ª, 3ª, 4ª–5ª…) mostra:
+- quanti ricordi si sono rivelati **utili**: votati positivamente o usati dagli agenti;
+- quanti sono stati **votati inutili**;
+- quanti sono stati **fusi o archiviati** dal dreaming, cioè doppioni o sapere che non serviva;
+- quanti non sono **mai stati usati**;
+- un **punteggio** da −1 a +1.
+
+Mostra anche quante distillazioni **raggiungono il limite**: se succede spesso, il limite sta tagliando. Valgono solo i ricordi con più di 3 giorni, che hanno avuto il tempo di essere usati.
+
+In fondo c'è un'**indicazione**:
+- **alzare**, se le ultime posizioni valgono quasi quanto le prime e il limite viene raggiunto spesso;
+- **abbassare**, se le ultime posizioni sono spesso inutili o fuse;
+- **tenere**;
+- **dati insufficienti**, sotto i 30 ricordi maturi.
+
 ## 7-bis. Cartelle di documenti
 
 Micelio può leggere anche i documenti del team: PDF, Word, Excel, PowerPoint, OpenDocument, RTF, Markdown, testo.

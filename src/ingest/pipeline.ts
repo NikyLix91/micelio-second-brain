@@ -70,6 +70,8 @@ export interface PipelineDeps {
   language: () => Promise<string>
   /** Pattern AGGIUNTIVI di file sensibili del team (`security.sensitiveFiles`); i default valgono sempre. */
   sensitiveFiles?: () => Promise<string[]>
+  /** Ricordi massimi per distillazione (`distill.maxMemories`, Fase 10); default 5. */
+  maxMemories?: () => Promise<number>
   /** Il distillatore suggerisce una Radice (Fase 8): la decide l'utente (vista Radici). */
   suggestRoot?: (id: string, category: RootCategory, title: string) => void
   /** Promozione diretta a Radice: ricordi dalle cartelle di documenti "di Radici". */
@@ -275,7 +277,7 @@ export class IngestPipeline {
     for (const raw of memories) {
       // Riferimenti al codice (progetto, file, simboli, commit): dicono a chi legge dove approfondire.
       const code = codeRefs(raw, cwd, changes.info, changes.summary)
-      const parsed = MemoryInput.safeParse({ ...raw, source: { type: 'claude-code', ref: sessionId, ...(code ? { code } : {}) } })
+      const parsed = MemoryInput.safeParse({ ...raw, source: { type: 'claude-code', ref: sessionId, ...(code ? { code } : {}), rank: raw.rank, batch: raw.batch } })
       if (!parsed.success) continue // ricordo malformato prodotto dal modello: lo ignoriamo
       // Secondo passaggio di filtro sul ricordo distillato (il modello potrebbe aver
       // riportato un dato sensibile sfuggito alla prima redazione).
@@ -400,7 +402,7 @@ export class IngestPipeline {
         this.logDecision(source, r === 'private' ? 'private' : 'discarded', c.reason, `${name} · parte ${i + 1}`)
       } else {
         for (const raw of await this.distill(filtered.text)) {
-          const parsed = MemoryInput.safeParse({ ...raw, source: sourceInfo })
+          const parsed = MemoryInput.safeParse({ ...raw, source: { ...sourceInfo, rank: raw.rank, batch: raw.batch } })
           if (!parsed.success) continue
           const fm = filterMemory(parsed.data, rules)
           if (r === 'team' && !fm.blocked) {
@@ -550,11 +552,18 @@ export class IngestPipeline {
     return this.deps.llm!.run({ name: 'classify', system: CLASSIFY_SYSTEM, input: text, schema: Classification, model: this.deps.models().classify })
   }
 
-  private async distill (text: string): Promise<Distilled['memories']> {
+  /**
+   * Distillazione. Il limite di ricordi (scelto dall'admin) è nel prompt e viene comunque fatto
+   * rispettare qui; ogni ricordo riceve la sua POSIZIONE (`rank`) e quanti ne aveva proposti il
+   * modello (`batch`): servono alle metriche di qualità (src/ingest/quality.ts).
+   */
+  private async distill (text: string): Promise<(Distilled['memories'][number] & { rank: number, batch: number })[]> {
+    const max = (await this.deps.maxMemories?.()) ?? 5
     const out = await this.deps.llm!.run({
-      name: 'distill', system: distillSystem(await this.deps.language()), input: text, schema: Distilled, model: this.deps.models().distill
+      name: 'distill', system: distillSystem(await this.deps.language(), max), input: text, schema: Distilled, model: this.deps.models().distill
     })
-    return out.memories
+    const batch = out.memories.length
+    return out.memories.slice(0, max).map((m, i) => ({ ...m, rank: i + 1, batch }))
   }
 }
 

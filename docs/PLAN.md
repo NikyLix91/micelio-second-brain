@@ -301,6 +301,22 @@ Richiesta dell'utente (2026-10-18): un meccanismo di sicurezza, nel backend e co
 
 ---
 
+## Fase 10 — Limite dei ricordi distillati ✅ (branch `feature/limite-distillazione`)
+
+Richiesta dell'utente (2026-10-18):
+- il numero di ricordi per distillazione diventa un'impostazione di team scelta dall'admin, con default 5;
+- si alza solo **con metriche di qualità precise**.
+
+Il motivo del limite non è il costo (con la CLI dell'abbonamento le chiamate non si pagano una a una) ma il rumore.
+
+| # | Attività | Stato |
+|---|---|---|
+| 10.1 | `distill.maxMemories` (team, solo admin, 1–20, validato): nel prompt e fatto rispettare dalla pipeline; ogni ricordo distillato porta `source.rank` (posizione) e `source.batch` (proposti dal modello) | ✅ |
+| 10.2 | Metriche (`src/ingest/quality.ts`): per fascia di posizione, ricordi utili, votati inutili, fusi o archiviati, mai usati, punteggio; saturazione del limite; indicazione (alzare, tenere, abbassare, dati insufficienti) con soglie dichiarate. Solo ricordi con più di 3 giorni | ✅ |
+| 10.3 | UI (pagina Team: impostazione e scheda «Qualità della distillazione»), API `GET /api/distill/quality`, CLI `micelio quality`, test, documentazione | ✅ |
+
+---
+
 ## Registro
 
 | Data | Evento |
@@ -326,3 +342,4 @@ Richiesta dell'utente (2026-10-18): un meccanismo di sicurezza, nel backend e co
 | 2026-10-18 | Rete configurabile dalla UI e spazio occupato per membro (7.12), su richiesta. Verificati con test d'integrazione (cambio di DHT a caldo fra due nodi, quote che sommano al 100%) e catture dell'app |
 | 2026-10-18 | Fase 8 completata sul branch `feature/radici`: Radici (sapere fondante mai dimenticato), revisione manuale, suggerimenti, cartelle di Radici, diagrammi, vista e marcatura grafica. Trovato con le catture e corretto un conflitto di rotte (`roots/review` preso per un id) |
 | 2026-10-18 | Fase 9 completata sul branch `feature/sicurezza-segreti`. Trovati e corretti due difetti: redazione non idempotente (i segnaposto venivano riconosciuti di nuovo come segreti) e riassunto git vuoto sul primo commit di un repository |
+| 2026-10-18 | Fase 10 completata sul branch `feature/limite-distillazione`: limite dei ricordi distillati scelto dall'admin, metriche di qualità per posizione e indicazione sul limite |
