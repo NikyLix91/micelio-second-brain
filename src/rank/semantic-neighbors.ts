@@ -21,26 +21,76 @@ interface Neighbor { id: string, score: number }
 
 export class SemanticNeighbors {
   private lists = new Map<string, Neighbor[]>()
+  /** Liste cambiate dall'ultimo salvataggio (vedi takeDirty). */
+  private dirty = new Set<string>()
   /** Modello con cui sono state calcolate le liste ('' = mai). */
   model = ''
+  /** true mentre è in corso un ricalcolo completo (rebuildAsync). */
+  rebuilding = false
 
   /** @param k vicini tenuti per ricordo */
   constructor (private readonly k = 2) {}
 
-  /** Calcolo completo: ogni ricordo contro tutti gli altri. */
+  /** Calcolo completo: ogni ricordo contro tutti gli altri. Sincrono: per i test e i team piccoli. */
   rebuild (vectors: Map<string, Float32Array>, min: number, model: string): void {
     this.lists.clear()
     this.model = model
     const entries = [...vectors]
-    for (let i = 0; i < entries.length; i++) {
-      for (let j = i + 1; j < entries.length; j++) {
-        const s = cosine(entries[i][1], entries[j][1])
-        if (s >= min) {
-          this.offer(entries[i][0], entries[j][0], s)
-          this.offer(entries[j][0], entries[i][0], s)
-        }
+    for (const [id] of entries) this.lists.set(id, [])
+    for (let i = 0; i < entries.length; i++) this.compareWithFollowing(entries, i, min)
+    this.dirty = new Set(this.lists.keys())
+  }
+
+  /**
+   * Calcolo completo A BLOCCHI: tra un blocco e l'altro restituisce il controllo, così il daemon
+   * continua a rispondere (con 5 000 ricordi il calcolo dura secondi). Le liste nuove sostituiscono
+   * le vecchie solo alla fine.
+   */
+  async rebuildAsync (vectors: Map<string, Float32Array>, min: number, model: string, rowsPerSlice = 200): Promise<void> {
+    this.rebuilding = true
+    try {
+      const fresh = new SemanticNeighbors(this.k)
+      const entries = [...vectors]
+      // Una lista (anche vuota) per ogni ricordo: quelle salvate coprono così tutti i ricordi
+      for (const [id] of entries) fresh.lists.set(id, [])
+      for (let i = 0; i < entries.length; i++) {
+        fresh.compareWithFollowing(entries, i, min)
+        if (i % rowsPerSlice === rowsPerSlice - 1) await new Promise((r) => setImmediate(r))
+      }
+      this.lists = fresh.lists
+      this.model = model
+      this.dirty = new Set(this.lists.keys())
+    } finally {
+      this.rebuilding = false
+    }
+  }
+
+  /** Confronta il ricordo i con quelli che lo seguono (ogni coppia una volta sola). */
+  private compareWithFollowing (entries: [string, Float32Array][], i: number, min: number): void {
+    for (let j = i + 1; j < entries.length; j++) {
+      const s = cosine(entries[i][1], entries[j][1])
+      if (s >= min) {
+        this.offer(entries[i][0], entries[j][0], s)
+        this.offer(entries[j][0], entries[i][0], s)
       }
     }
+  }
+
+  /** Riprende liste salvate (all'avvio): nessun calcolo. */
+  load (model: string, lists: Map<string, Neighbor[]>): void {
+    this.lists = lists
+    this.model = model
+    this.dirty.clear()
+  }
+
+  /** Numero di ricordi con una lista. */
+  get size (): number { return this.lists.size }
+
+  /** Le liste cambiate dall'ultima chiamata, da salvare su disco. */
+  takeDirty (): [string, Neighbor[]][] {
+    const out = [...this.dirty].flatMap((id) => (this.lists.has(id) ? [[id, this.lists.get(id)!] as [string, Neighbor[]]] : []))
+    this.dirty.clear()
+    return out
   }
 
   /**
@@ -52,6 +102,7 @@ export class SemanticNeighbors {
       const v = vectors.get(id)
       if (!v) continue
       this.lists.set(id, [])
+      this.dirty.add(id)
       for (const [other, w] of vectors) {
         if (other === id) continue
         const s = cosine(v, w)
@@ -74,6 +125,7 @@ export class SemanticNeighbors {
     list.sort((a, b) => b.score - a.score)
     if (list.length > this.k) list.length = this.k
     this.lists.set(from, list)
+    this.dirty.add(from)
   }
 
   /**

@@ -48,6 +48,9 @@ CREATE TABLE IF NOT EXISTS members (key TEXT PRIMARY KEY, name TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS vectors (id TEXT PRIMARY KEY, model TEXT NOT NULL, vec BLOB NOT NULL);
 -- Fase 5: segnali di priorità del team, copiati dalla vista a ogni ricostruzione.
 CREATE TABLE IF NOT EXISTS signals (id TEXT PRIMARY KEY, uses INTEGER NOT NULL, last_used INTEGER, votes INTEGER NOT NULL, pinned INTEGER NOT NULL);
+-- Vicini per significato di ogni ricordo (src/rank/semantic-neighbors.ts): salvati man mano, così
+-- all'avvio si rileggono invece di ricalcolarli (con 5 000 ricordi il calcolo completo costa secondi).
+CREATE TABLE IF NOT EXISTS neighbors (id TEXT PRIMARY KEY, model TEXT NOT NULL, list TEXT NOT NULL);
 `
 
 /**
@@ -58,6 +61,16 @@ const BM25_WEIGHTS = '3.0, 1.0, 2.0'
 
 export class MemoryIndex {
   private db: DatabaseSync
+  /**
+   * Firma dei segnali di ogni ricordo nell'indice ("usi|ultimo uso|voti|pin"), per riscrivere solo
+   * quelli cambiati. null = non ancora letta dal database (prima chiamata di rebuild).
+   */
+  private signalSig: Map<string, string> | null = null
+  /**
+   * Vettori in memoria per modello: si leggono dal database una volta sola e poi si aggiornano con
+   * setVectors e con le rimozioni. Prima ogni ricerca per significato rileggeva tutti i vettori.
+   */
+  private vecCache: { model: string, map: Map<string, Float32Array> } | null = null
 
   /** @param file percorso del database, oppure ':memory:' (test) */
   constructor (file: string) {
@@ -71,39 +84,73 @@ export class MemoryIndex {
   }
 
   /**
-   * Sostituisce l'intero contenuto dell'indice con lo stato attuale della vista.
+   * Porta l'indice allo stato attuale della vista, in modo INCREMENTALE.
    *
-   * Ricostruzione completa in una transazione: semplice e sempre corretta, anche quando Autobase
-   * riordina la storia. Con qualche migliaio di ricordi costa decine di millisecondi; un
-   * aggiornamento incrementale è previsto in Fase 5.
+   * L'id di un ricordo è l'hash del suo contenuto (memoryId): uno stesso id non cambia mai. Basta
+   * quindi inserire i ricordi nuovi e togliere quelli usciti (archiviati, sostituiti, redatti),
+   * più i segnali cambiati. Prima si cancellava e reinseriva tutto, indice testuale compreso: con
+   * 4 000 ricordi circa 300 ms a ogni scrittura; ora il costo dipende da quanto è cambiato.
+   * Tutto in una transazione: o l'aggiornamento riesce intero o non cambia nulla.
    */
   rebuild (memories: MemoryRecord[], members: MemberRecord[], signals?: Signals): void {
     this.db.exec('BEGIN')
     try {
-      // 'delete-all' è il comando FTS5 per svuotare un indice external-content.
-      this.db.exec("DELETE FROM memories; DELETE FROM members; INSERT INTO memories_fts(memories_fts) VALUES('delete-all');")
+      const present = new Set((this.db.prepare('SELECT id FROM memories').all() as any[]).map((r) => r.id as string))
+      const wanted = new Set(memories.map((m) => m.id))
+
+      // Ricordi usciti: prima dall'indice testuale (external content: serve il testo vecchio), poi dai dati
+      const removed = [...present].filter((id) => !wanted.has(id))
+      if (removed.length) {
+        const old = this.db.prepare('SELECT rowid, title, body, tags FROM memories WHERE id = ?')
+        const delF = this.db.prepare("INSERT INTO memories_fts (memories_fts, rowid, title, body, tags) VALUES ('delete', ?, ?, ?, ?)")
+        const delM = this.db.prepare('DELETE FROM memories WHERE id = ?')
+        const delS = this.db.prepare('DELETE FROM signals WHERE id = ?')
+        const delV = this.db.prepare('DELETE FROM vectors WHERE id = ?')
+        for (const id of removed) {
+          const r = old.get(id) as any
+          if (r) delF.run(r.rowid, r.title, r.body, r.tags)
+          delM.run(id); delS.run(id); delV.run(id)
+          this.db.prepare('DELETE FROM neighbors WHERE id = ?').run(id)
+          this.signalSig?.delete(id)
+          this.vecCache?.map.delete(id)
+        }
+      }
+
+      // Ricordi nuovi
       const insM = this.db.prepare('INSERT INTO memories (id, kind, title, body, tags, author, ts, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
       const insF = this.db.prepare('INSERT INTO memories_fts (rowid, title, body, tags) VALUES (?, ?, ?, ?)')
       for (const m of memories) {
+        if (present.has(m.id)) continue
         const tags = m.tags.join(' ')
         const { lastInsertRowid } = insM.run(m.id, m.kind, m.title, m.body, tags, m.author, m.ts, JSON.stringify(m.source ?? {}))
         // Stesso rowid nella tabella dati e nell'indice: è così che FTS5 ritrova il record.
         insF.run(lastInsertRowid, m.title, m.body, tags)
       }
+
+      // Membri: pochi, si riscrivono sempre
+      this.db.exec('DELETE FROM members')
       const insU = this.db.prepare('INSERT INTO members (key, name) VALUES (?, ?)')
       for (const u of members) insU.run(u.key, u.name)
-      // Segnali di priorità (Fase 5)
-      this.db.exec('DELETE FROM signals')
-      const insS = this.db.prepare('INSERT INTO signals (id, uses, last_used, votes, pinned) VALUES (?, ?, ?, ?, ?)')
+
+      // Segnali di priorità (Fase 5): solo quelli cambiati
+      if (!this.signalSig) {
+        this.signalSig = new Map((this.db.prepare('SELECT id, uses, last_used, votes, pinned FROM signals').all() as any[])
+          .map((r) => [r.id as string, `${r.uses}|${r.last_used ?? ''}|${r.votes}|${r.pinned}`]))
+      }
+      const upS = this.db.prepare('INSERT OR REPLACE INTO signals (id, uses, last_used, votes, pinned) VALUES (?, ?, ?, ?, ?)')
       for (const m of memories) {
         const u = signals?.usage.get(m.id)
-        insS.run(m.id, u?.count ?? 0, u?.last ?? null, signals?.votes.get(m.id) ?? 0, signals?.pins.has(m.id) ? 1 : 0)
+        const row = [u?.count ?? 0, u?.last ?? null, signals?.votes.get(m.id) ?? 0, signals?.pins.has(m.id) ? 1 : 0] as const
+        const sig = `${row[0]}|${row[1] ?? ''}|${row[2]}|${row[3]}`
+        if (this.signalSig.get(m.id) === sig) continue
+        upS.run(m.id, ...row)
+        this.signalSig.set(m.id, sig)
       }
-      // Vettori di ricordi non più presenti
-      this.db.exec('DELETE FROM vectors WHERE id NOT IN (SELECT id FROM memories)')
       this.db.exec('COMMIT')
     } catch (err) {
       this.db.exec('ROLLBACK')
+      // Firma dei segnali non più affidabile: alla prossima chiamata si rilegge dal database
+      this.signalSig = null
       throw err
     }
   }
@@ -157,16 +204,47 @@ export class MemoryIndex {
   setVectors (model: string, items: { id: string, vec: Float32Array }[]): void {
     const ins = this.db.prepare('INSERT INTO vectors (id, model, vec) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET model = excluded.model, vec = excluded.vec')
     for (const { id, vec } of items) ins.run(id, model, Buffer.from(vec.buffer, vec.byteOffset, vec.byteLength))
+    // Cache dei vettori: aggiornata, o scartata se era di un altro modello
+    if (this.vecCache?.model === model) for (const { id, vec } of items) this.vecCache.map.set(id, vec)
+    else this.vecCache = null
   }
 
   /** Tutti i vettori di un modello (per la ricerca semantica e i collegamenti). */
+  /**
+   * Vettori di tutti i ricordi per un modello. Restituisce una COPIA della mappa (chi la riceve
+   * può togliere voci, es. i personali), ma i vettori sono condivisi: non vanno modificati.
+   */
   vectors (model: string): Map<string, Float32Array> {
-    const out = new Map<string, Float32Array>()
-    for (const r of this.db.prepare('SELECT id, vec FROM vectors WHERE model = ?').all(model) as any[]) {
-      const b = r.vec as Uint8Array
-      out.set(r.id, new Float32Array(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength)))
+    if (this.vecCache?.model !== model) {
+      const map = new Map<string, Float32Array>()
+      for (const r of this.db.prepare('SELECT id, vec FROM vectors WHERE model = ?').all(model) as any[]) {
+        const b = r.vec as Uint8Array
+        map.set(r.id, new Float32Array(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength)))
+      }
+      this.vecCache = { model, map }
     }
+    return new Map(this.vecCache.map)
+  }
+
+  /** Vicini per significato salvati, per un modello: id → [{ id, score }]. */
+  neighbors (model: string): Map<string, { id: string, score: number }[]> {
+    const out = new Map<string, { id: string, score: number }[]>()
+    for (const r of this.db.prepare('SELECT id, list FROM neighbors WHERE model = ?').all(model) as any[]) out.set(r.id, JSON.parse(r.list))
     return out
+  }
+
+  /** Salva le liste di vicini cambiate (e, con `replaceAll`, cancella prima tutte le altre). */
+  saveNeighbors (model: string, entries: [string, { id: string, score: number }[]][], replaceAll = false): void {
+    this.db.exec('BEGIN')
+    try {
+      if (replaceAll) this.db.exec('DELETE FROM neighbors')
+      const up = this.db.prepare('INSERT OR REPLACE INTO neighbors (id, model, list) VALUES (?, ?, ?)')
+      for (const [id, list] of entries) up.run(id, model, JSON.stringify(list))
+      this.db.exec('COMMIT')
+    } catch (err) {
+      this.db.exec('ROLLBACK')
+      throw err
+    }
   }
 
   // ═══════════════════════════════ Fase 5: segnali ═══════════════════════════════
