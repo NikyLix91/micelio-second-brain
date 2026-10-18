@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { api } from '../api/client'
 import { Card, ConfirmButton, Empty, ErrorBox, PageHeader } from '../components/ui'
+import { HelpButton } from '../help'
 import { defineStrings, useStrings } from '../i18n'
 
 const S = defineStrings({
@@ -47,8 +48,13 @@ const S = defineStrings({
     watch: {
       title: 'Raccolta automatica dalle sessioni di Claude Code',
       intro: 'Solo le sessioni avviate in queste cartelle (e sottocartelle) vengono elaborate. Tutto passa comunque dal filtro privacy.',
+      teamNote: 'Le cartelle valgono per il team scelto nella barra laterale: le sessioni di una cartella vanno solo a questo team (una cartella appartiene a un solo team).',
       empty: 'Nessuna cartella abilitata.',
-      enable: 'Abilita'
+      enable: 'Abilita',
+      link: 'Collega Claude Code',
+      linkConfirm: 'Sì, collega a questo team',
+      linkTitle: 'Claude Code avviato in questa cartella userà questo team (registrazione MCP solo per la cartella)',
+      linked: (url: string) => `Fatto: Claude Code avviato in questa cartella userà ${url}`
     },
     docs: {
       title: 'Cartelle di documenti',
@@ -69,6 +75,7 @@ const S = defineStrings({
     },
     llm: {
       title: 'Intelligenza (LLM)',
+      shared: 'Valgono per tutti i team di questo PC: un solo abbonamento, una chiamata a Claude alla volta, un solo limite giornaliero.',
       inUse: (a: string) => `LLM in uso: ${a}`,
       command: (c: string) => ` (comando: ${c})`,
       adapter: {
@@ -136,8 +143,13 @@ const S = defineStrings({
     watch: {
       title: 'Automatic collection from Claude Code sessions',
       intro: 'Only sessions started in these folders (and subfolders) are processed. Everything still goes through the privacy filter.',
+      teamNote: 'Folders belong to the team chosen in the sidebar: the sessions of a folder go to this team only (a folder belongs to one team only).',
       empty: 'No folder enabled.',
-      enable: 'Enable'
+      enable: 'Enable',
+      link: 'Connect Claude Code',
+      linkConfirm: 'Yes, connect to this team',
+      linkTitle: 'Claude Code started in this folder will use this team (MCP registration for this folder only)',
+      linked: (url: string) => `Done: Claude Code started in this folder will use ${url}`
     },
     docs: {
       title: 'Document folders',
@@ -158,6 +170,7 @@ const S = defineStrings({
     },
     llm: {
       title: 'Intelligence (LLM)',
+      shared: 'They apply to all the teams on this PC: one subscription, one call to Claude at a time, one daily limit.',
       inUse: (a: string) => `LLM in use: ${a}`,
       command: (c: string) => ` (command: ${c})`,
       adapter: {
@@ -306,6 +319,8 @@ function WatchCard () {
   const refresh = () => void client.invalidateQueries({ queryKey: ['settings'] })
   const add = useMutation({ mutationFn: (p: string) => api.watchAdd(p), onSuccess: () => { setPath(''); refresh() } })
   const remove = useMutation({ mutationFn: (p: string) => api.watchRemove(p), onSuccess: refresh })
+  // B3: Claude Code avviato nella cartella parla con QUESTO team (MCP in ambito "local")
+  const link = useMutation({ mutationFn: (p: string) => api.setupProject(p) })
 
   /** Nell'app desktop usiamo il selettore di cartelle del sistema; nel browser si scrive il percorso. */
   const pick = async () => {
@@ -316,13 +331,18 @@ function WatchCard () {
   return (
     <Card help='settings#watch' title={s.watch.title}>
       <p className='muted' style={{ marginTop: 0 }}>{s.watch.intro}</p>
+      <p className='muted small'>{s.watch.teamNote} <HelpButton topic='teams#folders' /></p>
       {settings.data?.watched.length === 0 && <Empty>{s.watch.empty}</Empty>}
       <div className='list'>
         {settings.data?.watched.map((w) => (
           <div key={w} className='list-item row'>
             <span className='mono small' style={{ overflowWrap: 'anywhere' }}>{w}</span>
             <span className='spacer' />
-            <button className='btn small' onClick={() => remove.mutate(w)}>{s.remove}</button>
+            {/* I pulsanti restano insieme anche con percorsi lunghi */}
+            <span className='row' style={{ flexShrink: 0, flexWrap: 'nowrap' }}>
+              <span title={s.watch.linkTitle}><ConfirmButton label={s.watch.link} confirmLabel={s.watch.linkConfirm} disabled={link.isPending} onConfirm={() => link.mutate(w)} /></span>
+              <button className='btn small' onClick={() => remove.mutate(w)}>{s.remove}</button>
+            </span>
           </div>
         ))}
       </div>
@@ -331,7 +351,8 @@ function WatchCard () {
         <input style={{ flex: 1 }} value={path} onChange={(e) => setPath(e.target.value)} placeholder='C:\progetti\ordini' />
         <button className='btn primary' disabled={!path.trim() || add.isPending} onClick={() => add.mutate(path.trim())}>{s.watch.enable}</button>
       </div>
-      <ErrorBox error={add.error ?? remove.error} />
+      <ErrorBox error={add.error ?? remove.error ?? link.error} />
+      {link.data && <div className='notice ok small' style={{ marginTop: 10 }}>{s.watch.linked(link.data.mcpUrl)}</div>}
     </Card>
   )
 }
@@ -456,6 +477,7 @@ function LlmCard () {
 
   return (
     <Card help='settings#llm' title={t.title}>
+      <p className='muted small' style={{ marginTop: 0 }}>{t.shared}</p>
       <div className={`notice small ${llm.adapter === 'fake' ? 'warn' : ''}`} style={{ marginBottom: 10 }}>
         <strong>{t.inUse(llm.adapter)}</strong>{llm.adapter === 'claude' ? t.command(llm.command) : ''}. {t.adapter[llm.adapter] ?? ''}
         {' '}{t.change1} <code>llm.adapter</code> {t.change2} <code>config.json</code> {t.change3}

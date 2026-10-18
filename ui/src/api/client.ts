@@ -15,12 +15,17 @@ import type { Graph, GraphLink, GraphNode } from '../../../src/graph/constellati
 import type { IngestStatus, NetworkSettings, NodeSettings, RootReviewResult, RootView, SecurityFinding, SecurityRules, SecurityTestResult, StorageReport } from '../../../src/node/micelio-node'
 import type { NetworkCheck } from '../../../src/net/diagnose'
 import type { Decision, InboxItem, SecurityLogEntry } from '../../../src/store/private-store'
+import type { TeamSummary } from '../../../src/node/micelio-host'
 import { getToken } from './auth'
+import { TEAM_HEADER, teamHeaders } from './team'
 import { currentLang } from '../i18n'
 
 export type { DistillQuality, Graph, GraphLink, GraphNode }
 export type { NetworkCheck, NetworkSettings, RootReviewResult, RootView, SecurityFinding, SecurityLogEntry, SecurityRules, SecurityTestResult, StorageReport }
-export type { CodeRefs, Decision, ExplicitOutcome, InboxItem, IngestStatus, InviteRecord, MemberRecord, MemoryData, NodeSettings, NodeStatus, RecallHit }
+export type { CodeRefs, Decision, ExplicitOutcome, InboxItem, IngestStatus, InviteRecord, MemberRecord, MemoryData, NodeSettings, NodeStatus, RecallHit, TeamSummary }
+
+/** Elenco dei team del PC e identità personale (GET /api/teams, B3). */
+export interface TeamsInfo { teams: TeamSummary[], identity: { name: string, publicKey: string } | null }
 
 /** Errore dell'API con il messaggio leggibile restituito dal daemon. */
 export class ApiError extends Error {
@@ -28,16 +33,18 @@ export class ApiError extends Error {
 }
 
 /**
- * Chiamata generica all'API con il token.
+ * Chiamata generica all'API con il token, sul team scelto nel selettore (B3, vedi api/team.ts).
+ * @param team team diverso da quello scelto (es. i membri degli altri team nella pagina Team)
  * @throws ApiError con il messaggio `{ error }` del daemon (es. "Operazione riservata agli admin")
  */
-export async function call<T> (method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown): Promise<T> {
+export async function call<T> (method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown, team?: string): Promise<T> {
   const res = await fetch(path, {
     method,
     headers: {
       authorization: `Bearer ${getToken() ?? ''}`,
       // Lingua dei messaggi d'errore del daemon (vedi src/daemon/error.filter.ts)
       'x-micelio-lang': currentLang(),
+      ...(team ? { [TEAM_HEADER]: team } : teamHeaders()),
       ...(body !== undefined ? { 'content-type': 'application/json' } : {})
     },
     body: body !== undefined ? JSON.stringify(body) : undefined
@@ -63,8 +70,18 @@ const enc = encodeURIComponent
 export const api = {
   // Nodo e team
   status: () => call<NodeStatus>('GET', '/api/status'),
-  init: (team: string, name: string) => call<NodeStatus>('POST', '/api/team/init', { team, name }),
-  join: (code: string, name: string) => call<NodeStatus>('POST', '/api/team/join', { code, name }),
+  // Nome facoltativo dal secondo team in poi: il daemon usa quello dell'identità personale (B3)
+  init: (team: string, name?: string) => call<NodeStatus & { teamId: string }>('POST', '/api/team/init', { team, name: name || undefined }),
+  join: (code: string, name?: string) => call<NodeStatus & { teamId: string }>('POST', '/api/team/join', { code, name: name || undefined }),
+
+  // Più team sullo stesso PC (B3)
+  teams: () => call<TeamsInfo>('GET', '/api/teams'),
+  setDefaultTeam: (id: string) => call<TeamSummary[]>('POST', `/api/teams/${enc(id)}/default`),
+  leaveTeam: (id: string) => call<TeamSummary[]>('DELETE', `/api/teams/${enc(id)}`),
+  /** Membri di un team qualsiasi del PC (per riconoscere la stessa persona in più team). */
+  membersOf: (team: string) => call<MemberRecord[]>('GET', '/api/members', undefined, team),
+  /** Collega Claude Code avviato in una cartella al team scelto (MCP in ambito "local"). */
+  setupProject: (path: string) => call<{ dir: string, mcpUrl: string }>('POST', '/api/setup/project', { path }),
   teamConfig: () => call<{ language: string, blockKeywords: string[], maxMemories: number }>('GET', '/api/team/config'),
   distillQuality: () => call<DistillQuality>('GET', '/api/distill/quality'),
   setTeamConfig: (key: string, value: unknown) => call<{ ok: true }>('POST', '/api/team/config', { key, value }),

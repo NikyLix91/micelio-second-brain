@@ -18,13 +18,15 @@ import { Command } from 'commander'
 import { formatCodeRefs } from '../core/code-refs'
 import { MEMORY_KINDS, ROOT_CATEGORIES } from '../core/events'
 import type { MemberRecord, NodeStatus, RecallHit } from '../core/model'
-import { nodePaths, type NodePaths } from '../core/paths'
+import { loadIdentity } from '../core/identity'
+import { hostFiles, nodePaths, type NodePaths, teamPaths } from '../core/paths'
 import type { ExplicitOutcome } from '../ingest/pipeline'
 import type { DistillQuality } from '../ingest/quality'
 import { checkNetwork } from '../net/diagnose'
 import { autostartOff, autostartOn, autostartStatus } from '../node/autostart'
 import { BOOTSTRAP_RE, dhtBootstrap, loadConfig, networkMode, updateConfig } from '../node/config'
 import { claudeSettingsFile, hookCommand, IntegrationError, mcpAddArgs, setupClaudeCode } from '../node/integrations'
+import type { TeamSummary } from '../node/micelio-host'
 import type { IngestStatus, NetworkSettings, RootReviewResult, RootView, SecurityFinding, SecurityRules, SecurityTestResult } from '../node/micelio-node'
 import type { SecurityLogEntry } from '../store/private-store'
 import type { Decision, InboxItem } from '../store/private-store'
@@ -35,6 +37,7 @@ const program = new Command()
   .description('Secondo cervello distribuito peer-to-peer per il team di sviluppo')
   .version('0.2.0')
   .option('--home <dir>', 'cartella dati del nodo (default ~/.micelio o $MICELIO_HOME)')
+  .option('--team <team>', 'team su cui lavorare, per id o nome (default: il team predefinito, vedi `micelio teams`)')
 
 // ═══════════════════════════════ Utilità ═══════════════════════════════
 
@@ -44,7 +47,24 @@ function paths (): NodePaths {
   if (home) process.env.MICELIO_HOME = path.resolve(home)
   return nodePaths()
 }
-const client = () => new DaemonClient(paths())
+const client = () => new DaemonClient(paths(), program.opts().team as string | undefined)
+
+/**
+ * Percorsi del team da usare quando il daemon è spento (es. `micelio network set`): con più
+ * team (B3) le impostazioni di rete stanno in `teams/<id>/settings.json`. A daemon spento i nomi
+ * dei team non si possono leggere (stanno nel log cifrato): `--team` accetta solo l'id.
+ */
+function offlinePaths (): NodePaths {
+  const root = paths()
+  const dir = hostFiles(root).teams
+  const ids = fs.existsSync(dir) ? fs.readdirSync(dir).filter((id) => fs.existsSync(path.join(dir, id, 'state.json'))) : []
+  // Struttura a un team non ancora migrata (o nessun team): tutto in config.json
+  if (!ids.length) return root
+  const want = (program.opts().team as string | undefined) ?? loadConfig(root).defaultTeam ?? ids[0]
+  const id = ids.find((i) => i.startsWith(want))
+  if (!id) throw new DaemonError(`Team "${want}" non trovato. A daemon spento indica l'id del team (lo mostra \`micelio teams\` con il daemon attivo).`)
+  return teamPaths(root, id)
+}
 
 /** Prime 12 cifre di una chiave: abbastanza per riconoscerla, abbastanza corte da leggere. */
 const short = (k: string | null | undefined) => (k ? k.slice(0, 12) : '-')
@@ -205,7 +225,7 @@ async function applyNetwork (mode: 'public' | 'private', bootstrap?: string[]): 
   if (process.env.MICELIO_DHT_BOOTSTRAP) throw new DaemonError('La rete è fissata dalla variabile MICELIO_DHT_BOOTSTRAP: toglila per sceglierla')
   const bad = bootstrap?.find((b) => !BOOTSTRAP_RE.test(b))
   if (bad) throw new DaemonError(`Nodo di avvio non valido: ${bad} (formato host:porta)`)
-  const cfg = updateConfig(paths(), (c) => {
+  const cfg = updateConfig(offlinePaths(), (c) => {
     c.network.mode = mode
     if (bootstrap) c.network.bootstrap = bootstrap
   })
@@ -217,7 +237,7 @@ async function applyNetwork (mode: 'public' | 'private', bootstrap?: string[]): 
 network.command('show', { isDefault: true })
   .description('DHT in uso e nodi di avvio salvati')
   .action(() => {
-    const cfg = loadConfig(paths())
+    const cfg = loadConfig(offlinePaths())
     const env = process.env.MICELIO_DHT_BOOTSTRAP
     const saved = cfg.network.bootstrap.length ? cfg.network.bootstrap.join(', ') : 'nessuno'
     if (env) console.log(`DHT da MICELIO_DHT_BOOTSTRAP: ${env} (prevale su config.json)`)
@@ -241,7 +261,7 @@ network.command('public')
 network.command('check')
   .description('diagnosi: il PC entra nella DHT? con quale IP pubblico? che tipo di NAT?')
   .action(async () => {
-    const r = await checkNetwork(dhtBootstrap(loadConfig(paths())))
+    const r = await checkNetwork(dhtBootstrap(loadConfig(offlinePaths())))
     console.log(`DHT:            ${r.dht}`)
     console.log(`Raggiungibile:  ${r.reachable ? `sì (${r.nodes} nodi, ${r.ms} ms)` : 'NO'}`)
     console.log(`IP pubblico:    ${r.publicHost ?? 'non determinato'}`)
@@ -259,21 +279,75 @@ network.command('check')
 
 // ═══════════════════════════════ Team ═══════════════════════════════
 
+/**
+ * Nome con cui presentarsi a un team: quello indicato, altrimenti quello dell'identità personale
+ * (B3: la stessa persona in tutti i team), altrimenti, la prima volta, il nome del PC.
+ */
+function memberName (name?: string): string | undefined {
+  if (name) return name
+  return loadIdentity(hostFiles(paths()).identity) ? undefined : os.hostname()
+}
+
 program.command('init')
-  .description('crea un nuovo team: questo nodo ne diventa fondatore e admin')
+  .description('crea un nuovo team (si aggiunge a quelli già presenti su questo PC): ne diventi fondatore e admin')
   .argument('<team>', 'nome del team')
-  .option('-n, --name <name>', 'nome di questo nodo', os.hostname())
-  .action(async (team: string, o: { name: string }) => {
-    printStatus(await client().call('POST', '/api/team/init', { team, name: o.name }))
+  .option('-n, --name <name>', 'il tuo nome nel team (default: quello della tua identità, la prima volta il nome del PC)')
+  .action(async (team: string, o: { name?: string }) => {
+    const s = await client().call<NodeStatus & { teamId: string }>('POST', '/api/team/init', { team, name: memberName(o.name) })
+    printStatus(s)
+    console.log(`Id del team: ${s.teamId}  (micelio --team ${s.teamId} …)`)
   })
 
 program.command('join')
-  .description('entra in un team con un codice d\'invito')
+  .description('entra in un team con un codice d\'invito (si aggiunge a quelli già presenti su questo PC)')
   .argument('<code>', 'codice d\'invito')
-  .option('-n, --name <name>', 'nome di questo nodo', os.hostname())
-  .action(async (code: string, o: { name: string }) => {
+  .option('-n, --name <name>', 'il tuo nome nel team (default: quello della tua identità, la prima volta il nome del PC)')
+  .action(async (code: string, o: { name?: string }) => {
     console.log('In attesa che un membro del team accolga la richiesta...')
-    printStatus(await client().call('POST', '/api/team/join', { code, name: o.name }))
+    const s = await client().call<NodeStatus & { teamId: string }>('POST', '/api/team/join', { code, name: memberName(o.name) })
+    printStatus(s)
+    console.log(`Id del team: ${s.teamId}  (micelio --team ${s.teamId} …)`)
+  })
+
+// ═══════════════════════════════ Più team (B3) ═══════════════════════════════
+
+const teams = program.command('teams').description('i team di questo PC: elenco, predefinito, uscita (list | default | leave)')
+
+teams.command('list', { isDefault: true })
+  .description('i team di questo PC e la tua identità personale')
+  .option('--json', 'output JSON (per script)')
+  .action(async (o: { json?: boolean }) => {
+    const r = await client().call<{ teams: TeamSummary[], identity: { name: string, publicKey: string } | null }>('GET', '/api/teams')
+    if (o.json) return console.log(JSON.stringify(r, null, 2))
+    if (!r.teams.length) return console.log('Nessun team. Creane uno con `micelio init <nome-team>` o entra con `micelio join <codice>`.')
+    for (const t of r.teams) {
+      console.log(`${t.isDefault ? '★' : ' '} ${t.id}  ${t.name ?? '(in sincronizzazione)'}  · ${t.role ?? '-'} · ${t.members} membri · ${t.memories} ricordi · ${t.peers} peer`)
+    }
+    if (r.identity) console.log(`\nTu: ${r.identity.name} (identità ${short(r.identity.publicKey)}, uguale in tutti i team)`)
+    console.log('★ = team predefinito. Per un altro team: micelio --team <id o nome> <comando>')
+  })
+
+teams.command('default')
+  .description('sceglie il team predefinito (usato quando non indichi --team)')
+  .argument('<team>', 'id o nome del team')
+  .action(async (team: string) => {
+    const list = await client().call<TeamSummary[]>('POST', `/api/teams/${encodeURIComponent(team)}/default`)
+    console.log(`Team predefinito: ${list.find((t) => t.isDefault)?.name ?? team}`)
+  })
+
+teams.command('leave')
+  .description('toglie un team da QUESTO PC cancellandone i dati locali (il team resta sui PC dei colleghi)')
+  .argument('<team>', 'id o nome del team')
+  .option('--yes', 'conferma: senza, il comando spiega cosa farebbe e si ferma')
+  .action(async (team: string, o: { yes?: boolean }) => {
+    if (!o.yes) {
+      console.log(`Questo cancella da questo PC il log, l'indice, l'inbox e le impostazioni del team "${team}".`)
+      console.log('Il team continua a esistere sui PC dei colleghi; per rientrare servirà un nuovo invito.')
+      console.log(`Per confermare: micelio teams leave ${team} --yes`)
+      return
+    }
+    const list = await client().call<TeamSummary[]>('DELETE', `/api/teams/${encodeURIComponent(team)}`)
+    console.log(`Team tolto da questo PC. Restano: ${list.map((t) => t.name).join(', ') || 'nessuno'}`)
   })
 
 program.command('invite')
@@ -574,7 +648,7 @@ program.command('get')
 
 program.command('export')
   .description('percorso dell\'export Markdown in sola lettura')
-  .action(() => console.log(paths().export))
+  .action(() => console.log(offlinePaths().export))
 
 // ═══════════════════════════════ Inbox e privato ═══════════════════════════════
 
@@ -735,7 +809,9 @@ program.command('mcp')
 function clientSnippet (target: string, home: string): string | null {
   const slash = (p: string) => p.replace(/\\/g, '/')
   const cmd = slash(process.execPath)
-  const args = [slash(__filename), '--home', slash(home), 'mcp']
+  // Con --team il client usa sempre quel team (B3), anche se il predefinito cambia
+  const team = program.opts().team as string | undefined
+  const args = [slash(__filename), '--home', slash(home), ...(team ? ['--team', team] : []), 'mcp']
   switch (target) {
     case 'codex':
       return `# ~/.codex/config.toml\n[mcp_servers.micelio]\ncommand = ${JSON.stringify(cmd)}\nargs = ${JSON.stringify(args)}\n`
@@ -754,7 +830,14 @@ program.command('setup')
   .argument('<client>', 'claude-code (configura) | codex | vscode | webstorm (stampa la configurazione da incollare)')
   .option('--print', 'mostra cosa verrebbe fatto senza modificare nulla')
   .option('--no-hook', 'non installare l\'hook di fine sessione (solo MCP)')
-  .action((target: string, o: { print?: boolean, hook: boolean }) => {
+  .option('--project <dir>', 'solo per questa cartella di progetto: Claude Code avviato lì usa il team indicato con --team (B3)')
+  .action(async (target: string, o: { print?: boolean, hook: boolean, project?: string }) => {
+    if (o.project && target === 'claude-code') {
+      // MCP del team per un solo progetto, ambito "local" di Claude Code (vedi registerProjectMcp)
+      const r = await client().call<{ dir: string, mcpUrl: string }>('POST', '/api/setup/project', { path: path.resolve(o.project) })
+      console.log(`Claude Code avviato in ${r.dir} userà il team di ${r.mcpUrl}`)
+      return
+    }
     if (target !== 'claude-code') {
       // Per gli altri client stampiamo la configurazione da incollare: i loro file di configurazione
       // cambiano spesso formato fra una versione e l'altra, meglio non modificarli alla cieca.

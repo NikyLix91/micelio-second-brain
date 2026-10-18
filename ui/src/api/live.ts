@@ -12,6 +12,7 @@
 import { type QueryClient, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { getToken } from './auth'
+import { teamHeaders, useCurrentTeam } from './team'
 
 /**
  * Quali query ricaricare per ogni argomento (ChangeTopic del daemon).
@@ -25,6 +26,8 @@ export const TOPIC_QUERIES: Record<string, string[][]> = {
   jobs: [['ingest'], ['documents']],
   decisions: [['decisions']],
   settings: [['settings'], ['ingest'], ['documents'], ['network']],
+  // Elenco dei team del PC (B3): nome, ruolo, team aggiunti o tolti
+  teams: [['teams']],
   roots: [['roots'], ['rootSuggestions']],
   security: [['security']]
 }
@@ -70,6 +73,8 @@ export function applyChange (client: QueryClient, data: string): void {
 export function useLiveEvents (): boolean {
   const client = useQueryClient()
   const [connected, setConnected] = useState(false)
+  // Lo stream riguarda il team scelto: cambiando team si chiude e si riapre (vedi le dipendenze)
+  const team = useCurrentTeam()
 
   useEffect(() => {
     let stopped = false
@@ -80,7 +85,7 @@ export function useLiveEvents (): boolean {
       while (!stopped) {
         controller = new AbortController()
         try {
-          const res = await fetch('/api/events', { headers: { authorization: `Bearer ${getToken() ?? ''}` }, signal: controller.signal })
+          const res = await fetch('/api/events', { headers: { authorization: `Bearer ${getToken() ?? ''}`, ...teamHeaders() }, signal: controller.signal })
           if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`)
           setConnected(true)
           delay = 1000
@@ -110,7 +115,7 @@ export function useLiveEvents (): boolean {
       stopped = true
       controller?.abort()
     }
-  }, [client])
+  }, [client, team])
 
   return connected
 }

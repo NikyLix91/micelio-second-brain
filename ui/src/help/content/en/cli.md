@@ -14,8 +14,10 @@ The `micelio` command does everything the app does, and a bit more. `micelio --h
 
 | Command | Effect |
 |---|---|
-| `micelio init <team> --name <pc>` | creates a team |
-| `micelio invite` · `micelio join <code> --name <pc>` | invite · join |
+| `micelio init <team>` | creates a team (added to the ones already there) |
+| `micelio invite` · `micelio join <code>` | invite · join a team |
+| `micelio teams` · `teams default <team>` · `teams leave <team>` | the teams of the PC, the default one, removing a team |
+| `micelio --team <team> <command>` | any command on a team other than the default |
 | `micelio members` | members and roles |
 | `micelio team config <key> <value>` | team setting (admin), e.g. `distill.maxMemories 8` |
 | `micelio network` · `set` · `public` · `private` · `check` | DHT in use, change, diagnosis |

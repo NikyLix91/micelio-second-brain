@@ -4,16 +4,23 @@ Tutti i dati di Micelio stanno nella cartella del nodo: `~/.micelio` (su Windows
 
 ## La cartella del nodo {#home}
 
+Nella cartella del nodo ci sono i file della **macchina** e una sottocartella per ogni **team** (`teams/<id>/`, dove `<id>` è un codice locale di 8 caratteri che non rivela nulla del team).
+
 | File / cartella | Contenuto | Formato | Replicato? |
 |---|---|---|---|
-| `config.json` | Porta, token dell'API locale, LLM, cartelle abilitate, rete | JSON | No |
-| `state.json` | Nome del nodo e **chiavi del team**, compresa quella di cifratura | JSON | No: **proteggilo come una password** |
-| `corestore/` | Il **log del team**: i feed di tutti i membri | Hypercore (file binari + RocksDB) | **Sì**, è ciò che si sincronizza |
-| `view.db` | Indice di ricerca, vettori, segnali di priorità | SQLite | No: si ricostruisce dal log |
-| `private.db` | Inbox, registro privato, coda dei lavori, budget, registro di sicurezza | SQLite | **Mai** |
-| `export/` | Copia leggibile del sapere | Markdown con frontmatter | No |
-| `sources/` | Documenti originali scaricati dai colleghi | File originali | No (cache di 30 giorni) |
+| `config.json` | Porta, token dell'API locale, LLM, modello di embedding, team predefinito | JSON | No |
+| `identity.json` | La tua **identità personale**: nome e chiavi, uguali in tutti i team | JSON | No: **proteggilo come una password** |
+| `machine.db` | Consumo giornaliero dell'LLM, condiviso da tutti i team | SQLite | No |
 | `logs/` | Log del daemon e dell'hook di Claude Code | Testo | No |
+| `teams/<id>/settings.json` | Cartelle abilitate, rete (DHT), dreaming **di quel team** | JSON | No |
+| `teams/<id>/state.json` | Nome del nodo e **chiavi del team**, compresa quella di cifratura | JSON | No: **proteggilo come una password** |
+| `teams/<id>/corestore/` | Il **log del team**: i feed di tutti i membri | Hypercore (file binari + RocksDB) | **Sì**, è ciò che si sincronizza |
+| `teams/<id>/view.db` | Indice di ricerca, vettori, segnali di priorità | SQLite | No: si ricostruisce dal log |
+| `teams/<id>/private.db` | Inbox, registro privato, coda dei lavori, registro di sicurezza | SQLite | **Mai** |
+| `teams/<id>/export/` | Copia leggibile del sapere | Markdown con frontmatter | No |
+| `teams/<id>/sources/` | Documenti originali scaricati dai colleghi | File originali | No (cache di 30 giorni) |
+
+Le versioni precedenti tenevano i file del team direttamente nella cartella del nodo: al primo avvio vengono spostati in `teams/<id>/` da soli, senza perdere nulla.
 
 ## Il log del team {#log}
 
@@ -39,4 +46,4 @@ Dagli eventi, in quell'ordine, una funzione **deterministica** (`apply`) calcola
 
 ## Cosa salvare per un backup {#backup}
 
-Il minimo indispensabile è **`state.json`** (le chiavi del team) e `config.json`. Il log (`corestore/`) si riscarica dai colleghi; `view.db` ed `export/` si ricostruiscono. `private.db` contiene la tua inbox e il registro: salvalo se ti interessano.
+Il minimo indispensabile è **`state.json`** di ogni team (le chiavi), `identity.json` e `config.json`. Il log (`corestore/`) si riscarica dai colleghi; `view.db` ed `export/` si ricostruiscono. `private.db` contiene la tua inbox e il registro: salvalo se ti interessano.

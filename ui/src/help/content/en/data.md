@@ -4,16 +4,23 @@ All Micelio data lives in the node folder: `~/.micelio` (on Windows `C:\Users\<y
 
 ## The node folder {#home}
 
+The node folder holds the files of the **machine** and one subfolder per **team** (`teams/<id>/`, where `<id>` is a local 8-character code that reveals nothing about the team).
+
 | File / folder | Content | Format | Replicated? |
 |---|---|---|---|
-| `config.json` | Port, local API token, LLM, enabled folders, network | JSON | No |
-| `state.json` | Node name and **team keys**, including the encryption key | JSON | No: **protect it like a password** |
-| `corestore/` | The **team log**: the feeds of all members | Hypercore (binary files + RocksDB) | **Yes**, this is what synchronises |
-| `view.db` | Search index, vectors, priority signals | SQLite | No: rebuilt from the log |
-| `private.db` | Inbox, private log, job queue, budget, security log | SQLite | **Never** |
-| `export/` | Readable copy of the knowledge | Markdown with frontmatter | No |
-| `sources/` | Original documents downloaded from colleagues | Original files | No (30-day cache) |
+| `config.json` | Port, local API token, LLM, embedding model, default team | JSON | No |
+| `identity.json` | Your **personal identity**: name and keys, the same in all teams | JSON | No: **protect it like a password** |
+| `machine.db` | Daily LLM usage, shared by all teams | SQLite | No |
 | `logs/` | Daemon and Claude Code hook logs | Text | No |
+| `teams/<id>/settings.json` | Enabled folders, network (DHT), dreaming **of that team** | JSON | No |
+| `teams/<id>/state.json` | Node name and **team keys**, including the encryption key | JSON | No: **protect it like a password** |
+| `teams/<id>/corestore/` | The **team log**: the feeds of all members | Hypercore (binary files + RocksDB) | **Yes**, this is what synchronises |
+| `teams/<id>/view.db` | Search index, vectors, priority signals | SQLite | No: rebuilt from the log |
+| `teams/<id>/private.db` | Inbox, private log, job queue, security log | SQLite | **Never** |
+| `teams/<id>/export/` | Readable copy of the knowledge | Markdown with frontmatter | No |
+| `teams/<id>/sources/` | Original documents downloaded from colleagues | Original files | No (30-day cache) |
+
+Earlier versions kept the team files directly in the node folder: on the first start they are moved into `teams/<id>/` automatically, with nothing lost.
 
 ## The team log {#log}
 
@@ -39,4 +46,4 @@ From the events, in that order, a **deterministic** function (`apply`) computes 
 
 ## What to back up {#backup}
 
-The bare minimum is **`state.json`** (the team keys) and `config.json`. The log (`corestore/`) can be downloaded again from colleagues; `view.db` and `export/` are rebuilt. `private.db` holds your inbox and log: back it up if you care about them.
+The bare minimum is the **`state.json`** of each team (the keys), `identity.json` and `config.json`. The log (`corestore/`) can be downloaded again from colleagues; `view.db` and `export/` are rebuilt. `private.db` holds your inbox and log: back it up if you care about them.

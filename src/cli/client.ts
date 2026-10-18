@@ -8,6 +8,9 @@
 import type { NodePaths } from '../core/paths'
 import { loadConfig, type Config } from '../node/config'
 
+/** Intestazione con cui si indica il team della richiesta (vedi src/daemon/team-context.ts). */
+const TEAM_HEADER = 'x-micelio-team'
+
 /** Errore da mostrare all'utente così com'è (senza stack trace). */
 export class DaemonError extends Error {}
 
@@ -16,15 +19,21 @@ export class DaemonClient {
   /** URL base del daemon, es. http://127.0.0.1:7337 */
   readonly baseUrl: string
 
-  constructor (paths: NodePaths) {
+  /**
+   * @param team team su cui lavorare (id o nome, opzione `--team`); assente = il predefinito
+   */
+  constructor (paths: NodePaths, readonly team?: string) {
     this.config = loadConfig(paths)
     // Un daemon in ascolto su 0.0.0.0 (container) si raggiunge comunque via 127.0.0.1.
     const host = this.config.host === '0.0.0.0' ? '127.0.0.1' : this.config.host
     this.baseUrl = `http://${host}:${this.config.port}`
   }
 
-  /** URL dell'endpoint MCP, da dare ai client AI. */
-  get mcpUrl (): string { return `${this.baseUrl}/mcp` }
+  /**
+   * URL dell'endpoint MCP, da dare ai client AI: `/mcp` (team predefinito) o, con `--team`,
+   * `/mcp/<team>` (B3).
+   */
+  get mcpUrl (): string { return `${this.baseUrl}/mcp${this.team ? '/' + encodeURIComponent(this.team) : ''}` }
 
   /** true se il daemon risponde entro 1 secondo. Non richiede il token. */
   async health (): Promise<boolean> {
@@ -46,7 +55,11 @@ export class DaemonClient {
     try {
       res = await fetch(`${this.baseUrl}${path}`, {
         method,
-        headers: { authorization: `Bearer ${this.config.token}`, ...(body !== undefined ? { 'content-type': 'application/json' } : {}) },
+        headers: {
+          authorization: `Bearer ${this.config.token}`,
+          ...(this.team ? { [TEAM_HEADER]: this.team } : {}),
+          ...(body !== undefined ? { 'content-type': 'application/json' } : {})
+        },
         body: body !== undefined ? JSON.stringify(body) : undefined,
         signal: AbortSignal.timeout(timeoutMs)
       })

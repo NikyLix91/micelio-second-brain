@@ -137,6 +137,26 @@ In **Stato** la scheda *Spazio occupato* mostra:
 
 La quota comprende tutto ciò che il membro ha scritto: ricordi, ma anche voti, uso e sogni. È la stessa su ogni PC del team, perché ogni nodo conserva tutto.
 
+## 4-ter. Più team sullo stesso PC
+
+Lo stesso PC può stare in più team (per esempio il team del prodotto e quello di un cliente). Ogni team ha un sapere tutto suo: chiavi, log, ricerca, inbox, cartelle e rete separati. Un agente che lavora per un team non vede i ricordi degli altri.
+
+```bash
+micelio init "Cliente X"          # crea un altro team (si aggiunge a quelli che hai)
+micelio join <codice>             # oppure entra in un altro team
+micelio teams                     # elenco; ★ = predefinito
+micelio teams default "Cliente X" # cambia il predefinito
+micelio --team "Cliente X" recall "deploy"   # qualunque comando su un altro team
+micelio teams leave "Cliente X" --yes        # toglie il team da questo PC
+```
+
+- **Il tuo nome** è quello dell'identità personale creata al primo team: non serve ripeterlo. Accanto ai membri, nella pagina Team, vedi se un collega è con te anche in un altro team.
+- **Le cartelle** abilitate appartengono a un team solo. Se abiliti `C:\lavoro` nel team A e `C:\lavoro\clienteX` nel team B, le sessioni in `clienteX` vanno solo a B.
+- **Gli agenti** usano il team predefinito. Per un progetto di un altro team: `micelio --team "Cliente X" setup claude-code --project <cartella del progetto>`, oppure «Collega Claude Code» nelle Impostazioni.
+- **LLM e budget** sono comuni a tutti i team: un solo abbonamento.
+
+Dalla versione con un solo team non serve fare nulla: al primo avvio i file vengono spostati in `~/.micelio/teams/<id>/` e il team diventa il predefinito.
+
 ## 5. Il filtro privacy: cosa arriva al team
 
 Ogni contenuto, sia salvato a mano sia raccolto da una sessione, segue lo stesso percorso:

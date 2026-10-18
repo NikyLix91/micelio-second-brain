@@ -62,6 +62,12 @@ h2 { font-size: 15px; margin: 0 0 10px; }
 }
 .brand { font-weight: 700; font-size: 17px; padding: 0 10px 14px; display: flex; gap: 8px; align-items: center; }
 .brand small { font-weight: 400; color: var(--muted); font-size: 12px; display: block; }
+.team-switch { padding: 0 10px 12px; }
+.team-switch label { display: flex; align-items: center; gap: 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 4px; }
+.team-switch select { width: 100%; }
+.team-list .team-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.team-list .team-row:last-child { border-bottom: none; }
+.person-chip { font-size: 11px; color: var(--muted); border: 1px dashed var(--border); border-radius: 10px; padding: 1px 7px; margin-left: 6px; }
 .nav-link {
   display: flex; justify-content: space-between; align-items: center;
   padding: 8px 10px; border-radius: 8px; color: var(--text); text-decoration: none;

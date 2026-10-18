@@ -6,12 +6,19 @@
  *
  * Fase 10: l'admin sceglie quanti ricordi distillare al massimo per sessione (`distill.maxMemories`);
  * la scheda "Qualità della distillazione" (visibile a tutti) dà i dati per decidere.
+ *
+ * B3 (più team sullo stesso PC): la scheda "I tuoi team su questo PC" sceglie il predefinito e
+ * toglie un team; accanto ai membri compare in quali ALTRI tuoi team c'è la stessa persona
+ * (identità personale, vedi src/core/identity.ts).
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { api, type DistillQuality, type MemberRecord } from '../api/client'
+import { currentTeam, setCurrentTeam } from '../api/team'
 import { Card, ConfirmButton, ErrorBox, PageHeader } from '../components/ui'
 import { dateTime, short } from '../format'
+import { HelpButton } from '../help'
 import { defineStrings, useStrings } from '../i18n'
 
 type Advice = DistillQuality['advice']
@@ -49,6 +56,17 @@ const S = defineStrings({
     keywords: 'Parole che bloccano un contenuto (oltre a quelle di default, separate da virgola)',
     keywordsPlaceholder: 'es. progetto riservato, NDA',
     saveTeam: 'Salva per tutto il team',
+    yourTeams: 'I tuoi team su questo PC',
+    yourTeamsIntro: 'Ogni team ha un sapere tutto suo. Il predefinito (★) è quello che usano la riga di comando e gli agenti quando non indicano un team; il selettore nella barra laterale cambia solo questa finestra.',
+    identity: (name: string, key: string) => `Tu: ${name} · identità ${key}, la stessa in tutti i tuoi team`,
+    teamLine: (role: string, members: number, memories: number) => `${role} · ${members} membri · ${memories} ricordi`,
+    makeDefault: 'Rendi predefinito',
+    leave: 'Togli da questo PC',
+    leaveConfirm: 'Sì, cancella i dati locali',
+    leaveHint: 'Togliere un team cancella da questo PC il suo log, la ricerca, l\'inbox e le impostazioni. Il team resta sui PC dei colleghi: per rientrare serve un nuovo invito.',
+    addTeam: '＋ Aggiungi un team',
+    alsoIn: (teams: string) => `stessa persona anche in: ${teams}`,
+    syncing: '(in sincronizzazione)',
     quality: 'Qualità della distillazione',
     qualityIntro: (max: number, total: number, at: number, batches: number, rate: string) =>
       `Limite in vigore: ${max} ricordi per distillazione · ${total} ricordi distillati con posizione nota · limite raggiunto in ${at} distillazioni su ${batches} (${rate}). Le percentuali contano i ricordi con più di 3 giorni (prima non hanno avuto il tempo di essere usati).`,
@@ -102,6 +120,17 @@ const S = defineStrings({
     keywords: 'Words that block a content (in addition to the default ones, comma separated)',
     keywordsPlaceholder: 'e.g. confidential project, NDA',
     saveTeam: 'Save for the whole team',
+    yourTeams: 'Your teams on this PC',
+    yourTeamsIntro: 'Each team has knowledge of its own. The default one (★) is used by the command line and the agents when they do not name a team; the switcher in the sidebar only changes this window.',
+    identity: (name: string, key: string) => `You: ${name} · identity ${key}, the same in all your teams`,
+    teamLine: (role: string, members: number, memories: number) => `${role} · ${members} members · ${memories} memories`,
+    makeDefault: 'Make default',
+    leave: 'Remove from this PC',
+    leaveConfirm: 'Yes, delete the local data',
+    leaveHint: 'Removing a team deletes its log, search index, inbox and settings from this PC. The team stays on your colleagues\' PCs: to come back you need a new invite.',
+    addTeam: '＋ Add a team',
+    alsoIn: (teams: string) => `same person also in: ${teams}`,
+    syncing: '(syncing)',
     quality: 'Distillation quality',
     qualityIntro: (max: number, total: number, at: number, batches: number, rate: string) =>
       `Current limit: ${max} memories per distillation · ${total} distilled memories with a known position · limit reached in ${at} distillations out of ${batches} (${rate}). Percentages count memories older than 3 days (before that they have not had time to be used).`,
@@ -134,16 +163,18 @@ export function Team () {
   const status = useQuery({ queryKey: ['status'], queryFn: api.status })
   const members = useQuery({ queryKey: ['members'], queryFn: api.members })
   const isAdmin = status.data?.role === 'admin'
+  const others = usePersonTeams()
 
   return (
     <>
       <PageHeader help='team' title={s.title} subtitle={status.data?.team ? s.subtitle(status.data.team.name, status.data.members) : undefined} />
       <div className='stack'>
+        <YourTeamsCard />
         <InviteCard />
         <Card help='team#members' title={s.members}>
           <p className='muted small' style={{ marginTop: 0 }}>{s.treeIntro}</p>
           <ErrorBox error={members.error} />
-          {members.data && <MemberTree members={members.data} parent={null} me={status.data?.nodeKey ?? null} isAdmin={isAdmin} />}
+          {members.data && <MemberTree members={members.data} parent={null} me={status.data?.nodeKey ?? null} isAdmin={isAdmin} others={others} />}
         </Card>
         {isAdmin && <TeamSettings />}
         <DistillQualityCard />
@@ -152,23 +183,90 @@ export function Team () {
   )
 }
 
+/**
+ * Team del PC diversi da quello mostrato, e dove compare ogni persona: chiave pubblica della
+ * persona → nomi degli altri team in cui è membro attivo. Serve a riconoscere la stessa persona
+ * in più team (e a distinguere due colleghi con lo stesso nome).
+ */
+function usePersonTeams (): Map<string, string[]> {
+  const teams = useQuery({ queryKey: ['teams'], queryFn: api.teams })
+  const list = teams.data?.teams ?? []
+  const shownId = (list.find((t) => t.id === currentTeam()) ?? list.find((t) => t.isDefault))?.id
+  const others = list.filter((t) => t.id !== shownId)
+  const q = useQuery({
+    queryKey: ['members', 'otherTeams', others.map((t) => t.id).join(',')],
+    enabled: others.length > 0,
+    queryFn: async () => {
+      const map = new Map<string, string[]>()
+      for (const t of others) {
+        for (const m of await api.membersOf(t.id).catch(() => [])) {
+          if (!m.person || m.removed) continue
+          map.set(m.person, [...(map.get(m.person) ?? []), t.name ?? t.id])
+        }
+      }
+      return map
+    }
+  })
+  return q.data ?? new Map()
+}
+
+/** I team di questo PC: predefinito, uscita, identità personale (B3). */
+function YourTeamsCard () {
+  const s = useStrings(S)
+  const client = useQueryClient()
+  const teams = useQuery({ queryKey: ['teams'], queryFn: api.teams })
+  const refresh = () => { void client.invalidateQueries({ queryKey: ['teams'] }) }
+  const makeDefault = useMutation({ mutationFn: (id: string) => api.setDefaultTeam(id), onSuccess: refresh })
+  const leave = useMutation({
+    mutationFn: (id: string) => api.leaveTeam(id),
+    onSuccess: (_r, id) => {
+      // Se era il team mostrato, l'interfaccia torna al predefinito
+      if (currentTeam() === id) setCurrentTeam(null)
+      void client.resetQueries()
+    }
+  })
+  const d = teams.data
+  if (!d) return <Card title={s.yourTeams}><ErrorBox error={teams.error} /></Card>
+  return (
+    <Card help='teams' title={s.yourTeams} actions={<Link className='btn' to='/team/nuovo'>{s.addTeam}</Link>}>
+      <p className='muted small' style={{ marginTop: 0 }}>{s.yourTeamsIntro}</p>
+      <div className='team-list'>
+        {d.teams.map((t) => (
+          <div key={t.id} className='team-row'>
+            <span title={t.isDefault ? 'default' : undefined}>{t.isDefault ? '★' : '☆'}</span>
+            <strong>{t.name ?? s.syncing}</strong>
+            <span className='mono muted small'>{t.id}</span>
+            <span className='muted small'>{s.teamLine(t.role ?? '-', t.members, t.memories)}</span>
+            <span className='spacer' />
+            {!t.isDefault && <button className='btn small' disabled={makeDefault.isPending} onClick={() => makeDefault.mutate(t.id)}>{s.makeDefault}</button>}
+            <ConfirmButton label={s.leave} confirmLabel={s.leaveConfirm} danger onConfirm={() => leave.mutate(t.id)} />
+          </div>
+        ))}
+      </div>
+      <p className='muted small'>{s.leaveHint}</p>
+      {d.identity && <p className='small' style={{ marginBottom: 0 }}>{s.identity(d.identity.name, short(d.identity.publicKey))} <HelpButton topic='teams#identity' /></p>}
+      <ErrorBox error={makeDefault.error ?? leave.error} />
+    </Card>
+  )
+}
+
 /** Albero ricorsivo: i figli di un membro sono quelli entrati con un suo invito. */
-function MemberTree ({ members, parent, me, isAdmin }: { members: MemberRecord[], parent: string | null, me: string | null, isAdmin: boolean }) {
+function MemberTree ({ members, parent, me, isAdmin, others }: { members: MemberRecord[], parent: string | null, me: string | null, isAdmin: boolean, others: Map<string, string[]> }) {
   const children = members.filter((m) => m.invitedBy === parent).sort((a, b) => a.joinedAt - b.joinedAt)
   if (children.length === 0) return null
   return (
     <ul className={`tree ${parent === null ? 'root' : ''}`}>
       {children.map((m) => (
         <li key={m.key}>
-          <MemberRow member={m} me={me} isAdmin={isAdmin} />
-          <MemberTree members={members} parent={m.key} me={me} isAdmin={isAdmin} />
+          <MemberRow member={m} me={me} isAdmin={isAdmin} alsoIn={m.person ? others.get(m.person) : undefined} />
+          <MemberTree members={members} parent={m.key} me={me} isAdmin={isAdmin} others={others} />
         </li>
       ))}
     </ul>
   )
 }
 
-function MemberRow ({ member: m, me, isAdmin }: { member: MemberRecord, me: string | null, isAdmin: boolean }) {
+function MemberRow ({ member: m, me, isAdmin, alsoIn }: { member: MemberRecord, me: string | null, isAdmin: boolean, alsoIn?: string[] }) {
   const s = useStrings(S)
   const client = useQueryClient()
   const done = () => { void client.invalidateQueries({ queryKey: ['members'] }); void client.invalidateQueries({ queryKey: ['status'] }) }
@@ -184,6 +282,7 @@ function MemberRow ({ member: m, me, isAdmin }: { member: MemberRecord, me: stri
         {m.role === 'admin' && <span className='badge accent'>admin</span>}
         {m.key === me && <span className='badge'>{s.you}</span>}
         {m.removed && <span className='badge danger'>{s.removed}</span>}
+        {alsoIn?.length ? <span className='person-chip'>{s.alsoIn(alsoIn.join(', '))}</span> : null}
         <span className='muted small'>{s.since(dateTime(m.joinedAt))}</span>
         <span className='spacer' />
         {canAct && m.role !== 'admin' && <ConfirmButton label={s.promote} confirmLabel={s.promoteConfirm} onConfirm={() => promote.mutate()} />}

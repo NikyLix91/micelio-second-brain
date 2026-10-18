@@ -5,15 +5,18 @@
  * daemon e nell'app Electron, senza configurare il server per le "rotte" della SPA.
  *
  * Se il nodo non appartiene ancora a un team, al posto delle schermate mostra l'Onboarding.
+ * Con più team (B3) il selettore nella barra laterale sceglie su quale team lavorano le schermate
+ * (vedi api/team.ts); /team/nuovo aggiunge un team.
  *
  * Home = Nucleo 3D (vista "wow" e navigazione guidata). Le viste 2D servono a scopi specifici
  * (es. Mappa 2D con filtri per autore e tipo).
  */
 import { useQuery } from '@tanstack/react-query'
 import { lazy, Suspense, useEffect } from 'react'
-import { HashRouter, NavLink, Route, Routes, useLocation } from 'react-router-dom'
+import { HashRouter, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { api } from './api/client'
 import { useLiveEvents } from './api/live'
+import { TeamSwitch } from './components/TeamSwitch'
 import { ErrorBox } from './components/ui'
 import { HelpProvider, useHelp } from './help'
 import { defineStrings, LangSwitch, useStrings } from './i18n'
@@ -58,7 +61,8 @@ export function App () {
 
   if (status.error) return <div className='centered'><ErrorBox error={status.error} /></div>
   if (!status.data) return <div className='centered muted'>{s.connecting}</div>
-  if (!status.data.configured) return <Onboarding />
+  // Primo avvio: la guida serve anche qui (pulsante «?» del modulo)
+  if (!status.data.configured) return <HelpProvider><Onboarding /></HelpProvider>
 
   return (
     <HashRouter>
@@ -72,6 +76,7 @@ export function App () {
             <Route path='/radici' element={<Roots />} />
             <Route path='/inbox' element={<Inbox />} />
             <Route path='/team' element={<Team />} />
+            <Route path='/team/nuovo' element={<AddTeam />} />
             <Route path='/sogni' element={<Dreams />} />
             <Route path='/privato' element={<Private />} />
             <Route path='/sicurezza' element={<Security />} />
@@ -88,7 +93,13 @@ export function App () {
 export const PAGE_TOPIC: Record<string, string> = {
   '/': 'views#nucleus', '/mappa': 'views#map', '/memoria': 'memory', '/radici': 'roots', '/inbox': 'inbox',
   '/team': 'team', '/sogni': 'dreams', '/stato': 'status', '/privato': 'private', '/sicurezza': 'security',
-  '/impostazioni': 'settings', '/guida': 'overview'
+  '/impostazioni': 'settings', '/guida': 'overview', '/team/nuovo': 'teams'
+}
+
+/** Pagina "Aggiungi un team": a ingresso riuscito si torna alla home, già sul nuovo team. */
+function AddTeam () {
+  const navigate = useNavigate()
+  return <Onboarding adding onDone={() => navigate('/')} />
 }
 
 /**
@@ -130,12 +141,13 @@ function Sidebar ({ live, team, node }: { live: boolean, team: string, node: str
         <span aria-hidden>🍄</span>
         <div>Micelio<small>{team}</small></div>
       </div>
+      <TeamSwitch />
       <NavLink to='/' end className={link}>{n.nucleus}</NavLink>
       <NavLink to='/mappa' className={link}>{n.map}</NavLink>
       <NavLink to='/memoria' className={link}>{n.memory}</NavLink>
       <NavLink to='/radici' className={link}>{n.roots}</NavLink>
       <NavLink to='/inbox' className={link}>{n.inbox} {inbox > 0 && <span className='count'>{inbox}</span>}</NavLink>
-      <NavLink to='/team' className={link}>{n.team}</NavLink>
+      <NavLink to='/team' end className={link}>{n.team}</NavLink>
       <NavLink to='/sogni' className={link}>{n.dreams}</NavLink>
       <NavLink to='/stato' className={link}>{n.status}</NavLink>
       <NavLink to='/privato' className={link}>{n.private}</NavLink>

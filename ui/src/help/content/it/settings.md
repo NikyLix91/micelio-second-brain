@@ -26,4 +26,6 @@ Registra Micelio come **server MCP** di Claude Code (con `claude mcp add`, livel
 
 ## Il file di configurazione {#config-file}
 
-`config.json` contiene anche porta e interfaccia dell'API locale (default `127.0.0.1:7337`), il **token** di accesso, le soglie della raccolta delle sessioni (`watch.sessionScan`), il riassunto git (`watch.gitChanges`), il modello di embedding e l'ora del dreaming. Va trattato come privato: il token dà accesso al tuo nodo.
+`config.json` vale per tutta la macchina: porta e interfaccia dell'API locale (default `127.0.0.1:7337`), il **token** di accesso, l'LLM, il modello di embedding e il team predefinito. Va trattato come privato: il token dà accesso al tuo nodo.
+
+Ogni team ha poi il suo `teams/<id>/settings.json`: cartelle abilitate, soglie della raccolta delle sessioni (`watch.sessionScan`), riassunto git (`watch.gitChanges`), rete e ora del dreaming. Le schede di questa pagina mostrano le impostazioni del team scelto nella barra laterale; LLM e porta sono comuni a tutti i team.

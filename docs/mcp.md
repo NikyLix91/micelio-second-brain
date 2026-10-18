@@ -75,3 +75,20 @@ I client che supportano MCP su HTTP possono anche collegarsi direttamente all'UR
 - Senza token valido tutte le rotte rispondono `401`, tranne `/api/health`.
 - L'header di autenticazione impedisce anche a una pagina web aperta nel browser di usare il daemon locale.
 - Chi possiede il token può leggere e scrivere la memoria del team **da quella macchina**: il file `config.json` va protetto come una credenziale.
+
+## Più team sullo stesso PC
+
+Con più team (vedi [guida utente](guida-utente.md#4-ter-più-team-sullo-stesso-pc)):
+
+- `http://127.0.0.1:7337/mcp` lavora sul **team predefinito** (`micelio teams default <team>`);
+- `http://127.0.0.1:7337/mcp/<team>` lavora sul team indicato, per id locale o per nome.
+
+Per far usare a Claude Code un team preciso in un progetto:
+
+```bash
+micelio --team "Cliente X" setup claude-code --project C:\progetti\cliente-x
+```
+
+Il comando esegue, nella cartella del progetto, `claude mcp add --transport http --scope local micelio http://127.0.0.1:7337/mcp/<id> --header "Authorization: Bearer <token>"`. L'ambito *local* vale solo quando Claude Code è avviato in quella cartella, prevale sulla registrazione utente e resta in `~/.claude.json`: il token non finisce nel repository. Lo stesso fa il pulsante «Collega Claude Code» accanto a una cartella nelle Impostazioni.
+
+Per i client che usano lo shim: `micelio --team <team> setup codex|vscode|webstorm` stampa una configurazione che passa `--team` allo shim.

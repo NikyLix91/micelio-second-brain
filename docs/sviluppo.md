@@ -38,7 +38,8 @@ src/
 ├─ llm/        adapter verso le CLI AI (Claude), adapter finto per i test, runner con budget
 ├─ ingest/     pipeline di ingestione: trascrizioni, prompt, instradamento, inbox
 ├─ export/     export Markdown in sola lettura
-├─ node/       MicelioNode: orchestratore senza framework + config/stato
+├─ node/       MicelioHost (tutti i team del PC) e MicelioNode (un team): orchestratori senza
+│              framework + config/stato, identità personale in core/identity.ts
 ├─ roots/      Radici (Fase 8): revisione manuale (codice, documenti, contraddizioni)
 ├─ mcp/        server MCP (recall, remember, get, architecture, mark_root, inbox_review, inbox_decide…)
 ├─ daemon/     app NestJS: API REST locale, endpoint MCP, guard del token
@@ -85,6 +86,19 @@ Le sessioni sono lavori in una **coda persistente** (`private.db`, tabella `jobs
 - budget esaurito → il lavoro passa al giorno dopo senza consumare tentativi;
 - CLI non disponibile → nuovo tentativo dopo 10 minuti;
 - altri errori → 3 tentativi, poi `failed`.
+
+## Più team (B3)
+
+Un PC può stare in più team. I pezzi:
+
+- **`MicelioHost`** (`src/node/micelio-host.ts`) apre un `MicelioNode` per ogni cartella `teams/<id>/` e tiene ciò che è unico per macchina: identità personale, `LlmRunner` (una coda e un budget, `machine.db`), embedder, team predefinito. Al primo avvio sposta in `teams/<id>/` i file di un nodo creato prima di B3 (`migrate`).
+- **Percorsi** (`src/core/paths.ts`): `teamPaths(root, id)` dà a un nodo la sua cartella, ma `config` resta il `config.json` della radice. `settings` è il file delle impostazioni del team: `loadConfig` unisce i due file e `updateConfig` riscrive ogni sezione nel suo (`watch`, `network`, `dream` → `settings.json`). Nella struttura a un team (`nodePaths`, usata dai test di `MicelioNode`) i due coincidono.
+- **Team della richiesta** (`src/daemon/team-context.ts`): il middleware legge `x-micelio-team` e lo mette in un `AsyncLocalStorage`; `MicelioService.node` restituisce il nodo di quel team (o del predefinito). Le rotte esistenti non cambiano. Fanno eccezione `team/init`, `team/join`, `teams/*` e `ingest/session`, che passano dall'host.
+- **Cartelle**: l'host passa a ogni nodo `owns(dir)` (vince la cartella abilitata più specifica, `ownerOf`) e `claimFolder` (stessa cartella in due team vietata; cartelle di documenti annidate fra team vietate).
+- **Identità** (`src/core/identity.ts`): `member.identity` firmato sulla chiave del feed, verificato in `apply`. `MicelioNode.linkIdentity` lo pubblica all'avvio se manca.
+- **MCP**: `/mcp` = team predefinito, `/mcp/:team` = team indicato (`mcp.controller.ts`). `registerProjectMcp` lo registra con `claude mcp add --scope local` nella cartella del progetto.
+
+Test: `test/integration/multi-team.test.ts` (migrazione, sapere separato, instradamento, riavvio, uscita), i casi multi-team in `daemon.test.ts`, `member.identity` in `test/unit/apply.test.ts`, `ui/src/__tests__/Teams.test.tsx`.
 
 ## Regole d'oro
 

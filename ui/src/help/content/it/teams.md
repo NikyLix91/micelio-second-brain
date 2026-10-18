@@ -1,0 +1,56 @@
+# Più team
+
+Lo stesso PC può partecipare a più team: per esempio il team del tuo prodotto e quello di un cliente, o un team per ogni progetto. Ogni team ha un **sapere tutto suo**, che non si mescola con quello degli altri: un agente che lavora per il cliente A non trova i ricordi del cliente B, e viceversa.
+
+## Cosa resta separato {#separation}
+
+Ogni team ha la sua sottocartella `teams/<id>/` nella cartella del nodo, con:
+- le **chiavi** del team (`state.json`), quindi una cifratura diversa;
+- il **log** replicato (`corestore/`), che si sincronizza solo con i membri di quel team;
+- l'**indice di ricerca**, l'**archivio privato** (inbox, registro), l'**export** Markdown;
+- le **impostazioni**: cartelle abilitate, rete (anche DHT diverse) e dreaming.
+
+Sulla rete i team non si possono collegare fra loro: ogni team si annuncia sulla DHT con una chiave di nodo diversa, quindi chi osserva la DHT non vede che due team hanno un PC in comune.
+
+Sono invece **comuni** a tutti i team: la porta e il token dell'API locale, l'LLM (una sola coda di chiamate a Claude e un solo limite giornaliero, perché l'abbonamento è uno) e il modello di embedding.
+
+## Passare da un team all'altro {#switch}
+
+Il selettore **Team** in alto nella barra laterale sceglie su quale team lavorano le schermate. La scelta vale per questa finestra e si ricorda nel browser; non cambia nulla per gli altri programmi.
+
+Il **team predefinito** (★ nella pagina Team) è quello che usano la riga di comando e gli agenti quando non indicano un team. Si cambia con «Rendi predefinito» o con `micelio teams default <team>`. Dalla riga di comando un altro team si indica con `micelio --team <id o nome> <comando>`.
+
+## Aggiungere un team {#add}
+
+«＋ Aggiungi un team…» nel selettore (o nella pagina Team) apre lo stesso modulo del primo avvio: si crea un team nuovo o si entra in uno esistente con un codice d'invito. Il nome è già quello della tua identità; puoi sceglierne un altro solo per il nuovo team. Da terminale: `micelio init <nome>` o `micelio join <codice>`, che si aggiungono ai team già presenti.
+
+## La tua identità {#identity}
+
+La prima volta che entri in un team nasce `identity.json`: il tuo nome e una coppia di chiavi personali. In ogni team il tuo nodo pubblica un evento `member.identity` con la chiave pubblica della persona e una **firma** sulla chiave del proprio feed in quel team. Tutti verificano la firma: nessuno può spacciarsi per te, né copiare l'evento da un altro team.
+
+A cosa serve: se un collega è con te in due team, nella pagina Team accanto al suo nome compare «stessa persona anche in: …». Così distingui anche due colleghi con lo stesso nome. Chi è in un solo team con te vede solo una chiave e non sa in quali altri team sei.
+
+La chiave segreta non lascia mai il PC: proteggi `identity.json` come `state.json`.
+
+## A quale team vanno sessioni e documenti {#folders}
+
+Le cartelle abilitate (Impostazioni) appartengono al team scelto quando le abiliti, e **una cartella appartiene a un solo team**:
+- una sessione di Claude Code va al team della cartella **più specifica** che la contiene: con `C:\lavoro` nel team A e `C:\lavoro\clienteX` nel team B, le sessioni in `clienteX` vanno solo a B;
+- la stessa cartella non si può abilitare in due team;
+- le cartelle di documenti non possono nemmeno essere annidate fra team: la sorveglianza è ricorsiva e lo stesso file finirebbe in due team.
+
+Una sessione in una cartella non abilitata in nessun team viene ignorata, come sempre.
+
+## Gli agenti di un progetto {#agents}
+
+L'MCP registrato con `micelio setup claude-code` vale in tutte le cartelle e usa il **team predefinito** (`/mcp`). Per un progetto di un altro team premi «Collega Claude Code» accanto alla cartella, con quel team selezionato (o usa `micelio --team <team> setup claude-code --project <cartella>`).
+
+Micelio registra allora `/mcp/<team>` nell'ambito **local** di Claude Code: vale quando Claude Code viene avviato in quella cartella e prevale sulla registrazione utente. Sta nella tua configurazione personale (`~/.claude.json`), non nel repository, quindi il token non finisce mai in un file che si potrebbe committare. Avvia Claude Code dalla cartella collegata (di solito la radice del repository).
+
+## Togliere un team da questo PC {#leave}
+
+«Togli da questo PC» (pagina Team) o `micelio teams leave <team> --yes` chiude il team e cancella la sua sottocartella: log, ricerca, inbox, registro e impostazioni locali. Il team continua a esistere sui PC dei colleghi, e i ricordi che hai pubblicato restano loro. Per rientrare serve un nuovo invito. Non si può annullare.
+
+## Dalla versione con un solo team {#migration}
+
+Prima i file del team stavano direttamente nella cartella del nodo. Al primo avvio della nuova versione vengono spostati in `teams/<id>/`, le impostazioni del team passano da `config.json` a `settings.json` e il nome del nodo diventa quello della tua identità. Il team diventa il predefinito: CLI, agenti e hook continuano a funzionare come prima.

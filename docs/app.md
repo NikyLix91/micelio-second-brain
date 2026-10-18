@@ -126,6 +126,12 @@ Il nodo a colpo d'occhio: ruolo, peer connessi, ricordi, LLM e budget di oggi, c
 
 ![Impostazioni](img/impostazioni.png)
 
+## Più team
+
+Se il PC fa parte di più team, il selettore **Team** in alto nella barra laterale sceglie su quale team lavorano tutte le schermate. La scelta vale per la finestra e si ricorda; non cambia il team predefinito, che usano CLI e agenti. «＋ Aggiungi un team…» apre il modulo per creare un team o entrare con un invito.
+
+Nella pagina **Team**, la scheda «I tuoi team su questo PC» mostra i team con il predefinito (★), permette di cambiarlo e di togliere un team dal PC (con conferma: cancella i dati locali di quel team). Accanto ai membri compare «stessa persona anche in: …» quando un collega è con te anche in un altro team. Nelle **Impostazioni**, accanto a ogni cartella abilitata, «Collega Claude Code» fa usare questo team a Claude Code avviato in quella cartella.
+
 ## Guida in linea
 
 Ogni pagina e ogni scheda ha un pulsante **?** accanto al titolo: apre un pannello laterale sulla sezione della guida che la riguarda (Esc lo chiude). **F1** apre la guida sulla pagina in cui ti trovi. La voce **Guida** del menu mostra l'indice completo, con una ricerca nel testo.
