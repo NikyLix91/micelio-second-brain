@@ -32,6 +32,10 @@ The `micelio` command does everything the app does, and a bit more. `micelio --h
 | `micelio roots` · `add` · `remove` · `confirm` · `review` · `suggested` | Roots |
 | `micelio dream now` · `dream log` · `archive` · `restore <id>` | dreaming and archive |
 | `micelio quality` | distillation quality |
+| `micelio remember … --personal` · `micelio personal` | personal memories (only on this PC) |
+| `micelio stale [--check]` | memories with changed code |
+| `micelio gaps` · `gaps mine` · `gaps report` · `gaps close` · `micelio digest` | gaps and digest |
+| `micelio roots export <folder>` · `roots import <path>` | Roots in agent files · import |
 
 ## Collection {#collection}
 

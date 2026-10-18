@@ -15,6 +15,7 @@ Il motivo è scritto su ogni elemento.
 
 - **Pubblica nel team**: il ricordo entra nel tuo feed e arriva a tutti;
 - **Correggi**: modifichi titolo e testo (per esempio togli un dettaglio sensibile), poi pubblichi la versione corretta;
+- **Tienilo per me**: non va al team ma resta come ricordo personale, solo su questo PC (vedi **Da soli**);
 - **Scarta**: il ricordo non va al team; la decisione resta nel Registro privato.
 
 Anche un agente può mostrarti l'inbox (tool `inbox_review`) e applicare la tua decisione (`inbox_decide`), solo dopo che l'hai presa tu.

@@ -28,3 +28,11 @@ Il pannello mostra tipo, tag, testo, autore e data, e poi:
 - il riquadro **Radice** (per renderlo sapere fondante o rivederlo);
 - **Dal codice**: progetto, branch, file, simboli e commit (i commit sono link se il repository è su un server web);
 - **Da documento**: il nome del file originale e «Scarica l'originale» dal collega che lo possiede.
+
+## Aggiornare invece di aggiungere {#update-on-write}
+
+Quando un ricordo nuovo sta per entrare nel team, Micelio cerca i ricordi più **simili per significato**. Se non ce ne sono, si aggiunge e basta. Se ce ne sono, Claude (il modello veloce) decide: **nuovo** (dice altro) → si aggiunge; **doppione** → non si scrive nulla; **aggiornamento** (corregge o completa un ricordo esistente) → si scrive UNA versione aggiornata che sostituisce la vecchia (`memory.supersede`), che resta nello storico e si può ripristinare dall'Archivio. Le Radici e i ricordi fissati non vengono mai sostituiti. Senza LLM o a budget finito il ricordo si aggiunge come prima. L'admin lo spegne nella pagina Team («Aggiorna invece di aggiungere»).
+
+## Codice cambiato {#stale}
+
+Se un ricordo cita dei file (dal codice di una sessione) e dopo la sua scrittura quei file sono cambiati o spariti, potrebbe descrivere un codice che non c'è più. Micelio lo controlla sui repository di **questo PC** (all'avvio, ogni 6 ore, o con «Ricontrolla i repository» nel filtro «⚠ Codice cambiato»): legge la storia git dei soli file citati e conta i commit successivi al ricordo. Effetti: l'attivazione scende (−5% per commit, −20% per file sparito, fino a metà), e il ricordo mostra l'avviso, anche agli agenti, perché verifichino sul codice attuale. Il segnale resta locale. Le Radici hanno invece la loro revisione. Da terminale: `micelio stale --check`.

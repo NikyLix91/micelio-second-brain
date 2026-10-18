@@ -27,7 +27,7 @@ The server sends **instructions** to the agent, which enter its context: search 
 
 ## Automatic collection {#hook}
 
-Separate from MCP: the `SessionEnd` hook notifies the daemon at the end of a session, and the scanner collects long sessions. See **Collection and distillation**.
+Separate from MCP: the `SessionEnd` hook notifies the daemon at the end of a session, and the scanner collects long sessions. See **Collection and distillation**. The `SessionStart` and `UserPromptSubmit` hooks instead bring knowledge to the agent without it asking: see **Automatic context**.
 
 ## Security {#security}
 

@@ -5,7 +5,7 @@
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { api } from '../api/client'
+import { api, type NetworkMode } from '../api/client'
 import { Card, ConfirmButton, Empty, ErrorBox, PageHeader } from '../components/ui'
 import { HelpButton } from '../help'
 import { defineStrings, useStrings } from '../i18n'
@@ -32,6 +32,10 @@ const S = defineStrings({
       privateTitle: 'DHT privata del team',
       privateSub: '(server del team)',
       privateHint: 'Nessuna dipendenza da terzi; impronta e IP restano sul vostro server. Si installa a parte: vedi server/README.md.',
+      localTitle: 'Solo locale',
+      localSub: '(nessuna rete)',
+      localHint: 'Per chi usa Micelio da solo: il nodo non entra in nessuna DHT e non cerca colleghi. Per invitare qualcuno scegli una delle due reti.',
+      localInUse: 'nessuna rete (solo locale)',
       bootstrap: 'Nodi di avvio (uno per riga, host:porta)',
       reachable: (nodes: number, ms: number, ip: string, nat: string) => `Raggiungibile: ${nodes} nodi in ${ms} ms · IP pubblico ${ip} · NAT simmetrico: ${nat}`,
       ipUnknown: 'non determinato',
@@ -94,11 +98,19 @@ const S = defineStrings({
       modelName: (label: string) => `${label}: nome del modello`,
       modelPlaceholder: 'nome o id del modello, es. claude-opus-5-5'
     },
+    ctx: {
+      title: 'Contesto automatico per gli agenti',
+      intro: 'Con gli hook di Claude Code (installati da «Configura» qui sotto), Micelio inserisce da solo nella conversazione il sapere utile, senza aspettare che l\'agente lo cerchi. Vale per tutti i team di questo PC.',
+      sessionStart: 'A inizio sessione: Radici e ricordi più utili del progetto della cartella',
+      prompt: 'A ogni richiesta: ricordi e Radici pertinenti al testo (solo se lo sono davvero, mai ripetuti)',
+      maxChars: 'Caratteri massimi inseriti ogni volta',
+      save: 'Salva'
+    },
     cc: {
       title: 'Claude Code',
-      intro1: "Registra Micelio come server MCP di Claude Code e, se vuoi, l'hook che a fine sessione avvisa Micelio (raccolta automatica, solo nelle cartelle abilitate).",
+      intro1: "Registra Micelio come server MCP di Claude Code e, se vuoi, gli hook: a fine sessione avvisano Micelio (raccolta automatica, solo nelle cartelle abilitate), a inizio sessione e a ogni richiesta inseriscono il contesto automatico.",
       intro2: 'Modifica la configurazione di Claude Code nel tuo profilo utente; viene salvata una copia di backup.',
-      full: 'Configura MCP + raccolta automatica',
+      full: 'Configura MCP + raccolta + contesto automatico',
       fullConfirm: 'Sì, modifica la configurazione',
       mcpOnly: 'Solo MCP',
       mcpOnlyConfirm: 'Sì, registra MCP',
@@ -127,6 +139,10 @@ const S = defineStrings({
       privateTitle: 'Team private DHT',
       privateSub: '(team server)',
       privateHint: 'No third-party dependency; fingerprint and IPs stay on your server. It is installed separately: see server/README.md.',
+      localTitle: 'Local only',
+      localSub: '(no network)',
+      localHint: 'For those who use Micelio on their own: the node joins no DHT and looks for no colleagues. To invite someone, choose one of the two networks.',
+      localInUse: 'no network (local only)',
       bootstrap: 'Bootstrap nodes (one per line, host:port)',
       reachable: (nodes: number, ms: number, ip: string, nat: string) => `Reachable: ${nodes} nodes in ${ms} ms · public IP ${ip} · symmetric NAT: ${nat}`,
       ipUnknown: 'unknown',
@@ -189,11 +205,19 @@ const S = defineStrings({
       modelName: (label: string) => `${label}: model name`,
       modelPlaceholder: 'model name or id, e.g. claude-opus-5-5'
     },
+    ctx: {
+      title: 'Automatic context for agents',
+      intro: 'With Claude Code hooks (installed by "Configure" below), Micelio inserts useful knowledge into the conversation by itself, without waiting for the agent to look for it. It applies to all the teams on this PC.',
+      sessionStart: 'At session start: Roots and most useful memories of the folder\'s project',
+      prompt: 'At every request: memories and Roots relevant to the text (only if they really are, never repeated)',
+      maxChars: 'Maximum characters inserted each time',
+      save: 'Save'
+    },
     cc: {
       title: 'Claude Code',
-      intro1: 'Registers Micelio as an MCP server of Claude Code and, if you want, the hook that notifies Micelio at the end of a session (automatic collection, only in enabled folders).',
+      intro1: 'Registers Micelio as an MCP server of Claude Code and, if you want, the hooks: at the end of a session they notify Micelio (automatic collection, only in enabled folders), at session start and at every request they insert the automatic context.',
       intro2: 'It changes the Claude Code configuration in your user profile; a backup copy is saved.',
-      full: 'Configure MCP + automatic collection',
+      full: 'Configure MCP + collection + automatic context',
       fullConfirm: 'Yes, change the configuration',
       mcpOnly: 'MCP only',
       mcpOnlyConfirm: 'Yes, register MCP',
@@ -213,6 +237,7 @@ export function Settings () {
         <WatchCard />
         <DocumentsCard />
         <LlmCard />
+        <ContextCard />
         <ClaudeCodeCard />
       </div>
     </>
@@ -232,7 +257,7 @@ export function NetworkCard () {
   const client = useQueryClient()
   const net = useQuery({ queryKey: ['network'], queryFn: api.network })
   // Bozza: null = nessuna modifica rispetto a quanto salvato
-  const [mode, setMode] = useState<'public' | 'private' | null>(null)
+  const [mode, setMode] = useState<NetworkMode | null>(null)
   const [text, setText] = useState<string | null>(null)
   const check = useMutation({ mutationFn: () => api.checkNetwork(draftMode, draftList) })
   const apply = useMutation({
@@ -246,7 +271,7 @@ export function NetworkCard () {
   // Un nodo per riga (accetta anche virgole e spazi come separatori)
   const draftList = (text ?? n.bootstrap.join('\n')).split(/[\s,]+/).map((x) => x.trim()).filter(Boolean)
   const changed = draftMode !== n.mode || (draftMode === 'private' && draftList.join(',') !== n.bootstrap.join(','))
-  const inUse = n.active.length ? t.privateInUse(n.active.join(', ')) : t.publicInUse
+  const inUse = n.mode === 'local' ? t.localInUse : n.active.length ? t.privateInUse(n.active.join(', ')) : t.publicInUse
 
   if (n.fixedByEnv) {
     return (
@@ -277,6 +302,13 @@ export function NetworkCard () {
             <span className='muted small'>{t.privateHint}</span>
           </span>
         </label>
+        <label className={`choice ${draftMode === 'local' ? 'selected' : ''}`}>
+          <input type='radio' name='dht' checked={draftMode === 'local'} onChange={() => { setMode('local'); check.reset() }} />
+          <span>
+            <strong>{t.localTitle}</strong> {t.localSub}<br />
+            <span className='muted small'>{t.localHint}</span>
+          </span>
+        </label>
         {draftMode === 'private' && (
           <div>
             <label>{t.bootstrap}</label>
@@ -294,7 +326,7 @@ export function NetworkCard () {
       )}
       <ErrorBox error={check.error ?? apply.error} />
       <div className='row' style={{ marginTop: 10 }}>
-        <button className='btn' disabled={check.isPending || (draftMode === 'private' && draftList.length === 0)} onClick={() => check.mutate()}>
+        <button className='btn' disabled={check.isPending || draftMode === 'local' || (draftMode === 'private' && draftList.length === 0)} onClick={() => check.mutate()}>
           {check.isPending ? t.checking : t.check}
         </button>
         <ConfirmButton
@@ -495,6 +527,35 @@ function LlmCard () {
         <button className='btn primary' disabled={!changed || save.isPending} onClick={() => save.mutate()}>{s.save}</button>
         {changed && <button className='btn' onClick={() => setDraft({})}>{s.cancel}</button>}
       </div>
+    </Card>
+  )
+}
+
+/** Contesto automatico per gli agenti (B4): cosa inseriscono gli hook di Claude Code. */
+function ContextCard () {
+  const t = useStrings(S).ctx
+  const client = useQueryClient()
+  const settings = useQuery({ queryKey: ['settings'], queryFn: api.settings })
+  const [max, setMax] = useState<string | null>(null)
+  const save = useMutation({
+    mutationFn: (patch: { sessionStart?: boolean, prompt?: boolean, maxChars?: number }) => api.updateContext(patch),
+    onSuccess: () => { setMax(null); void client.invalidateQueries({ queryKey: ['settings'] }) }
+  })
+  const c = settings.data?.context
+  if (!c) return null
+  return (
+    <Card help='context' title={t.title}>
+      <p className='muted' style={{ marginTop: 0 }}>{t.intro}</p>
+      <div className='stack'>
+        <label className='row'><input type='checkbox' checked={c.sessionStart} onChange={(e) => save.mutate({ sessionStart: e.target.checked })} /> {t.sessionStart}</label>
+        <label className='row'><input type='checkbox' checked={c.prompt} onChange={(e) => save.mutate({ prompt: e.target.checked })} /> {t.prompt}</label>
+        <div className='row'>
+          <label style={{ margin: 0 }}>{t.maxChars}</label>
+          <input type='number' min={500} max={20000} step={500} style={{ width: 110 }} value={max ?? c.maxChars} onChange={(e) => setMax(e.target.value)} />
+          {max !== null && <button className='btn small primary' disabled={save.isPending} onClick={() => save.mutate({ maxChars: Number(max) })}>{t.save}</button>}
+        </div>
+      </div>
+      <ErrorBox error={save.error} />
     </Card>
   )
 }

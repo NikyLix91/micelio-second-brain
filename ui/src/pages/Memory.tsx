@@ -4,6 +4,9 @@
  * Senza ricerca mostra gli ultimi ricordi arrivati. La ricerca parte mentre si scrive, con un
  * piccolo ritardo (debounce) per non interrogare il daemon a ogni tasto.
  * C'è anche un modulo per proporre un nuovo ricordo: passa dal filtro privacy come da CLI/MCP.
+ *
+ * B4: filtri «Personali» (ricordi che restano su questo PC) e «Codice cambiato» (il codice citato è
+ * cambiato dopo il ricordo); il modulo può salvare un ricordo solo per sé.
  */
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
@@ -11,6 +14,7 @@ import { api, type ExplicitOutcome, type RecallHit } from '../api/client'
 import { Card, Empty, ErrorBox, PageHeader } from '../components/ui'
 import { MemoryPanel } from '../components/MemoryPanel'
 import { dateTime, KIND_LABEL, short } from '../format'
+import { HelpButton } from '../help'
 import { defineStrings, useStrings } from '../i18n'
 
 const S = defineStrings({
@@ -24,6 +28,13 @@ const S = defineStrings({
     empty: 'Il team non ha ancora ricordi.',
     root: 'Radice',
     selectOne: 'Seleziona un ricordo per leggerlo.',
+    filters: { all: 'Tutti', personal: '🔒 Personali', stale: '⚠ Codice cambiato' },
+    personalBadge: 'personale',
+    staleBadge: 'codice cambiato',
+    noPersonal: 'Nessun ricordo personale. Salvane uno con «Nuovo ricordo» → «Solo per me».',
+    noStale: 'Nessun ricordo con il codice cambiato (o nessun repository su questo PC).',
+    recheck: 'Ricontrolla i repository',
+    rechecked: (n: number, st: number) => `Controllati ${n} ricordi con riferimenti al codice: ${st} con codice cambiato.`,
     compose: {
       title: 'Proponi un ricordo al team',
       intro: 'Il ricordo passa dal filtro privacy prima di arrivare ai colleghi: può essere pubblicato, finire in inbox per una tua verifica o restare privato.',
@@ -38,7 +49,12 @@ const S = defineStrings({
       inbox: (r: string) => `Messo in inbox per una verifica: ${r}`,
       private: (r: string) => `Non pubblicato, trattenuto come privato: ${r}`,
       checking: 'Verifica in corso…',
-      propose: 'Proponi'
+      propose: 'Proponi',
+      scopeTeam: 'Per il team',
+      scopePersonal: 'Solo per me (resta su questo PC)',
+      savePersonal: 'Salva per me',
+      savedPersonal: 'Salvato come ricordo personale: lo trovi nelle tue ricerche, il team non lo vede.',
+      updated: 'Ha aggiornato un ricordo esistente del team: ora c\'è una sola versione.'
     }
   },
   en: {
@@ -51,6 +67,13 @@ const S = defineStrings({
     empty: 'The team has no memories yet.',
     root: 'Root',
     selectOne: 'Select a memory to read it.',
+    filters: { all: 'All', personal: '🔒 Personal', stale: '⚠ Code changed' },
+    personalBadge: 'personal',
+    staleBadge: 'code changed',
+    noPersonal: 'No personal memory. Save one with "New memory" → "Just for me".',
+    noStale: 'No memory with changed code (or no repository on this PC).',
+    recheck: 'Check the repositories again',
+    rechecked: (n: number, st: number) => `Checked ${n} memories with code references: ${st} with changed code.`,
     compose: {
       title: 'Propose a memory to the team',
       intro: 'The memory goes through the privacy filter before reaching your colleagues: it may be published, go to your inbox for a check, or stay private.',
@@ -65,7 +88,12 @@ const S = defineStrings({
       inbox: (r: string) => `Sent to the inbox for a check: ${r}`,
       private: (r: string) => `Not published, kept private: ${r}`,
       checking: 'Checking…',
-      propose: 'Propose'
+      propose: 'Propose',
+      scopeTeam: 'For the team',
+      scopePersonal: 'Just for me (stays on this PC)',
+      savePersonal: 'Save for me',
+      savedPersonal: 'Saved as a personal memory: you find it in your searches, the team does not see it.',
+      updated: 'It updated an existing team memory: there is now a single version.'
     }
   }
 })
@@ -85,13 +113,20 @@ export function Memory () {
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<RecallHit | null>(null)
   const [composing, setComposing] = useState(false)
+  const [filter, setFilter] = useState<'all' | 'personal' | 'stale'>('all')
   const q = useDebounced(query.trim())
 
-  // Una sola query con chiave ['memories', q]: gli eventi "memories" invalidano tutte le varianti.
+  // Una sola query con chiave ['memories', …]: gli eventi "memories" invalidano tutte le varianti.
   const list = useQuery({
-    queryKey: ['memories', q],
-    queryFn: () => (q.length >= 2 ? api.search(q) : api.recent())
+    queryKey: ['memories', filter, q],
+    queryFn: async () => {
+      if (filter === 'personal') return api.personal()
+      if (filter === 'stale') return api.staleMemories()
+      return q.length >= 2 ? api.search(q) : api.recent()
+    }
   })
+  const recheck = useMutation({ mutationFn: api.checkStale, onSuccess: () => { void list.refetch() } })
+  const emptyText = filter === 'personal' ? s.noPersonal : filter === 'stale' ? s.noStale : q ? s.noResults : s.empty
 
   return (
     <>
@@ -103,10 +138,18 @@ export function Memory () {
       {composing && <Compose onDone={() => setComposing(false)} />}
       <div className='split' style={{ marginTop: composing ? 16 : 0 }}>
         <div className='stack'>
-          <input autoFocus placeholder={s.searchPlaceholder} value={query} onChange={(e) => setQuery(e.target.value)} />
-          <ErrorBox error={list.error} />
+          <input autoFocus placeholder={s.searchPlaceholder} value={query} disabled={filter !== 'all'} onChange={(e) => setQuery(e.target.value)} />
+          <div className='row'>
+            {(['all', 'personal', 'stale'] as const).map((f) => (
+              <button key={f} className={`btn small ${filter === f ? 'primary' : ''}`} onClick={() => { setFilter(f); setSelected(null) }}>{s.filters[f]}</button>
+            ))}
+            <span className='spacer' />
+            {filter === 'stale' && <button className='btn small' disabled={recheck.isPending} onClick={() => recheck.mutate()}>{s.recheck}</button>}
+          </div>
+          {recheck.data && filter === 'stale' && <div className='notice small'>{s.rechecked(recheck.data.checked, recheck.data.stale)}</div>}
+          <ErrorBox error={list.error ?? recheck.error} />
           <div className='card' style={{ padding: 6 }}>
-            {list.data?.length === 0 && <Empty>{q ? s.noResults : s.empty}</Empty>}
+            {list.data?.length === 0 && <Empty>{emptyText}</Empty>}
             <div className='list'>
               {list.data?.map((h) => (
                 <div key={h.id} className={`list-item clickable ${selected?.id === h.id ? 'selected' : ''}`} onClick={() => setSelected(h)}>
@@ -115,6 +158,8 @@ export function Memory () {
                     <span className='badge'>{KIND_LABEL[h.kind] ?? h.kind}</span>
                     <span>{h.authorName ?? short(h.author)}</span>
                     <span>· {dateTime(h.ts)}</span>
+                    {h.personal && <span className='badge'>🔒 {s.personalBadge}</span>}
+                    {h.stale && <span className='badge warn'>⚠ {s.staleBadge}</span>}
                   </div>
                 </div>
               ))}
@@ -139,15 +184,22 @@ function Compose ({ onDone }: { onDone: () => void }) {
   const [body, setBody] = useState('')
   const [kind, setKind] = useState('fact')
   const [tags, setTags] = useState('')
-  const save = useMutation({
-    mutationFn: () => api.remember({ title, body, kind, tags: tags.split(',').map((t) => t.trim()).filter(Boolean) })
-  })
+  const [personal, setPersonal] = useState(false)
+  const input = () => ({ title, body, kind, tags: tags.split(',').map((t) => t.trim()).filter(Boolean) })
+  const save = useMutation({ mutationFn: () => api.remember(input()) })
+  const savePersonal = useMutation({ mutationFn: () => api.rememberPersonal(input()) })
   const r: ExplicitOutcome | undefined = save.data
+  const busy = save.isPending || savePersonal.isPending
 
   return (
     <Card title={c.title}>
       <div className='stack'>
-        <div className='notice small'>{c.intro}</div>
+        <div className='row'>
+          <label className='row' style={{ margin: 0 }}><input type='radio' checked={!personal} onChange={() => setPersonal(false)} /> {c.scopeTeam}</label>
+          <label className='row' style={{ margin: 0 }}><input type='radio' checked={personal} onChange={() => setPersonal(true)} /> {c.scopePersonal}</label>
+          <HelpButton topic='solo#personal' />
+        </div>
+        {!personal && <div className='notice small'>{c.intro}</div>}
         <div><label>{c.titleLabel}</label><input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={c.titlePlaceholder} /></div>
         <div><label>{c.body}</label><textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder={c.bodyPlaceholder} /></div>
         <div className='row'>
@@ -159,13 +211,14 @@ function Compose ({ onDone }: { onDone: () => void }) {
           </div>
           <div className='spacer'><label>{c.tags}</label><input value={tags} onChange={(e) => setTags(e.target.value)} placeholder='angular, ci' /></div>
         </div>
-        <ErrorBox error={save.error} />
-        {r?.outcome === 'team' && <div className='notice ok'>{r.duplicate ? c.duplicate : c.published}</div>}
+        <ErrorBox error={save.error ?? savePersonal.error} />
+        {r?.outcome === 'team' && <div className='notice ok'>{r.duplicate ? c.duplicate : r.updated ? c.updated : c.published}</div>}
+        {savePersonal.data && <div className='notice ok'>{savePersonal.data.duplicate ? c.duplicate : c.savedPersonal}</div>}
         {r?.outcome === 'inbox' && <div className='notice warn'>{c.inbox(r.reason)}</div>}
         {r?.outcome === 'private' && <div className='notice warn'>{c.private(r.reason)}</div>}
         <div className='row'>
-          <button className='btn primary' disabled={save.isPending || title.trim().length < 3 || !body.trim()} onClick={() => save.mutate()}>
-            {save.isPending ? c.checking : c.propose}
+          <button className='btn primary' disabled={busy || title.trim().length < 3 || !body.trim()} onClick={() => (personal ? savePersonal.mutate() : save.mutate())}>
+            {busy ? c.checking : personal ? c.savePersonal : c.propose}
           </button>
           <button className='btn' onClick={onDone}>{s.close}</button>
         </div>

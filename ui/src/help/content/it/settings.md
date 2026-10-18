@@ -4,7 +4,7 @@ Le impostazioni di **questo PC**, salvate in `config.json` (non replicate). Quel
 
 ## Rete {#network}
 
-Sceglie dove i nodi del team si incontrano: DHT pubblica di Holepunch o DHT privata del team (i nodi di avvio, `host:porta`). «Verifica» prova la scelta senza applicarla; «Applica» salva e ricollega subito il nodo, senza riavvio e senza perdere dati. Tutti i membri devono usare la stessa DHT. Vedi **Rete e replica**.
+Sceglie dove i nodi del team si incontrano: DHT pubblica di Holepunch, DHT privata del team (i nodi di avvio, `host:porta`) oppure **solo locale**, nessuna rete (vedi **Da soli**). «Verifica» prova la scelta senza applicarla; «Applica» salva e ricollega subito il nodo, senza riavvio e senza perdere dati. Tutti i membri devono usare la stessa DHT. Vedi **Rete e replica**.
 
 ## Raccolta automatica {#watch}
 

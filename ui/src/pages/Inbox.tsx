@@ -24,7 +24,9 @@ const S = defineStrings({
     publish: 'Pubblica nel team',
     cancelEdit: 'Annulla modifiche',
     edit: 'Correggi',
-    reject: 'Scarta'
+    reject: 'Scarta',
+    keep: 'Tienilo per me',
+    keepTitle: 'Non va al team: diventa un ricordo personale, solo su questo PC'
   },
   en: {
     title: 'Inbox',
@@ -37,7 +39,9 @@ const S = defineStrings({
     publish: 'Publish to the team',
     cancelEdit: 'Discard changes',
     edit: 'Edit',
-    reject: 'Discard'
+    reject: 'Discard',
+    keep: 'Keep it for me',
+    keepTitle: 'It does not go to the team: it becomes a personal memory, only on this PC'
   }
 })
 
@@ -75,7 +79,9 @@ export function InboxCard ({ item }: { item: InboxItem }) {
     onSuccess: refresh
   })
   const reject = useMutation({ mutationFn: () => api.reject(item.id), onSuccess: refresh })
-  const busy = approve.isPending || reject.isPending
+  // B4: né al team né scartato, resta come ricordo personale
+  const keep = useMutation({ mutationFn: () => api.keepPersonal(item.id), onSuccess: refresh })
+  const busy = approve.isPending || reject.isPending || keep.isPending
 
   return (
     <Card>
@@ -97,13 +103,14 @@ export function InboxCard ({ item }: { item: InboxItem }) {
             <Markdown text={item.memory.body} />
           </>
           )}
-      <ErrorBox error={approve.error ?? reject.error} />
+      <ErrorBox error={approve.error ?? reject.error ?? keep.error} />
       <div className='row' style={{ marginTop: 12 }}>
         <button className='btn primary' disabled={busy} onClick={() => approve.mutate()}>
           {editing ? s.publishEdited : s.publish}
         </button>
         <button className='btn' disabled={busy} onClick={() => setEditing(!editing)}>{editing ? s.cancelEdit : s.edit}</button>
         <span className='spacer' />
+        <button className='btn' disabled={busy} title={s.keepTitle} onClick={() => keep.mutate()}>🔒 {s.keep}</button>
         <button className='btn danger' disabled={busy} onClick={() => reject.mutate()}>{s.reject}</button>
       </div>
     </Card>

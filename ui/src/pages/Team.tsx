@@ -55,6 +55,9 @@ const S = defineStrings({
     maxMemoriesHint: 'Quanti ricordi al massimo Claude estrae da una sessione o da una parte di documento. Più ricordi = più sapere ma anche più rumore: decidi con i dati della scheda «Qualità della distillazione».',
     keywords: 'Parole che bloccano un contenuto (oltre a quelle di default, separate da virgola)',
     keywordsPlaceholder: 'es. progetto riservato, NDA',
+    updateOnWrite: 'Aggiorna invece di aggiungere',
+    updateOnWriteHint: 'Quando arriva un ricordo simile a uno esistente, Claude decide se è nuovo, un doppione o un aggiornamento: in quel caso resta una sola versione aggiornata (la vecchia va nello storico). Le Radici e i ricordi fissati non vengono mai sostituiti.',
+    localOnly: 'Il team è in modalità solo locale: nessuno può raggiungere questo PC. Per invitare qualcuno scegli prima una rete (Impostazioni → Rete).',
     saveTeam: 'Salva per tutto il team',
     yourTeams: 'I tuoi team su questo PC',
     yourTeamsIntro: 'Ogni team ha un sapere tutto suo. Il predefinito (★) è quello che usano la riga di comando e gli agenti quando non indicano un team; il selettore nella barra laterale cambia solo questa finestra.',
@@ -119,6 +122,9 @@ const S = defineStrings({
     maxMemoriesHint: 'How many memories Claude extracts at most from a session or a part of a document. More memories = more knowledge but also more noise: decide with the data of the “Distillation quality” card.',
     keywords: 'Words that block a content (in addition to the default ones, comma separated)',
     keywordsPlaceholder: 'e.g. confidential project, NDA',
+    updateOnWrite: 'Update instead of adding',
+    updateOnWriteHint: 'When a memory similar to an existing one arrives, Claude decides whether it is new, a duplicate or an update: in that case a single updated version remains (the old one goes to the history). Roots and pinned memories are never replaced.',
+    localOnly: 'The team is in local-only mode: nobody can reach this PC. To invite someone, choose a network first (Settings → Network).',
     saveTeam: 'Save for the whole team',
     yourTeams: 'Your teams on this PC',
     yourTeamsIntro: 'Each team has knowledge of its own. The default one (★) is used by the command line and the agents when they do not name a team; the switcher in the sidebar only changes this window.',
@@ -298,8 +304,11 @@ function InviteCard () {
   const s = useStrings(S)
   const invites = useQuery({ queryKey: ['invites'], queryFn: api.invites })
   const create = useMutation({ mutationFn: api.invite })
+  const status = useQuery({ queryKey: ['status'], queryFn: api.status })
   const [copied, setCopied] = useState(false)
   const r = create.data
+  // Solo locale (B4): nessuno potrebbe usare l'invito, si spiega cosa fare invece del pulsante
+  if (status.data?.localOnly) return <Card help='solo#local' title={s.invite}><div className='notice'>{s.localOnly}</div></Card>
 
   return (
     <Card help='team#invites'
@@ -332,15 +341,17 @@ function TeamSettings () {
   const [language, setLanguage] = useState<string | null>(null)
   const [keywords, setKeywords] = useState<string | null>(null)
   const [maxMemories, setMaxMemories] = useState<string | null>(null)
+  const [updateOnWrite, setUpdateOnWrite] = useState<boolean | null>(null)
   const client = useQueryClient()
   const save = useMutation({
     mutationFn: async () => {
       if (language !== null) await api.setTeamConfig('memory.language', language)
       if (keywords !== null) await api.setTeamConfig('filter.blockKeywords', keywords.split(',').map((k) => k.trim()).filter(Boolean))
       if (maxMemories !== null) await api.setTeamConfig('distill.maxMemories', Number(maxMemories))
+      if (updateOnWrite !== null) await api.setTeamConfig('memory.updateOnWrite', updateOnWrite)
     },
     onSuccess: () => {
-      setLanguage(null); setKeywords(null); setMaxMemories(null)
+      setLanguage(null); setKeywords(null); setMaxMemories(null); setUpdateOnWrite(null)
       void client.invalidateQueries({ queryKey: ['teamConfig'] })
       void client.invalidateQueries({ queryKey: ['distillQuality'] })
     }
@@ -363,11 +374,18 @@ function TeamSettings () {
           <div className='muted small'>{s.maxMemoriesHint}</div>
         </div>
         <div>
+          <label className='row' style={{ margin: 0 }}>
+            <input type='checkbox' checked={updateOnWrite ?? cfg.data.updateOnWrite} onChange={(e) => setUpdateOnWrite(e.target.checked)} />
+            {s.updateOnWrite} <HelpButton topic='memory#update-on-write' />
+          </label>
+          <div className='muted small'>{s.updateOnWriteHint}</div>
+        </div>
+        <div>
           <label>{s.keywords}</label>
           <input value={keywords ?? cfg.data.blockKeywords.join(', ')} onChange={(e) => setKeywords(e.target.value)} placeholder={s.keywordsPlaceholder} />
         </div>
         <ErrorBox error={save.error} />
-        <div><button className='btn primary' disabled={save.isPending || (language === null && keywords === null && maxMemories === null)} onClick={() => save.mutate()}>{s.saveTeam}</button></div>
+        <div><button className='btn primary' disabled={save.isPending || (language === null && keywords === null && maxMemories === null && updateOnWrite === null)} onClick={() => save.mutate()}>{s.saveTeam}</button></div>
       </div>
     </Card>
   )

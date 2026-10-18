@@ -33,3 +33,11 @@ Le Radici con indizi diventano **da rivedere** per tutti (evento `root.flag`). N
 ## Nelle viste grafiche {#visual}
 
 Nel **Nucleo 3D** le Radici stanno al centro della sfera, con un anello bianco (rosso se da rivedere); nella **Mappa 2D** sono rombi con contorno. «◆ Radici» le isola in entrambe.
+
+## Nei file degli agenti {#agent-files}
+
+«File per gli agenti» (in fondo alla pagina) scrive le Radici di un progetto in `CLAUDE.md` (Claude Code), `AGENTS.md` (Codex e altri) o `.cursor/rules/micelio.mdc` (Cursor), i file che gli agenti leggono da soli a ogni sessione. Micelio scrive solo fra i marcatori `<!-- micelio:start -->` e `<!-- micelio:end -->`; il resto del file non si tocca. Il blocco non contiene date: si riscrive solo quando le Radici cambiano davvero, così non sporca i diff. L'elenco dei file tenuti aggiornati sta nelle impostazioni del team (`settings.json`). Da terminale: `micelio roots export <cartella> --format claude|agents|cursor`.
+
+## Importare sapere già scritto {#import}
+
+«Importa Radici» trasforma in Radici il sapere che il team ha già in file: una cartella di **ADR** (una decisione per file, categoria architettura), `CLAUDE.md` / `AGENTS.md` (una Radice per sezione `##`, saltando il blocco di Micelio), un vault Markdown. Nessun LLM: il testo resta quello scritto, passa dal filtro dei segreti e i contenuti riservati (HR, personali) non entrano. Reimportare non duplica. Da terminale: `micelio roots import <percorso> [--category …]`.

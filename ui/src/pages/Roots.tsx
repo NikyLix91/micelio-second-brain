@@ -14,6 +14,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { api, type RecallHit, type RootReviewResult, type RootView } from '../api/client'
 import { MemoryPanel } from '../components/MemoryPanel'
+import { RootsTools } from '../components/RootsTools'
 import { Card, Empty, ErrorBox, PageHeader } from '../components/ui'
 import { dateTime, ROOT_CATEGORY_LABEL, ROOT_CATEGORY_ORDER } from '../format'
 import { defineStrings, useStrings } from '../i18n'
@@ -143,6 +144,8 @@ export function Roots () {
             : <Empty>{s.selectOne}</Empty>}
         </div>
       </div>
+      {/* B4: Radici nei file per gli agenti e import di sapere già scritto */}
+      <RootsTools />
     </>
   )
 }

@@ -15,6 +15,7 @@ The reason is written on each item.
 
 - **Publish to the team**: the memory enters your feed and reaches everyone;
 - **Edit**: change title and text (for example remove a sensitive detail), then publish the corrected version;
+- **Keep it for me**: it does not go to the team but stays as a personal memory, only on this PC (see **On your own**);
 - **Discard**: the memory does not reach the team; the decision stays in the Private log.
 
 An agent can also show you the inbox (tool `inbox_review`) and apply your decision (`inbox_decide`), only after you have made it.

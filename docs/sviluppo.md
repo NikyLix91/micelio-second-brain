@@ -100,6 +100,22 @@ Un PC può stare in più team. I pezzi:
 
 Test: `test/integration/multi-team.test.ts` (migrazione, sapere separato, instradamento, riavvio, uscita), i casi multi-team in `daemon.test.ts`, `member.identity` in `test/unit/apply.test.ts`, `ui/src/__tests__/Teams.test.tsx`.
 
+## Blocco B4: contesto, lacune, file per gli agenti, qualità, uso personale
+
+Ogni funzione sta in un modulo suo; il nodo fa solo da collegamento.
+
+| Funzione | Moduli | Note |
+|---|---|---|
+| Contesto automatico | `src/context/agent-context.ts`, `MicelioNode.agentContext`, `MicelioHost.agentContext`, `POST /api/context`, `micelio hook session-start\|prompt` | Hook installati da `installHooks` (`src/node/integrations.ts`). Impostazioni della macchina `context.*` |
+| Lacune e riepilogo | `src/insight/gaps.ts`, `src/insight/digest.ts`, eventi `gap.report` / `gap.close` | Ricerche senza risultato in `private.db` (`search_misses`); notifica del lunedì in `desktop/src/notifications.ts` |
+| File per gli agenti, import | `src/roots/agent-files.ts`, `src/roots/import.ts` | Elenco dei file tenuti aggiornati: `agentFiles` in `settings.json` del team; riscritti dopo ogni `materialize` solo se cambiano |
+| Aggiornare invece di aggiungere | `src/ingest/write-update.ts`, `MicelioNode.publish` / `writeDecision` | Compito LLM `write-update` (modello di classificazione); `memory.supersede` per l'aggiornamento; team config `memory.updateOnWrite` |
+| Codice cambiato | `src/rank/code-staleness.ts` | `private.db` (`code_staleness`); `activationOf` moltiplica per `stalenessFactor` |
+| Solo locale | `TeamNodeOptions.offline`, `network.mode = 'local'` | Niente swarm né pairing; `invite` rifiutato con spiegazione |
+| Ricordi personali | `private.db` (`personal`), `MicelioNode.personalIds` | Nell'indice insieme a quelli del team; `teamMemories()` li esclude da costellazione, dreaming, metriche, scansioni |
+
+Regola: le operazioni di team (voto, pin, Radice, redazione) passano da `requireMemory`, che rifiuta i ricordi personali. L'adapter finto (`src/llm/fake.ts`) conosce anche `write-update`: `[aggiorna]` e `[duplicato]` nel testo guidano la decisione nei test.
+
 ## Regole d'oro
 
 1. **`apply` è deterministica.** Dipende solo dagli eventi e dalla vista: niente `Date.now()`, rete, file o variabili globali. Autobase può annullare e riapplicare blocchi quando cambia l'ordinamento, e ogni nodo deve arrivare alla stessa vista. La scadenza degli inviti, per esempio, si controlla nel pairing e non in `apply`.

@@ -9,7 +9,8 @@ import { api, type CodeRefs, type GraphNode } from '../api/client'
 import { dateTime, KIND_LABEL, ROOT_CATEGORY_LABEL, ROOT_CATEGORY_ORDER, short } from '../format'
 import { defineStrings, useStrings } from '../i18n'
 import { authorColor } from '../pages/colors'
-import { Card, Empty, ErrorBox, Markdown, Meter } from './ui'
+import { HelpButton } from '../help'
+import { Card, ConfirmButton, Empty, ErrorBox, Markdown, Meter } from './ui'
 
 const S = defineStrings({
   it: {
@@ -44,7 +45,14 @@ const S = defineStrings({
     author: 'Autore',
     written: 'Scritto il',
     document: 'documento',
-    openInSearch: 'Apri nella ricerca →'
+    openInSearch: 'Apri nella ricerca →',
+    personal: 'Ricordo personale: sta solo su questo PC, il team non lo vede. Gli agenti lo trovano nelle tue ricerche.',
+    share: 'Condividi con il team',
+    shareConfirm: 'Sì, condividi (passa dal filtro)',
+    shared: (o: string): string => o === 'team' ? 'Condiviso con il team.' : o === 'inbox' ? 'Messo in inbox per una verifica.' : 'Non condiviso: il filtro lo trattiene come privato.',
+    remove: 'Cancella',
+    removeConfirm: 'Sì, cancella',
+    stale: (commits: number, missing: number) => `Il codice citato è cambiato dopo questo ricordo: ${commits} commit sui file citati${missing ? `, ${missing} file non più presenti` : ''}. Verifica sul codice attuale prima di fidarti.`
   },
   en: {
     fromDocument: 'From document:',
@@ -78,7 +86,14 @@ const S = defineStrings({
     author: 'Author',
     written: 'Written on',
     document: 'document',
-    openInSearch: 'Open in search →'
+    openInSearch: 'Open in search →',
+    personal: 'Personal memory: it lives only on this PC, the team does not see it. Agents find it in your searches.',
+    share: 'Share with the team',
+    shareConfirm: 'Yes, share (goes through the filter)',
+    shared: (o: string): string => o === 'team' ? 'Shared with the team.' : o === 'inbox' ? 'Sent to the inbox for a check.' : 'Not shared: the filter keeps it private.',
+    remove: 'Delete',
+    removeConfirm: 'Yes, delete',
+    stale: (commits: number, missing: number) => `The cited code changed after this memory: ${commits} commits on the cited files${missing ? `, ${missing} files no longer present` : ''}. Check the current code before trusting it.`
   }
 })
 
@@ -228,6 +243,26 @@ function Signals ({ id, activation, votes, uses, pinned }: { id: string, activat
   )
 }
 
+/** Ricordo personale (B4): solo su questo PC; si condivide con il team o si cancella. */
+function PersonalBox ({ id, onDone }: { id: string, onDone: () => void }) {
+  const s = useStrings(S)
+  const client = useQueryClient()
+  const refresh = () => { void client.invalidateQueries({ queryKey: ['memories'] }); void client.invalidateQueries({ queryKey: ['personal'] }) }
+  const share = useMutation({ mutationFn: () => api.sharePersonal(id), onSuccess: refresh })
+  const remove = useMutation({ mutationFn: () => api.deletePersonal(id), onSuccess: () => { refresh(); onDone() } })
+  return (
+    <div className='notice small' style={{ marginTop: 10 }}>
+      <div>🔒 {s.personal} <HelpButton topic='solo#personal' /></div>
+      <div className='row' style={{ marginTop: 8 }}>
+        <ConfirmButton label={s.share} confirmLabel={s.shareConfirm} disabled={share.isPending || !!share.data} onConfirm={() => share.mutate()} />
+        <ConfirmButton label={s.remove} confirmLabel={s.removeConfirm} danger disabled={remove.isPending} onConfirm={() => remove.mutate()} />
+      </div>
+      {share.data && <div style={{ marginTop: 6 }}>{s.shared(share.data.outcome)}</div>}
+      <ErrorBox error={share.error ?? remove.error} />
+    </div>
+  )
+}
+
 export function MemoryPanel ({ node, onClose }: { node: GraphNode, onClose: () => void }) {
   const s = useStrings(S)
   const full = useQuery({ queryKey: ['memories', 'one', node.id], queryFn: () => api.memory(node.id) })
@@ -242,8 +277,12 @@ export function MemoryPanel ({ node, onClose }: { node: GraphNode, onClose: () =
         <dt>{s.author}</dt><dd><span className='dot' style={{ background: authorColor(node.author), marginRight: 6 }} />{node.authorName ?? short(node.author)}</dd>
         <dt>{s.written}</dt><dd>{dateTime(node.ts)}</dd>
       </dl>
-      {full.data && <Signals id={node.id} activation={full.data.activation ?? 0} votes={full.data.votes ?? 0} uses={full.data.uses ?? 0} pinned={!!full.data.pinned} />}
-      {full.data && <RootBox key={`${node.id}-${full.data.root?.category ?? ''}`} id={node.id} root={full.data.root} />}
+      {full.data?.stale && (
+        <div className='notice warn small' style={{ marginTop: 10 }}>{s.stale(full.data.stale.commits, full.data.stale.missing)} <HelpButton topic='memory#stale' /></div>
+      )}
+      {full.data?.personal && <PersonalBox id={node.id} onDone={onClose} />}
+      {full.data && !full.data.personal && <Signals id={node.id} activation={full.data.activation ?? 0} votes={full.data.votes ?? 0} uses={full.data.uses ?? 0} pinned={!!full.data.pinned} />}
+      {full.data && !full.data.personal && <RootBox key={`${node.id}-${full.data.root?.category ?? ''}`} id={node.id} root={full.data.root} />}
       {full.data?.source?.code && <CodeBox code={full.data.source.code} />}
       {full.data?.source?.type === 'document' && <SourceBox id={node.id} name={full.data.source.name ?? s.document} size={full.data.source.size} />}
       <p className='small' style={{ marginBottom: 0 }}><Link to='/memoria'>{s.openInSearch}</Link></p>

@@ -126,6 +126,19 @@ Il nodo a colpo d'occhio: ruolo, peer connessi, ricordi, LLM e budget di oggi, c
 
 ![Impostazioni](img/impostazioni.png)
 
+## Riepilogo
+
+La pagina **Riepilogo** mostra la settimana del team (ricordi nuovi per tipo e autore, Radici nuove e da rivedere, più usati, sogni, ricordi con il codice cambiato), le **lacune del team** (domande segnalate a cui la memoria non sa rispondere, con il ricordo che forse le colma e «Chiudi con questo ricordo») e **le tue ricerche senza risposta** (solo su questo PC: «Segnala al team» o «Ignora»). Il lunedì l'app desktop lo segnala con una notifica.
+
+## Novità nelle altre schermate (B4)
+
+- **Memoria**: filtri «🔒 Personali» e «⚠ Codice cambiato» (con «Ricontrolla i repository»); nel modulo «Nuovo ricordo» si sceglie «Per il team» o «Solo per me». Il dettaglio di un ricordo personale ha «Condividi con il team» e «Cancella»; un ricordo con il codice cambiato mostra l'avviso.
+- **Radici**: in fondo, «File per gli agenti» (CLAUDE.md, AGENTS.md, regole di Cursor tenuti aggiornati) e «Importa Radici» (ADR, CLAUDE.md, vault Markdown).
+- **Inbox**: «Tienilo per me» trasforma un elemento in ricordo personale.
+- **Team**: «Aggiorna invece di aggiungere» fra le impostazioni dell'admin; in modalità solo locale l'invito è sostituito da una spiegazione.
+- **Impostazioni**: rete «Solo locale»; scheda «Contesto automatico per gli agenti».
+- **Primo avvio**: «Solo per me, senza rete» alla creazione del team.
+
 ## Più team
 
 Se il PC fa parte di più team, il selettore **Team** in alto nella barra laterale sceglie su quale team lavorano tutte le schermate. La scelta vale per la finestra e si ricorda; non cambia il team predefinito, che usano CLI e agenti. «＋ Aggiungi un team…» apre il modulo per creare un team o entrare con un invito.

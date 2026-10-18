@@ -428,6 +428,20 @@ Nell'app: schermata **Sogni**, con diario, "Sogna ora" e archivio con "Ripristin
 
 ![Sogni](img/sogni.png)
 
+## 7-quinquies. Agenti più informati, sapere più pulito
+
+**Contesto automatico.** Con `micelio setup claude-code` Claude Code riceve da solo, a inizio sessione, le Radici e i ricordi più utili del progetto della cartella, e a ogni richiesta i ricordi pertinenti (solo se lo sono davvero). Si regola in Impostazioni → «Contesto automatico»; `--no-context` non installa gli hook.
+
+**File per gli agenti.** `micelio roots export <cartella> --format claude` (o `agents`, `cursor`) scrive le Radici nel file che l'agente legge a ogni sessione e lo tiene aggiornato; il resto del file non si tocca. `micelio roots import docs/adr` trasforma ADR, CLAUDE.md o note Markdown in Radici.
+
+**Aggiornare invece di aggiungere.** Un ricordo che corregge uno esistente lo sostituisce con una versione unica (la vecchia resta nello storico). L'admin può spegnerlo dalla pagina Team.
+
+**Codice cambiato.** I ricordi che citano file modificati dopo la loro scrittura scendono nella ricerca e mostrano un avviso, anche agli agenti. `micelio stale --check` li elenca.
+
+**Lacune e riepilogo.** Le ricerche senza risposta si vedono in Riepilogo (`micelio gaps mine`) e si segnalano al team (`micelio gaps report`). `micelio digest` mostra la settimana del team.
+
+**Da soli.** `micelio init <nome> --solo` crea un team senza rete; `micelio remember … --personal` salva un ricordo che resta solo sul tuo PC (`micelio personal` per vederli, condividerli o cancellarli).
+
 ## 8. Inbox: i casi dubbi
 
 L'inbox contiene **solo** ciò su cui il filtro non ha potuto decidere da solo. I contenuti puliti vanno al team senza chiederti nulla, quelli chiaramente personali restano privati. L'inbox è locale: nessun collega la vede.

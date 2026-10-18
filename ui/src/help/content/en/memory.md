@@ -28,3 +28,11 @@ The panel shows kind, tags, text, author and date, and then:
 - the **Root** box (to make it foundational knowledge or review it);
 - **From code**: project, branch, files, symbols and commits (commits are links if the repository is on a web server);
 - **From document**: the name of the original file and "Download the original" from the colleague who owns it.
+
+## Update instead of adding {#update-on-write}
+
+When a new memory is about to enter the team, Micelio looks for the memories most **similar in meaning**. If there are none, it is simply added. If there are, Claude (the fast model) decides: **new** (it says something else) → added; **duplicate** → nothing is written; **update** (it corrects or completes an existing memory) → ONE updated version is written that replaces the old one (`memory.supersede`), which stays in the history and can be restored from the Archive. Roots and pinned memories are never replaced. Without an LLM or with the budget used up the memory is added as before. The admin turns it off on the Team page ("Update instead of adding").
+
+## Code changed {#stale}
+
+If a memory cites files (from the code of a session) and after it was written those files changed or disappeared, it may describe code that no longer exists. Micelio checks this on the repositories of **this PC** (at start-up, every 6 hours, or with "Check the repositories again" in the "⚠ Code changed" filter): it reads the git history of the cited files only and counts the commits after the memory. Effects: the activation goes down (−5% per commit, −20% per missing file, down to half), and the memory shows the warning, to agents too, so that they check the current code. The signal stays local. Roots have their own review instead. From the terminal: `micelio stale --check`.

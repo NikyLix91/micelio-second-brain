@@ -32,6 +32,10 @@ Il comando `micelio` fa tutto ciò che fa l'app, e qualcosa in più. `micelio --
 | `micelio roots` · `add` · `remove` · `confirm` · `review` · `suggested` | Radici |
 | `micelio dream now` · `dream log` · `archive` · `restore <id>` | dreaming e archivio |
 | `micelio quality` | qualità della distillazione |
+| `micelio remember … --personal` · `micelio personal` | ricordi personali (solo su questo PC) |
+| `micelio stale [--check]` | ricordi con il codice cambiato |
+| `micelio gaps` · `gaps mine` · `gaps report` · `gaps close` · `micelio digest` | lacune e riepilogo |
+| `micelio roots export <cartella>` · `roots import <percorso>` | Radici nei file degli agenti · import |
 
 ## Raccolta {#collection}
 

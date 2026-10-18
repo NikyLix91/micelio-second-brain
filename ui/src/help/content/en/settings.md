@@ -4,7 +4,7 @@ The settings of **this PC**, saved in `config.json` (not replicated). Those shar
 
 ## Network {#network}
 
-Chooses where team nodes meet: Holepunch's public DHT or the team's private DHT (bootstrap nodes, `host:port`). "Check" tests the choice without applying it; "Apply" saves and reconnects the node right away, with no restart and no data loss. Every member must use the same DHT. See **Network and replication**.
+Chooses where team nodes meet: Holepunch's public DHT, the team's private DHT (bootstrap nodes, `host:port`) or **local only**, no network (see **On your own**). "Check" tests the choice without applying it; "Apply" saves and reconnects the node right away, with no restart and no data loss. Every member must use the same DHT. See **Network and replication**.
 
 ## Automatic collection {#watch}
 

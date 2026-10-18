@@ -32,20 +32,21 @@ import { Private } from './pages/Private'
 import { Settings } from './pages/Settings'
 import { Team } from './pages/Team'
 import { Dreams } from './pages/Dreams'
+import { Digest } from './pages/Digest'
 
 /** Testi dell'ossatura (menu, stati di connessione) nelle due lingue. */
 const S = defineStrings({
   it: {
     connecting: 'Connessione al nodo…',
     nucleusLoading: 'Accensione del nucleo…',
-    nav: { nucleus: 'Nucleo', map: 'Mappa 2D', memory: 'Memoria', roots: 'Radici', inbox: 'Inbox', team: 'Team', dreams: 'Sogni', status: 'Stato', private: 'Registro privato', security: 'Sicurezza', settings: 'Impostazioni', guide: 'Guida' },
+    nav: { nucleus: 'Nucleo', map: 'Mappa 2D', memory: 'Memoria', roots: 'Radici', inbox: 'Inbox', team: 'Team', digest: 'Riepilogo', dreams: 'Sogni', status: 'Stato', private: 'Registro privato', security: 'Sicurezza', settings: 'Impostazioni', guide: 'Guida' },
     live: 'Aggiornamenti in tempo reale',
     reconnecting: 'Riconnessione…'
   },
   en: {
     connecting: 'Connecting to the node…',
     nucleusLoading: 'Powering up the nucleus…',
-    nav: { nucleus: 'Nucleus', map: '2D map', memory: 'Memory', roots: 'Roots', inbox: 'Inbox', team: 'Team', dreams: 'Dreams', status: 'Status', private: 'Private log', security: 'Security', settings: 'Settings', guide: 'Guide' },
+    nav: { nucleus: 'Nucleus', map: '2D map', memory: 'Memory', roots: 'Roots', inbox: 'Inbox', team: 'Team', digest: 'Digest', dreams: 'Dreams', status: 'Status', private: 'Private log', security: 'Security', settings: 'Settings', guide: 'Guide' },
     live: 'Live updates',
     reconnecting: 'Reconnecting…'
   }
@@ -78,6 +79,7 @@ export function App () {
             <Route path='/team' element={<Team />} />
             <Route path='/team/nuovo' element={<AddTeam />} />
             <Route path='/sogni' element={<Dreams />} />
+            <Route path='/riepilogo' element={<Digest />} />
             <Route path='/privato' element={<Private />} />
             <Route path='/sicurezza' element={<Security />} />
             <Route path='/impostazioni' element={<Settings />} />
@@ -93,7 +95,7 @@ export function App () {
 export const PAGE_TOPIC: Record<string, string> = {
   '/': 'views#nucleus', '/mappa': 'views#map', '/memoria': 'memory', '/radici': 'roots', '/inbox': 'inbox',
   '/team': 'team', '/sogni': 'dreams', '/stato': 'status', '/privato': 'private', '/sicurezza': 'security',
-  '/impostazioni': 'settings', '/guida': 'overview', '/team/nuovo': 'teams'
+  '/impostazioni': 'settings', '/guida': 'overview', '/team/nuovo': 'teams', '/riepilogo': 'digest'
 }
 
 /** Pagina "Aggiungi un team": a ingresso riuscito si torna alla home, già sul nuovo team. */
@@ -148,6 +150,7 @@ function Sidebar ({ live, team, node }: { live: boolean, team: string, node: str
       <NavLink to='/radici' className={link}>{n.roots}</NavLink>
       <NavLink to='/inbox' className={link}>{n.inbox} {inbox > 0 && <span className='count'>{inbox}</span>}</NavLink>
       <NavLink to='/team' end className={link}>{n.team}</NavLink>
+      <NavLink to='/riepilogo' className={link}>{n.digest}</NavLink>
       <NavLink to='/sogni' className={link}>{n.dreams}</NavLink>
       <NavLink to='/stato' className={link}>{n.status}</NavLink>
       <NavLink to='/privato' className={link}>{n.private}</NavLink>

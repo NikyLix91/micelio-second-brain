@@ -20,7 +20,7 @@ import { teamHeaders, useCurrentTeam } from './team'
  */
 export const TOPIC_QUERIES: Record<string, string[][]> = {
   status: [['status'], ['teamConfig'], ['distillQuality']],
-  memories: [['memories'], ['graph'], ['dreams'], ['archive'], ['storage'], ['roots'], ['distillQuality']],
+  memories: [['memories'], ['graph'], ['dreams'], ['archive'], ['storage'], ['roots'], ['distillQuality'], ['personal'], ['stale'], ['digest'], ['gaps']],
   members: [['members'], ['invites'], ['graph'], ['storage']],
   inbox: [['inbox'], ['ingest']],
   jobs: [['ingest'], ['documents']],
@@ -28,6 +28,8 @@ export const TOPIC_QUERIES: Record<string, string[][]> = {
   settings: [['settings'], ['ingest'], ['documents'], ['network']],
   // Elenco dei team del PC (B3): nome, ruolo, team aggiunti o tolti
   teams: [['teams']],
+  // Lacune di conoscenza (B4)
+  gaps: [['gaps'], ['digest']],
   roots: [['roots'], ['rootSuggestions']],
   security: [['security']]
 }

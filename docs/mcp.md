@@ -92,3 +92,9 @@ micelio --team "Cliente X" setup claude-code --project C:\progetti\cliente-x
 Il comando esegue, nella cartella del progetto, `claude mcp add --transport http --scope local micelio http://127.0.0.1:7337/mcp/<id> --header "Authorization: Bearer <token>"`. L'ambito *local* vale solo quando Claude Code è avviato in quella cartella, prevale sulla registrazione utente e resta in `~/.claude.json`: il token non finisce nel repository. Lo stesso fa il pulsante «Collega Claude Code» accanto a una cartella nelle Impostazioni.
 
 Per i client che usano lo shim: `micelio --team <team> setup codex|vscode|webstorm` stampa una configurazione che passa `--team` allo shim.
+
+## Ricordi personali, codice cambiato, contesto automatico (B4)
+
+- `remember` accetta `personal: true`: il ricordo resta solo sul PC dell'utente (l'agente lo usa quando l'utente chiede di ricordare qualcosa «per sé»).
+- Nei risultati di `recall` e `get` un ricordo personale è marcato `PERSONALE`, uno con il codice citato cambiato dopo la scrittura `⚠ CODICE CAMBIATO` (con il numero di commit e di file spariti): le istruzioni del server chiedono all'agente di verificare sul codice attuale.
+- Il contesto automatico non passa da MCP: sono gli hook `SessionStart` e `UserPromptSubmit` di Claude Code (`micelio hook session-start` / `prompt`) a chiedere il contesto al daemon (`POST /api/context`) e a restituirlo come `additionalContext`. Vedi la voce «Contesto automatico» della guida in linea.

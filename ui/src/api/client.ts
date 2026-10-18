@@ -12,7 +12,8 @@ import type { InviteRecord, MemberRecord, NodeStatus, RecallHit } from '../../..
 import type { ExplicitOutcome } from '../../../src/ingest/pipeline'
 import type { DistillQuality } from '../../../src/ingest/quality'
 import type { Graph, GraphLink, GraphNode } from '../../../src/graph/constellation'
-import type { IngestStatus, NetworkSettings, NodeSettings, RootReviewResult, RootView, SecurityFinding, SecurityRules, SecurityTestResult, StorageReport } from '../../../src/node/micelio-node'
+import type { GapView, IngestStatus, NetworkSettings, NodeSettings, RootReviewResult, RootView, SecurityFinding, SecurityRules, SecurityTestResult, StorageReport } from '../../../src/node/micelio-node'
+import type { Digest } from '../../../src/insight/digest'
 import type { NetworkCheck } from '../../../src/net/diagnose'
 import type { Decision, InboxItem, SecurityLogEntry } from '../../../src/store/private-store'
 import type { TeamSummary } from '../../../src/node/micelio-host'
@@ -22,6 +23,14 @@ import { currentLang } from '../i18n'
 
 export type { DistillQuality, Graph, GraphLink, GraphNode }
 export type { NetworkCheck, NetworkSettings, RootReviewResult, RootView, SecurityFinding, SecurityLogEntry, SecurityRules, SecurityTestResult, StorageReport }
+export type { Digest, GapView }
+
+/** Rete di un team: DHT pubblica, privata, o nessuna rete (solo locale, B4). */
+export type NetworkMode = NetworkSettings['mode']
+/** Formato dei file per gli agenti (B4). */
+export type AgentFileFormat = 'claude' | 'agents' | 'cursor'
+/** Una tua ricerca senza risposta (B4). */
+export interface MyGap { key: string, query: string, count: number, first: number, last: number, answer: { id: string, title: string } | null }
 export type { CodeRefs, Decision, ExplicitOutcome, InboxItem, IngestStatus, InviteRecord, MemberRecord, MemoryData, NodeSettings, NodeStatus, RecallHit, TeamSummary }
 
 /** Elenco dei team del PC e identità personale (GET /api/teams, B3). */
@@ -71,7 +80,7 @@ export const api = {
   // Nodo e team
   status: () => call<NodeStatus>('GET', '/api/status'),
   // Nome facoltativo dal secondo team in poi: il daemon usa quello dell'identità personale (B3)
-  init: (team: string, name?: string) => call<NodeStatus & { teamId: string }>('POST', '/api/team/init', { team, name: name || undefined }),
+  init: (team: string, name?: string, network?: 'public' | 'local') => call<NodeStatus & { teamId: string }>('POST', '/api/team/init', { team, name: name || undefined, network }),
   join: (code: string, name?: string) => call<NodeStatus & { teamId: string }>('POST', '/api/team/join', { code, name: name || undefined }),
 
   // Più team sullo stesso PC (B3)
@@ -82,7 +91,7 @@ export const api = {
   membersOf: (team: string) => call<MemberRecord[]>('GET', '/api/members', undefined, team),
   /** Collega Claude Code avviato in una cartella al team scelto (MCP in ambito "local"). */
   setupProject: (path: string) => call<{ dir: string, mcpUrl: string }>('POST', '/api/setup/project', { path }),
-  teamConfig: () => call<{ language: string, blockKeywords: string[], maxMemories: number }>('GET', '/api/team/config'),
+  teamConfig: () => call<{ language: string, blockKeywords: string[], maxMemories: number, updateOnWrite: boolean }>('GET', '/api/team/config'),
   distillQuality: () => call<DistillQuality>('GET', '/api/distill/quality'),
   setTeamConfig: (key: string, value: unknown) => call<{ ok: true }>('POST', '/api/team/config', { key, value }),
   members: () => call<MemberRecord[]>('GET', '/api/members'),
@@ -97,6 +106,31 @@ export const api = {
   recent: (limit = 30) => call<RecallHit[]>('GET', `/api/memories?limit=${limit}`),
   search: (q: string, limit = 20) => call<RecallHit[]>('GET', `/api/memories/search?q=${enc(q)}&limit=${limit}`),
   remember: (m: { title: string, body: string, kind?: string, tags?: string[] }) => call<ExplicitOutcome>('POST', '/api/memories', m),
+
+  // Ricordi personali (B4): restano su questo PC
+  rememberPersonal: (m: { title: string, body: string, kind?: string, tags?: string[] }) => call<{ id: string, duplicate: boolean }>('POST', '/api/memories', { ...m, personal: true }),
+  personal: () => call<RecallHit[]>('GET', '/api/personal'),
+  sharePersonal: (id: string) => call<ExplicitOutcome>('POST', `/api/personal/${enc(id)}/share`),
+  deletePersonal: (id: string) => call<{ ok: true }>('DELETE', `/api/personal/${enc(id)}`),
+  keepPersonal: (inboxId: string) => call<{ id: string, duplicate: boolean }>('POST', `/api/inbox/${enc(inboxId)}/keep`),
+
+  // Ricordi con il codice cambiato (B4)
+  staleMemories: () => call<RecallHit[]>('GET', '/api/memories/stale'),
+  checkStale: () => call<{ checked: number, stale: number }>('POST', '/api/memories/stale/check'),
+
+  // Lacune e riepilogo (B4)
+  myGaps: () => call<MyGap[]>('GET', '/api/gaps/mine'),
+  dismissGap: (key: string) => call<{ ok: true }>('DELETE', `/api/gaps/mine/${enc(key)}`),
+  reportGap: (key: string, question?: string) => call<GapView[]>('POST', '/api/gaps/report', { key, question }),
+  teamGaps: () => call<GapView[]>('GET', '/api/gaps'),
+  closeGap: (id: string, memory?: string) => call<GapView[]>('POST', `/api/gaps/${enc(id)}/close`, { memory }),
+  digest: (days = 7) => call<Digest>('GET', `/api/digest?days=${days}`),
+
+  // File per gli agenti e import di Radici (B4)
+  agentFiles: () => call<{ dir: string, format: AgentFileFormat, project: string, file: string, exists: boolean }[]>('GET', '/api/roots/agent-files'),
+  exportAgentFile: (o: { dir: string, format: AgentFileFormat, project?: string, keep?: boolean }) => call<{ file: string, changed: boolean }>('POST', '/api/roots/agent-files', o),
+  removeAgentFile: (dir: string, format: AgentFileFormat) => call<{ ok: true }>('DELETE', '/api/roots/agent-files', { dir, format }),
+  importRoots: (path: string, category?: string) => call<{ imported: number, duplicates: number, blocked: string[] }>('POST', '/api/roots/import', { path, category }),
 
   // Inbox e privato
   inbox: () => call<InboxItem[]>('GET', '/api/inbox'),
@@ -117,7 +151,8 @@ export const api = {
   fetchSource: (id: string) => call<{ path: string, name: string, size: number, local: boolean }>('POST', `/api/memories/${enc(id)}/source`),
   watchAdd: (path: string) => call<string[]>('POST', '/api/watch', { path }),
   watchRemove: (path: string) => call<string[]>('DELETE', '/api/watch', { path }),
-  setupClaudeCode: (hook: boolean) => call<{ mcpUrl: string, hookFile: string | null }>('POST', '/api/setup/claude-code', { hook }),
+  setupClaudeCode: (hook: boolean, context = true) => call<{ mcpUrl: string, hookFile: string | null }>('POST', '/api/setup/claude-code', { hook, context }),
+  updateContext: (patch: { sessionStart?: boolean, prompt?: boolean, maxChars?: number }) => call<NodeSettings>('PUT', '/api/settings/context', patch),
 
   // Sicurezza (Fase 9)
   securityRules: () => call<SecurityRules>('GET', '/api/security/rules'),
@@ -141,7 +176,7 @@ export const api = {
 
   // Rete P2P e spazio occupato
   network: () => call<NetworkSettings>('GET', '/api/network'),
-  setNetwork: (mode: 'public' | 'private', bootstrap?: string[]) => call<NetworkSettings>('PUT', '/api/network', { mode, bootstrap }),
-  checkNetwork: (mode?: 'public' | 'private', bootstrap?: string[]) => call<NetworkCheck>('POST', '/api/network/check', { mode, bootstrap }),
+  setNetwork: (mode: NetworkMode, bootstrap?: string[]) => call<NetworkSettings>('PUT', '/api/network', { mode, bootstrap }),
+  checkNetwork: (mode?: NetworkMode, bootstrap?: string[]) => call<NetworkCheck>('POST', '/api/network/check', { mode, bootstrap }),
   storage: () => call<StorageReport>('GET', '/api/storage')
 }

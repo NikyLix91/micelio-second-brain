@@ -11,6 +11,7 @@ import { useState } from 'react'
 import { api } from '../api/client'
 import { setCurrentTeam } from '../api/team'
 import { Card, ErrorBox, PageHeader } from '../components/ui'
+import { HelpButton } from '../help'
 import { defineStrings, LangSwitch, useStrings } from '../i18n'
 
 const S = defineStrings({
@@ -28,7 +29,9 @@ const S = defineStrings({
     pcNameKnown: (n: string) => `Il tuo nome nel nuovo team (vuoto = «${n}», come negli altri team)`,
     waiting: 'In attesa che un membro del team accolga la richiesta (fino a 2 minuti)…',
     create: 'Crea il team',
-    join: 'Entra nel team'
+    join: 'Entra nel team',
+    solo: 'Solo per me, senza rete',
+    soloHint: 'Il PC non si collega a nessuno finché non scegli una rete (Impostazioni → Rete). Puoi invitare colleghi più avanti.'
   },
   en: {
     welcome: 'Welcome to Micelio',
@@ -44,7 +47,9 @@ const S = defineStrings({
     pcNameKnown: (n: string) => `Your name in the new team (empty = "${n}", as in the other teams)`,
     waiting: 'Waiting for a team member to accept the request (up to 2 minutes)…',
     create: 'Create the team',
-    join: 'Join the team'
+    join: 'Join the team',
+    solo: 'Just for me, no network',
+    soloHint: 'The PC connects to nobody until you choose a network (Settings → Network). You can invite colleagues later.'
   }
 })
 
@@ -62,13 +67,15 @@ export function Onboarding ({ adding = false, onDone }: { adding?: boolean, onDo
   const [team, setTeam] = useState('')
   const [code, setCode] = useState('')
   const [name, setName] = useState('')
+  // B4: team solo per sé, senza rete (modalità solo locale)
+  const [solo, setSolo] = useState(false)
   const done = (r: { teamId: string }) => {
     // L'interfaccia passa subito al nuovo team
     setCurrentTeam(r.teamId)
     void client.resetQueries()
     onDone?.()
   }
-  const init = useMutation({ mutationFn: () => api.init(team.trim(), name.trim()), onSuccess: done })
+  const init = useMutation({ mutationFn: () => api.init(team.trim(), name.trim(), solo ? 'local' : undefined), onSuccess: done })
   const join = useMutation({ mutationFn: () => api.join(code.trim(), name.trim()), onSuccess: done })
   const busy = init.isPending || join.isPending
   const nameOk = !!name.trim() || !!known
@@ -87,6 +94,14 @@ export function Onboarding ({ adding = false, onDone }: { adding?: boolean, onDo
           <label>{known ? s.pcNameKnown(known) : s.pcName}</label>
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder={known ?? 'pc-mario'} />
         </div>
+        {mode === 'init' && (
+          <div>
+            <label className='row' style={{ margin: 0 }}>
+              <input type='checkbox' checked={solo} onChange={(e) => setSolo(e.target.checked)} /> {s.solo} <HelpButton topic='solo#local' />
+            </label>
+            <div className='muted small'>{s.soloHint}</div>
+          </div>
+        )}
         <ErrorBox error={init.error ?? join.error} />
         {join.isPending && <div className='notice small'>{s.waiting}</div>}
         <div>

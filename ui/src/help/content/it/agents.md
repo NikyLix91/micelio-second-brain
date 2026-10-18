@@ -27,7 +27,7 @@ Il server manda all'agente delle **istruzioni**, che entrano nel suo contesto: c
 
 ## La raccolta automatica {#hook}
 
-Separata da MCP: l'hook `SessionEnd` avvisa il daemon a fine sessione, e lo scanner raccoglie le sessioni lunghe. Vedi **Raccolta e distillazione**.
+Separata da MCP: l'hook `SessionEnd` avvisa il daemon a fine sessione, e lo scanner raccoglie le sessioni lunghe. Vedi **Raccolta e distillazione**. Gli hook `SessionStart` e `UserPromptSubmit` invece portano il sapere all'agente senza che lo chieda: vedi **Contesto automatico**.
 
 ## Sicurezza {#security}
 

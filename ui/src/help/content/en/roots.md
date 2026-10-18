@@ -33,3 +33,11 @@ Roots with clues become **to review** for everyone (`root.flag` event). Nothing 
 ## In the graph views {#visual}
 
 In the **3D Nucleus** Roots sit at the centre of the sphere, with a white ring (red if to review); in the **2D map** they are diamonds with an outline. "◆ Roots" isolates them in both.
+
+## In the agents' files {#agent-files}
+
+"Files for agents" (at the bottom of the page) writes the Roots of a project into `CLAUDE.md` (Claude Code), `AGENTS.md` (Codex and others) or `.cursor/rules/micelio.mdc` (Cursor), the files agents read by themselves at every session. Micelio only writes between the `<!-- micelio:start -->` and `<!-- micelio:end -->` markers; the rest of the file is left alone. The block contains no dates: it is rewritten only when the Roots really change, so it does not clutter diffs. The list of files kept up to date is in the team settings (`settings.json`). From the terminal: `micelio roots export <folder> --format claude|agents|cursor`.
+
+## Importing knowledge already written {#import}
+
+"Import Roots" turns into Roots the knowledge the team already has in files: a folder of **ADRs** (one decision per file, architecture category), `CLAUDE.md` / `AGENTS.md` (one Root per `##` section, skipping Micelio's block), a Markdown vault. No LLM: the text stays as written, goes through the secrets filter, and confidential content (HR, personal) does not get in. Importing again does not duplicate. From the terminal: `micelio roots import <path> [--category …]`.
