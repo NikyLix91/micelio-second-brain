@@ -21,7 +21,7 @@ export function Private () {
   const list = useQuery({ queryKey: ['decisions'], queryFn: () => api.decisions() })
   return (
     <>
-      <PageHeader title={s.title} subtitle={s.subtitle} />
+      <PageHeader help='private' title={s.title} subtitle={s.subtitle} />
       <ErrorBox error={list.error} />
       <Card>
         {list.data?.length === 0 && <Empty>{s.empty}</Empty>}

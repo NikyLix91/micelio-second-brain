@@ -22,6 +22,7 @@ import { api, type GraphNode } from '../api/client'
 import { MemoryPanel } from '../components/MemoryPanel'
 import { ErrorBox } from '../components/ui'
 import { KIND_LABEL, short } from '../format'
+import { HelpButton } from '../help'
 import { defineStrings, useStrings } from '../i18n'
 import { authorColor, DIM, KIND_COLOR, registerAuthors, rootRing } from './colors'
 
@@ -124,7 +125,7 @@ export function Constellation () {
     <div style={{ display: 'grid', gridTemplateColumns: selected ? '1fr 360px' : '1fr', gap: 16, height: 'calc(100vh - 64px)' }}>
       <div className='stack' style={{ minHeight: 0 }}>
         <div className='row'>
-          <h1 style={{ margin: 0 }}>{s.title}</h1>
+          <h1 style={{ margin: 0 }}>{s.title} <HelpButton topic='views#map' /></h1>
           <span className='muted'>{s.counts(data.nodes.length, data.links.length)}</span>
           <span className='spacer' />
           <input style={{ width: 280 }} placeholder={s.highlight} value={query} onChange={(e) => setQuery(e.target.value)} />

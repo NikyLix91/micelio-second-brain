@@ -194,7 +194,7 @@ export function Settings () {
   const s = useStrings(S)
   return (
     <>
-      <PageHeader title={s.title} subtitle={s.subtitle} />
+      <PageHeader help='settings' title={s.title} subtitle={s.subtitle} />
       <div className='stack'>
         <NetworkCard />
         <WatchCard />
@@ -227,7 +227,7 @@ export function NetworkCard () {
     onSuccess: () => { setMode(null); setText(null); check.reset(); void client.invalidateQueries({ queryKey: ['network'] }); void client.invalidateQueries({ queryKey: ['status'] }) }
   })
   const n = net.data
-  if (!n) return <Card title={t.title}><ErrorBox error={net.error} /></Card>
+  if (!n) return <Card help='settings#network' title={t.title}><ErrorBox error={net.error} /></Card>
 
   const draftMode = mode ?? n.mode
   // Un nodo per riga (accetta anche virgole e spazi come separatori)
@@ -237,7 +237,7 @@ export function NetworkCard () {
 
   if (n.fixedByEnv) {
     return (
-      <Card title={t.title}>
+      <Card help='settings#network' title={t.title}>
         <div className='notice warn'>{t.fixed1} <span className='mono'>{n.fixedByEnv}</span>{t.fixed2} <code>MICELIO_DHT_BOOTSTRAP</code> {t.fixed3}</div>
       </Card>
     )
@@ -245,7 +245,7 @@ export function NetworkCard () {
 
   const c = check.data
   return (
-    <Card title={t.title}>
+    <Card help='settings#network' title={t.title}>
       <p className='muted' style={{ marginTop: 0 }}>
         {t.intro} {t.inUseNow} <strong>{inUse}</strong>.
       </p>
@@ -314,7 +314,7 @@ function WatchCard () {
   }
 
   return (
-    <Card title={s.watch.title}>
+    <Card help='settings#watch' title={s.watch.title}>
       <p className='muted' style={{ marginTop: 0 }}>{s.watch.intro}</p>
       {settings.data?.watched.length === 0 && <Empty>{s.watch.empty}</Empty>}
       <div className='list'>
@@ -355,7 +355,7 @@ function DocumentsCard () {
   const stats = docs.data?.stats ?? {}
 
   return (
-    <Card title={d.title}>
+    <Card help='settings#documents' title={d.title}>
       <p className='muted' style={{ marginTop: 0 }}>
         {d.intro1} {d.intro2a} <strong>{d.shareableWord}</strong>{d.intro2b} {d.intro3a} <strong>{d.rootsWord}</strong> {d.intro3b}
       </p>
@@ -455,7 +455,7 @@ function LlmCard () {
   const changed = Object.keys(draft).length > 0
 
   return (
-    <Card title={t.title}>
+    <Card help='settings#llm' title={t.title}>
       <div className={`notice small ${llm.adapter === 'fake' ? 'warn' : ''}`} style={{ marginBottom: 10 }}>
         <strong>{t.inUse(llm.adapter)}</strong>{llm.adapter === 'claude' ? t.command(llm.command) : ''}. {t.adapter[llm.adapter] ?? ''}
         {' '}{t.change1} <code>llm.adapter</code> {t.change2} <code>config.json</code> {t.change3}
@@ -482,7 +482,7 @@ function ClaudeCodeCard () {
   const t = useStrings(S).cc
   const setup = useMutation({ mutationFn: (hook: boolean) => api.setupClaudeCode(hook) })
   return (
-    <Card title={t.title}>
+    <Card help='settings#claude-code' title={t.title}>
       <p className='muted' style={{ marginTop: 0 }}>{t.intro1} {t.intro2}</p>
       <div className='row'>
         <ConfirmButton label={t.full} confirmLabel={t.fullConfirm} onConfirm={() => setup.mutate(true)} disabled={setup.isPending} />

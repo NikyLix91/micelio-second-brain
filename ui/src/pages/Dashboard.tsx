@@ -129,11 +129,11 @@ export function Dashboard () {
 
   return (
     <>
-      <PageHeader title={t.title} subtitle={s?.team ? t.team(s.team.name) : undefined} />
+      <PageHeader help='status' title={t.title} subtitle={s?.team ? t.team(s.team.name) : undefined} />
       <ErrorBox error={status.error ?? ingest.error} />
       {s && (
         <div className='grid'>
-          <Card title={t.thisNode}>
+          <Card help='status#cards' title={t.thisNode}>
             <dl className='kv'>
               <dt>{t.name}</dt><dd>{s.nodeName}</dd>
               <dt>{t.key}</dt><dd className='mono'>{short(s.nodeKey)}</dd>
@@ -146,7 +146,7 @@ export function Dashboard () {
             </dl>
           </Card>
 
-          <Card title={t.network}>
+          <Card help='p2p#connection' title={t.network}>
             <div className='row'>
               <span className={`dot ${s.peers > 0 ? 'on' : ''}`} />
               <span className='stat'>{s.peers}</span>
@@ -156,13 +156,13 @@ export function Dashboard () {
             <p style={{ marginBottom: 0 }}><Link to='/team'>{t.members(s.members)}</Link></p>
           </Card>
 
-          <Card title={t.knowledge}>
+          <Card help='memory' title={t.knowledge}>
             <div className='stat'>{s.memories}</div>
             <div className='muted'>{t.memoriesHere}</div>
             <p style={{ marginBottom: 0 }}><Link to='/memoria'>{t.search}</Link></p>
           </Card>
 
-          <Card title={t.llm}>
+          <Card help='settings#llm' title={t.llm}>
             {i?.llm
               ? (
                 <div className='stack'>
@@ -180,7 +180,7 @@ export function Dashboard () {
               : <p className='muted'>{t.noLlm}</p>}
           </Card>
 
-          <Card title={t.collection}>
+          <Card help='ingestion#queue' title={t.collection}>
             <div className='row'>
               <span className='badge'>{t.queued}: {i?.jobs.pending ?? 0}</span>
               <span className='badge accent'>{t.done}: {i?.jobs.done ?? 0}</span>
@@ -192,7 +192,7 @@ export function Dashboard () {
             </p>
           </Card>
 
-          <Card title={t.inbox}>
+          <Card help='inbox' title={t.inbox}>
             <div className='stat'>{i?.inbox ?? 0}</div>
             <div className='muted'>{t.waiting}</div>
             {(i?.inbox ?? 0) > 0 && <p style={{ marginBottom: 0 }}><Link to='/inbox'>{t.decide}</Link></p>}
@@ -220,11 +220,11 @@ export function StorageCard () {
   const r = storage.data
   // Stessi colori di Nucleo e Mappa: lì il registro contiene gli autori di almeno un ricordo.
   useMemo(() => { if (r) registerAuthors(r.members.filter((m) => m.memories > 0).map((m) => m.key)) }, [r])
-  if (!r) return <Card title={t.storage}><ErrorBox error={storage.error} /></Card>
+  if (!r) return <Card help='status#storage' title={t.storage}><ErrorBox error={storage.error} /></Card>
   const shown = r.members.filter((m) => m.bytes > 0)
 
   return (
-    <Card title={t.storage}>
+    <Card help='status#storage' title={t.storage}>
       <div className='row' style={{ alignItems: 'baseline' }}>
         <span className='stat'>{bytes(r.disk.total)}</span>
         <span className='muted'>{t.onDisk(bytes(r.teamLogBytes))}</span>

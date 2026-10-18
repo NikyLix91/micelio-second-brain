@@ -1,0 +1,46 @@
+# Riga di comando
+
+Il comando `micelio` fa tutto ciò che fa l'app, e qualcosa in più. `micelio --help` e `micelio <comando> --help` elencano opzioni e sottocomandi. `--home <cartella>` usa un nodo diverso da `~/.micelio`.
+
+## Il daemon {#daemon}
+
+| Comando | Effetto |
+|---|---|
+| `micelio start` / `stop` / `status` | avvia in background, ferma, mostra lo stato |
+| `micelio autostart on` / `off` | avvio automatico all'accesso al PC (Windows, macOS, Linux) |
+| `micelio ui` | apre l'app nel browser con un link monouso |
+
+## Team e rete {#team}
+
+| Comando | Effetto |
+|---|---|
+| `micelio init <team> --name <pc>` | crea un team |
+| `micelio invite` · `micelio join <codice> --name <pc>` | invita · entra |
+| `micelio members` | membri e ruoli |
+| `micelio team config <chiave> <valore>` | impostazione di team (admin), es. `distill.maxMemories 8` |
+| `micelio network` · `set` · `public` · `private` · `check` | DHT in uso, cambio, diagnosi |
+
+## Sapere {#memory}
+
+| Comando | Effetto |
+|---|---|
+| `micelio remember "<titolo>" -b "<testo>"` | propone un ricordo |
+| `micelio recall "<parole>"` · `micelio get <id>` | cerca · legge |
+| `micelio vote <id> up\|down\|clear` · `pin` / `unpin <id>` | segnali di priorità |
+| `micelio roots` · `add` · `remove` · `confirm` · `review` · `suggested` | Radici |
+| `micelio dream now` · `dream log` · `archive` · `restore <id>` | dreaming e archivio |
+| `micelio quality` | qualità della distillazione |
+
+## Raccolta {#collection}
+
+| Comando | Effetto |
+|---|---|
+| `micelio setup claude-code` | registra MCP e hook in Claude Code |
+| `micelio watch add <cartella>` | abilita la raccolta delle sessioni |
+| `micelio docs add <cartella> [--shareable] [--roots]` | cartella di documenti |
+| `micelio ingest status` · `scan` · `run` | stato della coda, scansione, elaborazione |
+| `micelio inbox` · `private` | casi dubbi · registro privato |
+
+## Sicurezza {#security}
+
+`micelio security test | scan | clean <id> | log | rules`: banco di prova, scansione, ripulitura (admin), registro, regole.

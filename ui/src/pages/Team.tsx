@@ -137,10 +137,10 @@ export function Team () {
 
   return (
     <>
-      <PageHeader title={s.title} subtitle={status.data?.team ? s.subtitle(status.data.team.name, status.data.members) : undefined} />
+      <PageHeader help='team' title={s.title} subtitle={status.data?.team ? s.subtitle(status.data.team.name, status.data.members) : undefined} />
       <div className='stack'>
         <InviteCard />
-        <Card title={s.members}>
+        <Card help='team#members' title={s.members}>
           <p className='muted small' style={{ marginTop: 0 }}>{s.treeIntro}</p>
           <ErrorBox error={members.error} />
           {members.data && <MemberTree members={members.data} parent={null} me={status.data?.nodeKey ?? null} isAdmin={isAdmin} />}
@@ -203,7 +203,7 @@ function InviteCard () {
   const r = create.data
 
   return (
-    <Card
+    <Card help='team#invites'
       title={s.invite}
       actions={<button className='btn primary' disabled={create.isPending} onClick={() => { setCopied(false); create.mutate() }}>{create.isPending ? s.creating : s.createInvite}</button>}
     >
@@ -249,7 +249,7 @@ function TeamSettings () {
   if (!cfg.data) return null
 
   return (
-    <Card title={s.settings}>
+    <Card help='team#shared-settings' title={s.settings}>
       <div className='stack'>
         <div style={{ maxWidth: 240 }}>
           <label>{s.memoryLanguage}</label>
@@ -286,9 +286,9 @@ export function DistillQualityCard () {
   const s = useStrings(S)
   const q = useQuery({ queryKey: ['distillQuality'], queryFn: api.distillQuality })
   const d = q.data
-  if (!d) return <Card title={s.quality}><ErrorBox error={q.error} /></Card>
+  if (!d) return <Card help='quality' title={s.quality}><ErrorBox error={q.error} /></Card>
   return (
-    <Card title={s.quality}>
+    <Card help='quality#metrics' title={s.quality}>
       <p className='muted small' style={{ marginTop: 0 }}>{s.qualityIntro(d.maxMemories, d.total, d.saturation.atLimit, d.saturation.batches, pct(d.saturation.rate))}</p>
       <table className='small'>
         <thead>

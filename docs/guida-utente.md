@@ -21,6 +21,10 @@ L'app è in italiano e in inglese: si cambia con **IT / EN** in fondo alla barra
 - quella dell'**interfaccia**, personale;
 - quella dei **ricordi distillati**, di tutto il team, scelta dall'admin nella pagina Team.
 
+## 1-ter. Guida in linea
+
+Dentro l'app, il pulsante **?** accanto ai titoli e il tasto **F1** aprono la spiegazione della pagina o della scheda; la voce **Guida** del menu ha l'indice completo con ricerca. Spiega anche dove stanno fisicamente i dati e come viaggiano.
+
 ## 2. Avviare il nodo
 
 ```bash

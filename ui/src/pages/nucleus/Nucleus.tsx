@@ -34,6 +34,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { api, type GraphNode } from '../../api/client'
 import { MemoryPanel } from '../../components/MemoryPanel'
 import { KIND_LABEL } from '../../format'
+import { HelpButton } from '../../help'
 import { defineStrings, useLang, useStrings } from '../../i18n'
 import { authorColor, KIND_COLOR, registerAuthors, ROOT_STAR, rootRing } from '../colors'
 import { animateHologram, createHologram, HOLO, rootMarker, SPHERE_RADIUS, sphericalForce, starSprite } from './hologram'
@@ -346,7 +347,7 @@ export default function Nucleus () {
 
       {/* ── HUD: titolo e statistiche ─────────────────────────────────────── */}
       <div className='hud hud-top-left'>
-        <div className='hud-title'>{s.title}{status.data?.team ? ` · ${status.data.team.name.toUpperCase()}` : ''}</div>
+        <div className='hud-title'>{s.title}{status.data?.team ? ` · ${status.data.team.name.toUpperCase()}` : ''} <HelpButton topic='views#nucleus' /></div>
         <div className='hud-sub'>{stats}</div>
       </div>
 

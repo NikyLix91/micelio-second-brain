@@ -95,7 +95,7 @@ export function Memory () {
 
   return (
     <>
-      <PageHeader
+      <PageHeader help='memory'
         title={s.title}
         subtitle={s.subtitle}
         actions={<button className='btn primary' onClick={() => setComposing(!composing)}>{composing ? s.close : s.newMemory}</button>}

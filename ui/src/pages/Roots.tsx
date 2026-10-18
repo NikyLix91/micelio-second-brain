@@ -97,7 +97,7 @@ export function Roots () {
 
   return (
     <>
-      <PageHeader
+      <PageHeader help='roots'
         title={s.title}
         subtitle={s.subtitle}
         actions={<button className='btn primary' disabled={review.isPending || all.length === 0} onClick={() => review.mutate()}>{review.isPending ? s.reviewing : s.review}</button>}
@@ -204,7 +204,7 @@ function Suggestions () {
   const dismiss = useMutation({ mutationFn: (id: string) => api.dismissRootSuggestion(id), onSuccess: refresh })
   if (!sugg.data?.length) return null
   return (
-    <Card title={s.suggested(sugg.data.length)}>
+    <Card help='roots#emerge' title={s.suggested(sugg.data.length)}>
       <p className='muted small' style={{ marginTop: 0 }}>{s.suggestedIntro}</p>
       <div className='list'>
         {sugg.data.map((x) => (

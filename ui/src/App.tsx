@@ -85,7 +85,7 @@ export function App () {
 }
 
 /** Argomento della guida per ogni pagina (F1). */
-const PAGE_TOPIC: Record<string, string> = {
+export const PAGE_TOPIC: Record<string, string> = {
   '/': 'views#nucleus', '/mappa': 'views#map', '/memoria': 'memory', '/radici': 'roots', '/inbox': 'inbox',
   '/team': 'team', '/sogni': 'dreams', '/stato': 'status', '/privato': 'private', '/sicurezza': 'security',
   '/impostazioni': 'settings', '/guida': 'overview'

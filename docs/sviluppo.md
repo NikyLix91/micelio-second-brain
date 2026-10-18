@@ -121,6 +121,30 @@ const s = useStrings(S)  // → s.title, s.found(3)
 
 **Cosa resta nella lingua d'origine.** Sono **dati del team**, non testi dell'app: titoli e contenuti dei ricordi (nella lingua di team `memory.language`), motivi delle segnalazioni sulle Radici, riassunti dei sogni, motivi nel registro privato. Restano in italiano anche CLI e risposte MCP.
 
+## Guida in linea
+
+I contenuti sono file Markdown, uno per argomento e per lingua: `ui/src/help/content/it/<argomento>.md` e `ui/src/help/content/en/<argomento>.md`. Vite li include nel pacchetto della UI (`import.meta.glob` in `ui/src/help/index.tsx`), quindi la guida funziona anche senza rete.
+
+Formato di un file:
+
+```md
+# Titolo dell'argomento
+
+Introduzione.
+
+## Titolo di una sezione {#ancora}
+
+Testo della sezione.
+```
+
+- L'**ancora** identifica la sezione: è la stessa nelle due lingue, e i pulsanti «?» la usano (`help='roots#review'`).
+- L'ordine dell'indice è `TOPIC_ORDER` in `ui/src/help/index.tsx`: un argomento nuovo va aggiunto lì.
+- Nelle pagine: `<PageHeader help='argomento' …>` e `<Card help='argomento#ancora' …>` mostrano il «?»; altrove si usa `<HelpButton topic='…' />`.
+- F1 apre l'argomento della pagina corrente: mappa `PAGE_TOPIC` in `ui/src/App.tsx`.
+- `ui/src/__tests__/help.test.tsx` fallisce se un argomento manca in una lingua, se le ancore non coincidono o se un «?» punta a una sezione inesistente.
+
+La guida spiega anche **come funziona dietro**: dove stanno i file, in che formato, come arrivano agli altri. Una funzione nuova aggiorna la sua voce (regola d'oro 8).
+
 **Catture in una lingua precisa:** `#/…?lang=en` nell'indirizzo forza la lingua, per esempio `MICELIO_SCREENSHOT_EXTRA="/stato?lang=en"`.
 
 ## Convenzioni di codice

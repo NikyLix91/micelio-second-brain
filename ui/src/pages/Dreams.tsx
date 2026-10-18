@@ -70,7 +70,7 @@ export function Dreams () {
 
   return (
     <>
-      <PageHeader
+      <PageHeader help='dreams'
         title={s.title}
         subtitle={s.subtitle}
         actions={<button className='btn primary' disabled={run.isPending} onClick={() => run.mutate()}>{run.isPending ? s.running : s.run}</button>}
@@ -79,7 +79,7 @@ export function Dreams () {
         <ErrorBox error={run.error} />
         {run.data && <div className='notice ok'>{s.done(run.data.merged, run.data.obsolete, run.data.linked, run.data.decayed)}</div>}
 
-        <Card title={s.diary}>
+        <Card help='dreams#phases' title={s.diary}>
           <ErrorBox error={log.error} />
           {log.data?.length === 0 && <Empty>{s.noDreams}</Empty>}
           <div className='list'>
@@ -99,7 +99,7 @@ export function Dreams () {
           </div>
         </Card>
 
-        <Card title={s.archive}>
+        <Card help='dreams#archive' title={s.archive}>
           <p className='muted' style={{ marginTop: 0 }}>{s.archiveIntro}</p>
           <ErrorBox error={archive.error ?? restore.error} />
           {archive.data?.length === 0 && <Empty>{s.archiveEmpty}</Empty>}

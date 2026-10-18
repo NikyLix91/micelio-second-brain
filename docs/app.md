@@ -126,6 +126,12 @@ Il nodo a colpo d'occhio: ruolo, peer connessi, ricordi, LLM e budget di oggi, c
 
 ![Impostazioni](img/impostazioni.png)
 
+## Guida in linea
+
+Ogni pagina e ogni scheda ha un pulsante **?** accanto al titolo: apre un pannello laterale sulla sezione della guida che la riguarda (Esc lo chiude). **F1** apre la guida sulla pagina in cui ti trovi. La voce **Guida** del menu mostra l'indice completo, con una ricerca nel testo.
+
+La guida non spiega solo cosa fa ogni funzione ma anche come funziona dietro: dove finiscono fisicamente i ricordi, in che tipo di file, come arrivano agli altri, cosa viene filtrato e perché. È in italiano e in inglese e segue la lingua scelta. `#/guida?t=p2p#discovery` apre direttamente un argomento su una sezione.
+
 ## Lingua
 
 L'app è in **italiano** e in **inglese**. Il selettore **IT / EN** è in fondo alla barra laterale (e nella schermata di benvenuto). La scelta vale anche per date e numeri e, nell'app desktop, per il menu dell'icona e per le notifiche. Si ricorda fra un avvio e l'altro; la prima volta si usa la lingua del sistema.

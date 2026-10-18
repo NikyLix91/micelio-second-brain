@@ -46,7 +46,7 @@ export function Inbox () {
   const inbox = useQuery({ queryKey: ['inbox'], queryFn: api.inbox })
   return (
     <>
-      <PageHeader title={s.title} subtitle={s.subtitle} />
+      <PageHeader help='inbox' title={s.title} subtitle={s.subtitle} />
       <ErrorBox error={inbox.error} />
       {inbox.data?.length === 0 && <Card><Empty>{s.empty}</Empty></Card>}
       <div className='stack'>

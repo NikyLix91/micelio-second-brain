@@ -120,7 +120,7 @@ export function Security () {
   const isAdmin = status.data?.role === 'admin'
   return (
     <>
-      <PageHeader title={s.title} subtitle={s.subtitle} />
+      <PageHeader help='security' title={s.title} subtitle={s.subtitle} />
       <div className='stack'>
         <TestBench />
         <RulesCard isAdmin={isAdmin} />
@@ -139,7 +139,7 @@ function TestBench () {
   const test = useMutation({ mutationFn: () => api.securityTest(text, file.trim() || undefined) })
   const r = test.data
   return (
-    <Card title={s.bench}>
+    <Card help='security#bench' title={s.bench}>
       <p className='muted' style={{ marginTop: 0 }}>{s.benchIntro}</p>
       <textarea rows={5} className='mono' value={text} onChange={(e) => setText(e.target.value)} placeholder={'DATABASE_URL=postgres://app:Segreta123@db:5432/app\nAuthorization: Bearer eyJ…'} />
       <div className='row' style={{ marginTop: 8 }}>
@@ -192,12 +192,12 @@ function RulesCard ({ isAdmin }: { isAdmin: boolean }) {
     onSuccess: () => { setDraft(null); void client.invalidateQueries({ queryKey: ['security'] }) }
   })
   const r = rules.data
-  if (!r) return <Card title={s.rules}><ErrorBox error={rules.error} /></Card>
+  if (!r) return <Card help='security#team-rules' title={s.rules}><ErrorBox error={rules.error} /></Card>
   const patterns = draft?.patterns ?? r.team.secretPatterns
   const setPatterns = (p: SecurityRules['team']['secretPatterns']) => setDraft({ ...draft, patterns: p })
 
   return (
-    <Card title={s.rules}>
+    <Card help='security#team-rules' title={s.rules}>
       <details>
         <summary className='small'>{s.builtin(r.builtin.length)}</summary>
         <ul className='small' style={{ columns: 2, margin: '6px 0 0' }}>{r.builtin.map((b) => <li key={b.type}>{lang === 'it' ? b.label : b.type.replace('secret:', '')}</li>)}</ul>
@@ -252,7 +252,7 @@ function ScanCard ({ isAdmin }: { isAdmin: boolean }) {
   const scan = useQuery({ queryKey: ['security', 'scan'], queryFn: api.securityScan, enabled: run })
   const clean = useMutation({ mutationFn: (id: string) => api.securityClean(id), onSuccess: () => void client.invalidateQueries({ queryKey: ['security'] }) })
   return (
-    <Card title={s.scan}>
+    <Card help='security#scan-clean' title={s.scan}>
       <p className='muted' style={{ marginTop: 0 }}>{s.scanIntro}</p>
       <button className='btn' disabled={scan.isFetching} onClick={() => { setRun(true); void scan.refetch() }}>{scan.isFetching ? s.scanning : s.scanRun}</button>
       <ErrorBox error={scan.error ?? clean.error} />
@@ -277,7 +277,7 @@ function LogCard () {
   const s = useStrings(S)
   const log = useQuery({ queryKey: ['security', 'log'], queryFn: () => api.securityLog(100) })
   return (
-    <Card title={s.log}>
+    <Card help='security#log' title={s.log}>
       <p className='muted' style={{ marginTop: 0 }}>{s.logIntro}</p>
       <ErrorBox error={log.error} />
       {log.data?.length === 0 && <Empty>{s.logEmpty}</Empty>}
