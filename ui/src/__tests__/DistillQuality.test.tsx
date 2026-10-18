@@ -18,7 +18,7 @@ const Q: DistillQuality = {
     { label: '4ª–5ª', from: 4, to: 5, n: 15, young: 0, useful: 0.7, notUseful: 0.05, removed: 0.05, unused: 0.2, score: 0.6 }
   ],
   saturation: { batches: 20, atLimit: 12, rate: 0.6 },
-  advice: { action: 'raise', reason: 'Le ultime posizioni valgono quasi quanto le prime.' }
+  advice: { action: 'raise', code: 'raise', params: { mature: 35, minSample: 30, minAgeDays: 3, minTail: 10, saturationRate: 0.6, tailN: 15, headScore: 0.7, tailScore: 0.6, badShare: 0.1 }, reason: 'testo italiano per la CLI' }
 }
 
 function mockFetch (routes: Record<string, unknown>) {
@@ -38,8 +38,10 @@ describe('Qualità della distillazione', () => {
     wrap(DistillQualityCard)
     expect(await screen.findByText('Conviene alzare il limite.')).toBeTruthy()
     expect(screen.getByText('0.70')).toBeTruthy()
-    expect(screen.getByText('4ª–5ª')).toBeTruthy()
-    expect(screen.getByText('12')).toBeTruthy() // distillazioni al limite
+    expect(screen.getByText('4ª–5ª')).toBeTruthy() // fascia composta dalla UI (from/to)
+    expect(screen.getByText(/limite raggiunto in 12 distillazioni su 20/)).toBeTruthy()
+    // L'indicazione è composta nella lingua dell'utente a partire dai valori (non dal testo della CLI)
+    expect(screen.getByText(/punteggio 0\.60 contro 0\.70/)).toBeTruthy()
   })
 
   it('l\'admin cambia il limite per tutto il team', async () => {

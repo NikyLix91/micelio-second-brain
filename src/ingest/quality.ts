@@ -68,7 +68,15 @@ export interface DistillQuality {
   buckets: QualityBucket[]
   /** Distillazioni note e quante hanno proposto almeno `maxMemories` ricordi. */
   saturation: { batches: number, atLimit: number, rate: number }
-  advice: { action: 'raise' | 'keep' | 'lower' | 'unknown', reason: string }
+  advice: {
+    action: 'raise' | 'keep' | 'lower' | 'unknown'
+    /** Caso preciso, per comporre il testo nella lingua dell'utente (UI). */
+    code: 'too-few' | 'tail-small' | 'lower' | 'raise' | 'keep-unsaturated' | 'keep-balanced'
+    /** Valori citati nel testo. */
+    params: { mature: number, minSample: number, minAgeDays: number, minTail: number, saturationRate: number, tailN?: number, headScore?: number, tailScore?: number, badShare?: number }
+    /** Testo in italiano (CLI). */
+    reason: string
+  }
 }
 
 const FASCE = [
@@ -123,27 +131,31 @@ export function distillQuality (memories: QualityInput[], maxMemories: number, n
 
 /** Indicazione per l'admin: alzare, tenere, abbassare il limite, o "servono più dati". */
 function advise (mature: QualityInput[], max: number, saturationRate: number): DistillQuality['advice'] {
+  // Valori su cui si basa l'indicazione: restituiti insieme al testo, così la UI può comporre
+  // la frase nella lingua scelta dall'utente (il testo `reason` è in italiano, per la CLI).
+  const base = { mature: mature.length, minSample: MIN_SAMPLE, minAgeDays: MIN_AGE_DAYS, minTail: MIN_TAIL_SAMPLE, saturationRate }
   if (mature.length < MIN_SAMPLE) {
-    return { action: 'unknown', reason: `Servono almeno ${MIN_SAMPLE} ricordi distillati da più di ${MIN_AGE_DAYS} giorni (ora ${mature.length}).` }
+    return { action: 'unknown', code: 'too-few', params: base, reason: `Servono almeno ${MIN_SAMPLE} ricordi distillati da più di ${MIN_AGE_DAYS} giorni (ora ${mature.length}).` }
   }
   // Prime posizioni (1–3) contro le ultime consentite (le ultime due sotto il limite)
   const head = measure(mature.filter((m) => m.source!.rank! <= Math.min(3, max)))
   const tailFrom = Math.max(1, max - 1)
   const tail = measure(mature.filter((m) => m.source!.rank! >= tailFrom && m.source!.rank! <= max))
+  const params = { ...base, tailN: tail.n, headScore: head.score, tailScore: tail.score, badShare: tail.notUseful + tail.removed }
   const pct = (x: number) => `${Math.round(x * 100)}%`
   if (max <= 3 || tail.n < MIN_TAIL_SAMPLE) {
-    return { action: 'unknown', reason: `Pochi ricordi nelle ultime posizioni consentite (${tail.n}): servono almeno ${MIN_TAIL_SAMPLE} per confrontarle con le prime.` }
+    return { action: 'unknown', code: 'tail-small', params, reason: `Pochi ricordi nelle ultime posizioni consentite (${tail.n}): servono almeno ${MIN_TAIL_SAMPLE} per confrontarle con le prime.` }
   }
   const gap = head.score - tail.score
   if (gap >= LOWER_MIN_GAP || tail.notUseful + tail.removed >= 0.5) {
-    return { action: 'lower', reason: `I ricordi nelle ultime posizioni valgono molto meno dei primi (punteggio ${tail.score.toFixed(2)} contro ${head.score.toFixed(2)}; ${pct(tail.notUseful + tail.removed)} votati inutili o rimossi): il limite si può abbassare.` }
+    return { action: 'lower', code: 'lower', params, reason: `I ricordi nelle ultime posizioni valgono molto meno dei primi (punteggio ${tail.score.toFixed(2)} contro ${head.score.toFixed(2)}; ${pct(tail.notUseful + tail.removed)} votati inutili o rimossi): il limite si può abbassare.` }
   }
   if (gap <= RAISE_MAX_GAP && saturationRate >= RAISE_MIN_SATURATION) {
-    return { action: 'raise', reason: `Le ultime posizioni valgono quasi quanto le prime (punteggio ${tail.score.toFixed(2)} contro ${head.score.toFixed(2)}) e il limite viene raggiunto nel ${pct(saturationRate)} delle distillazioni: alzarlo dovrebbe portare altro sapere utile.` }
+    return { action: 'raise', code: 'raise', params, reason: `Le ultime posizioni valgono quasi quanto le prime (punteggio ${tail.score.toFixed(2)} contro ${head.score.toFixed(2)}) e il limite viene raggiunto nel ${pct(saturationRate)} delle distillazioni: alzarlo dovrebbe portare altro sapere utile.` }
   }
-  return { action: 'keep', reason: saturationRate < RAISE_MIN_SATURATION
-    ? `Il limite viene raggiunto solo nel ${pct(saturationRate)} delle distillazioni: non sta tagliando sapere.`
-    : `Le ultime posizioni valgono un po' meno delle prime (punteggio ${tail.score.toFixed(2)} contro ${head.score.toFixed(2)}): il limite attuale è equilibrato.` }
+  return saturationRate < RAISE_MIN_SATURATION
+    ? { action: 'keep', code: 'keep-unsaturated', params, reason: `Il limite viene raggiunto solo nel ${pct(saturationRate)} delle distillazioni: non sta tagliando sapere.` }
+    : { action: 'keep', code: 'keep-balanced', params, reason: `Le ultime posizioni valgono un po' meno delle prime (punteggio ${tail.score.toFixed(2)} contro ${head.score.toFixed(2)}): il limite attuale è equilibrato.` }
 }
 
 /** Legge e valida `distill.maxMemories` dalla configurazione di team (default se assente o non valido). */

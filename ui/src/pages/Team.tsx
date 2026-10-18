@@ -12,19 +12,136 @@ import { useState } from 'react'
 import { api, type DistillQuality, type MemberRecord } from '../api/client'
 import { Card, ConfirmButton, ErrorBox, PageHeader } from '../components/ui'
 import { dateTime, short } from '../format'
+import { defineStrings, useStrings } from '../i18n'
+
+type Advice = DistillQuality['advice']
+const pct = (x: number) => `${Math.round(x * 100)}%`
+
+const S = defineStrings({
+  it: {
+    title: 'Team',
+    subtitle: (name: string, n: number) => `«${name}» · ${n} membri attivi`,
+    members: 'Membri',
+    treeIntro: 'Albero degli inviti: sotto ogni membro, chi è entrato con un suo invito.',
+    you: 'tu',
+    removed: 'espulso',
+    since: (d: string) => `dal ${d}`,
+    promote: 'Promuovi ad admin',
+    promoteConfirm: 'Sì, promuovi',
+    remove: 'Espelli',
+    removeConfirm: 'Sì, espelli',
+    invite: 'Invita un collega',
+    creating: 'Creazione…',
+    createInvite: 'Crea invito',
+    copied: 'Copiato ✓',
+    copy: 'Copia',
+    inviteNote: (until: string) => `Monouso, valido fino al ${until}. Il collega esegue`,
+    inviteSecret: 'È un segreto: mandalo solo a lui.',
+    notReplicated: "Nessun altro membro online ha ancora ricevuto l'invito: resta online finché il collega non è entrato.",
+    pendingInvites: (n: number) => `${n} inviti non ancora usati.`,
+    anyoneInvites: 'Qualunque membro può invitare.',
+    settings: 'Impostazioni del team (replicate a tutti i nodi)',
+    memoryLanguage: 'Lingua dei ricordi distillati',
+    italian: 'Italiano',
+    english: 'Inglese',
+    maxMemories: 'Ricordi massimi per distillazione (1–20)',
+    maxMemoriesHint: 'Quanti ricordi al massimo Claude estrae da una sessione o da una parte di documento. Più ricordi = più sapere ma anche più rumore: decidi con i dati della scheda «Qualità della distillazione».',
+    keywords: 'Parole che bloccano un contenuto (oltre a quelle di default, separate da virgola)',
+    keywordsPlaceholder: 'es. progetto riservato, NDA',
+    saveTeam: 'Salva per tutto il team',
+    quality: 'Qualità della distillazione',
+    qualityIntro: (max: number, total: number, at: number, batches: number, rate: string) =>
+      `Limite in vigore: ${max} ricordi per distillazione · ${total} ricordi distillati con posizione nota · limite raggiunto in ${at} distillazioni su ${batches} (${rate}). Le percentuali contano i ricordi con più di 3 giorni (prima non hanno avuto il tempo di essere usati).`,
+    cols: ['Posizione nel distillato', 'Ricordi', 'Utili', 'Votati inutili', 'Fusi o archiviati', 'Mai usati', 'Punteggio', 'Recenti'],
+    bucket: (from: number, to: number) => (from > 10 ? 'oltre la 10ª' : from === to ? `${from}ª` : `${from}ª–${to}ª`),
+    beyondLimit: ' (oltre il limite attuale)',
+    scoreNote: 'Punteggio = utili − votati inutili − fusi o archiviati (da −1 a +1). Utile = votato positivamente o usato dagli agenti.',
+    adviceLabel: { raise: 'Conviene alzare il limite', keep: 'Il limite attuale va bene', lower: 'Conviene abbassare il limite', unknown: 'Dati ancora insufficienti' } as Record<Advice['action'], string>,
+    advice: (a: Advice): string => {
+      const p = a.params
+      const sc = (x?: number) => (x ?? 0).toFixed(2)
+      switch (a.code) {
+        case 'too-few': return `Servono almeno ${p.minSample} ricordi distillati da più di ${p.minAgeDays} giorni (ora ${p.mature}).`
+        case 'tail-small': return `Pochi ricordi nelle ultime posizioni consentite (${p.tailN ?? 0}): servono almeno ${p.minTail} per confrontarle con le prime.`
+        case 'lower': return `I ricordi nelle ultime posizioni valgono molto meno dei primi (punteggio ${sc(p.tailScore)} contro ${sc(p.headScore)}; ${pct(p.badShare ?? 0)} votati inutili o rimossi): il limite si può abbassare.`
+        case 'raise': return `Le ultime posizioni valgono quasi quanto le prime (punteggio ${sc(p.tailScore)} contro ${sc(p.headScore)}) e il limite viene raggiunto nel ${pct(p.saturationRate)} delle distillazioni: alzarlo dovrebbe portare altro sapere utile.`
+        case 'keep-unsaturated': return `Il limite viene raggiunto solo nel ${pct(p.saturationRate)} delle distillazioni: non sta tagliando sapere.`
+        case 'keep-balanced': return `Le ultime posizioni valgono un po' meno delle prime (punteggio ${sc(p.tailScore)} contro ${sc(p.headScore)}): il limite attuale è equilibrato.`
+        default: return a.reason
+      }
+    }
+  },
+  en: {
+    title: 'Team',
+    subtitle: (name: string, n: number) => `“${name}” · ${n} active members`,
+    members: 'Members',
+    treeIntro: 'Invitation tree: under each member, who joined with one of their invites.',
+    you: 'you',
+    removed: 'removed',
+    since: (d: string) => `since ${d}`,
+    promote: 'Promote to admin',
+    promoteConfirm: 'Yes, promote',
+    remove: 'Remove',
+    removeConfirm: 'Yes, remove',
+    invite: 'Invite a colleague',
+    creating: 'Creating…',
+    createInvite: 'Create invite',
+    copied: 'Copied ✓',
+    copy: 'Copy',
+    inviteNote: (until: string) => `Single use, valid until ${until}. Your colleague runs`,
+    inviteSecret: 'It is a secret: send it to them only.',
+    notReplicated: 'No other online member has received the invite yet: stay online until your colleague has joined.',
+    pendingInvites: (n: number) => `${n} invites not used yet.`,
+    anyoneInvites: 'Any member can invite.',
+    settings: 'Team settings (replicated to every node)',
+    memoryLanguage: 'Language of distilled memories',
+    italian: 'Italian',
+    english: 'English',
+    maxMemories: 'Maximum memories per distillation (1–20)',
+    maxMemoriesHint: 'How many memories Claude extracts at most from a session or a part of a document. More memories = more knowledge but also more noise: decide with the data of the “Distillation quality” card.',
+    keywords: 'Words that block a content (in addition to the default ones, comma separated)',
+    keywordsPlaceholder: 'e.g. confidential project, NDA',
+    saveTeam: 'Save for the whole team',
+    quality: 'Distillation quality',
+    qualityIntro: (max: number, total: number, at: number, batches: number, rate: string) =>
+      `Current limit: ${max} memories per distillation · ${total} distilled memories with a known position · limit reached in ${at} distillations out of ${batches} (${rate}). Percentages count memories older than 3 days (before that they have not had time to be used).`,
+    cols: ['Position in the distillation', 'Memories', 'Useful', 'Voted useless', 'Merged or archived', 'Never used', 'Score', 'Recent'],
+    bucket: (from: number, to: number) => {
+      const ord = (n: number) => `${n}${n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'}`
+      return from > 10 ? 'beyond the 10th' : from === to ? ord(from) : `${ord(from)}–${ord(to)}`
+    },
+    beyondLimit: ' (beyond the current limit)',
+    scoreNote: 'Score = useful − voted useless − merged or archived (from −1 to +1). Useful = voted up or used by the agents.',
+    adviceLabel: { raise: 'Raising the limit is worthwhile', keep: 'The current limit is fine', lower: 'Lowering the limit is worthwhile', unknown: 'Not enough data yet' } as Record<Advice['action'], string>,
+    advice: (a: Advice): string => {
+      const p = a.params
+      const sc = (x?: number) => (x ?? 0).toFixed(2)
+      switch (a.code) {
+        case 'too-few': return `At least ${p.minSample} memories distilled more than ${p.minAgeDays} days ago are needed (now ${p.mature}).`
+        case 'tail-small': return `Few memories in the last allowed positions (${p.tailN ?? 0}): at least ${p.minTail} are needed to compare them with the first ones.`
+        case 'lower': return `Memories in the last positions are worth much less than the first ones (score ${sc(p.tailScore)} versus ${sc(p.headScore)}; ${pct(p.badShare ?? 0)} voted useless or removed): the limit can be lowered.`
+        case 'raise': return `The last positions are worth almost as much as the first ones (score ${sc(p.tailScore)} versus ${sc(p.headScore)}) and the limit is reached in ${pct(p.saturationRate)} of distillations: raising it should bring more useful knowledge.`
+        case 'keep-unsaturated': return `The limit is reached only in ${pct(p.saturationRate)} of distillations: it is not cutting knowledge.`
+        case 'keep-balanced': return `The last positions are worth a little less than the first ones (score ${sc(p.tailScore)} versus ${sc(p.headScore)}): the current limit is balanced.`
+        default: return a.reason
+      }
+    }
+  }
+})
 
 export function Team () {
+  const s = useStrings(S)
   const status = useQuery({ queryKey: ['status'], queryFn: api.status })
   const members = useQuery({ queryKey: ['members'], queryFn: api.members })
   const isAdmin = status.data?.role === 'admin'
 
   return (
     <>
-      <PageHeader title='Team' subtitle={status.data?.team ? `«${status.data.team.name}» · ${status.data.members} membri attivi` : undefined} />
+      <PageHeader title={s.title} subtitle={status.data?.team ? s.subtitle(status.data.team.name, status.data.members) : undefined} />
       <div className='stack'>
         <InviteCard />
-        <Card title='Membri'>
-          <p className='muted small' style={{ marginTop: 0 }}>Albero degli inviti: sotto ogni membro, chi è entrato con un suo invito.</p>
+        <Card title={s.members}>
+          <p className='muted small' style={{ marginTop: 0 }}>{s.treeIntro}</p>
           <ErrorBox error={members.error} />
           {members.data && <MemberTree members={members.data} parent={null} me={status.data?.nodeKey ?? null} isAdmin={isAdmin} />}
         </Card>
@@ -52,6 +169,7 @@ function MemberTree ({ members, parent, me, isAdmin }: { members: MemberRecord[]
 }
 
 function MemberRow ({ member: m, me, isAdmin }: { member: MemberRecord, me: string | null, isAdmin: boolean }) {
+  const s = useStrings(S)
   const client = useQueryClient()
   const done = () => { void client.invalidateQueries({ queryKey: ['members'] }); void client.invalidateQueries({ queryKey: ['status'] }) }
   const promote = useMutation({ mutationFn: () => api.promoteMember(m.key), onSuccess: done })
@@ -64,12 +182,12 @@ function MemberRow ({ member: m, me, isAdmin }: { member: MemberRecord, me: stri
         <strong style={{ textDecoration: m.removed ? 'line-through' : undefined }}>{m.name}</strong>
         <span className='mono muted small'>{short(m.key)}</span>
         {m.role === 'admin' && <span className='badge accent'>admin</span>}
-        {m.key === me && <span className='badge'>tu</span>}
-        {m.removed && <span className='badge danger'>espulso</span>}
-        <span className='muted small'>dal {dateTime(m.joinedAt)}</span>
+        {m.key === me && <span className='badge'>{s.you}</span>}
+        {m.removed && <span className='badge danger'>{s.removed}</span>}
+        <span className='muted small'>{s.since(dateTime(m.joinedAt))}</span>
         <span className='spacer' />
-        {canAct && m.role !== 'admin' && <ConfirmButton label='Promuovi ad admin' confirmLabel='Sì, promuovi' onConfirm={() => promote.mutate()} />}
-        {canAct && <ConfirmButton label='Espelli' confirmLabel='Sì, espelli' danger onConfirm={() => remove.mutate()} />}
+        {canAct && m.role !== 'admin' && <ConfirmButton label={s.promote} confirmLabel={s.promoteConfirm} onConfirm={() => promote.mutate()} />}
+        {canAct && <ConfirmButton label={s.remove} confirmLabel={s.removeConfirm} danger onConfirm={() => remove.mutate()} />}
       </div>
       <ErrorBox error={promote.error ?? remove.error} />
     </div>
@@ -78,6 +196,7 @@ function MemberRow ({ member: m, me, isAdmin }: { member: MemberRecord, me: stri
 
 /** Creazione di un invito: mostra il codice da copiare e l'avviso se non è ancora replicato. */
 function InviteCard () {
+  const s = useStrings(S)
   const invites = useQuery({ queryKey: ['invites'], queryFn: api.invites })
   const create = useMutation({ mutationFn: api.invite })
   const [copied, setCopied] = useState(false)
@@ -85,8 +204,8 @@ function InviteCard () {
 
   return (
     <Card
-      title='Invita un collega'
-      actions={<button className='btn primary' disabled={create.isPending} onClick={() => { setCopied(false); create.mutate() }}>{create.isPending ? 'Creazione…' : 'Crea invito'}</button>}
+      title={s.invite}
+      actions={<button className='btn primary' disabled={create.isPending} onClick={() => { setCopied(false); create.mutate() }}>{create.isPending ? s.creating : s.createInvite}</button>}
     >
       <ErrorBox error={create.error} />
       {r
@@ -94,21 +213,22 @@ function InviteCard () {
           <div className='stack'>
             <div className='row'>
               <code className='mono' style={{ overflowWrap: 'anywhere', flex: 1 }}>{r.code}</code>
-              <button className='btn small' onClick={() => { void navigator.clipboard.writeText(r.code); setCopied(true) }}>{copied ? 'Copiato ✓' : 'Copia'}</button>
+              <button className='btn small' onClick={() => { void navigator.clipboard.writeText(r.code); setCopied(true) }}>{copied ? s.copied : s.copy}</button>
             </div>
             <div className='muted small'>
-              Monouso, valido fino al {dateTime(r.expires)}. Il collega esegue <code>micelio join &lt;codice&gt; --name &lt;nome-pc&gt;</code>. È un segreto: mandalo solo a lui.
+              {s.inviteNote(dateTime(r.expires))} <code>micelio join &lt;code&gt; --name &lt;pc-name&gt;</code>. {s.inviteSecret}
             </div>
-            {!r.replicated && <div className='notice warn small'>Nessun altro membro online ha ancora ricevuto l'invito: resta online finché il collega non è entrato.</div>}
+            {!r.replicated && <div className='notice warn small'>{s.notReplicated}</div>}
           </div>
           )
-        : <p className='muted' style={{ margin: 0 }}>{invites.data?.length ? `${invites.data.length} inviti non ancora usati.` : 'Qualunque membro può invitare.'}</p>}
+        : <p className='muted' style={{ margin: 0 }}>{invites.data?.length ? s.pendingInvites(invites.data.length) : s.anyoneInvites}</p>}
     </Card>
   )
 }
 
-/** Impostazioni condivise del team (solo admin): lingua dei ricordi e parole chiave del filtro. */
+/** Impostazioni condivise del team (solo admin): lingua dei ricordi, limite di distillazione, parole chiave. */
 function TeamSettings () {
+  const s = useStrings(S)
   const cfg = useQuery({ queryKey: ['teamConfig'], queryFn: api.teamConfig })
   const [language, setLanguage] = useState<string | null>(null)
   const [keywords, setKeywords] = useState<string | null>(null)
@@ -129,38 +249,33 @@ function TeamSettings () {
   if (!cfg.data) return null
 
   return (
-    <Card title='Impostazioni del team (replicate a tutti i nodi)'>
+    <Card title={s.settings}>
       <div className='stack'>
         <div style={{ maxWidth: 240 }}>
-          <label>Lingua dei ricordi distillati</label>
+          <label>{s.memoryLanguage}</label>
           <select value={language ?? cfg.data.language} onChange={(e) => setLanguage(e.target.value)}>
-            <option value='it'>Italiano</option>
-            <option value='en'>Inglese</option>
+            <option value='it'>{s.italian}</option>
+            <option value='en'>{s.english}</option>
           </select>
         </div>
         <div style={{ maxWidth: 420 }}>
-          <label>Ricordi massimi per distillazione (1–20)</label>
+          <label>{s.maxMemories}</label>
           <input type='number' min={1} max={20} value={maxMemories ?? String(cfg.data.maxMemories)} onChange={(e) => setMaxMemories(e.target.value)} />
-          <div className='muted small'>Quanti ricordi al massimo Claude estrae da una sessione o da una parte di documento. Più ricordi = più sapere ma anche più rumore: decidi con i dati della scheda «Qualità della distillazione».</div>
+          <div className='muted small'>{s.maxMemoriesHint}</div>
         </div>
         <div>
-          <label>Parole che bloccano un contenuto (oltre a quelle di default, separate da virgola)</label>
-          <input value={keywords ?? cfg.data.blockKeywords.join(', ')} onChange={(e) => setKeywords(e.target.value)} placeholder='es. progetto riservato, NDA' />
+          <label>{s.keywords}</label>
+          <input value={keywords ?? cfg.data.blockKeywords.join(', ')} onChange={(e) => setKeywords(e.target.value)} placeholder={s.keywordsPlaceholder} />
         </div>
         <ErrorBox error={save.error} />
-        <div><button className='btn primary' disabled={save.isPending || (language === null && keywords === null && maxMemories === null)} onClick={() => save.mutate()}>Salva per tutto il team</button></div>
+        <div><button className='btn primary' disabled={save.isPending || (language === null && keywords === null && maxMemories === null)} onClick={() => save.mutate()}>{s.saveTeam}</button></div>
       </div>
     </Card>
   )
 }
 
-/** Etichette e stile delle indicazioni sul limite. */
-const ADVICE: Record<DistillQuality['advice']['action'], { label: string, cls: string }> = {
-  raise: { label: 'Conviene alzare il limite', cls: 'ok' },
-  keep: { label: 'Il limite attuale va bene', cls: '' },
-  lower: { label: 'Conviene abbassare il limite', cls: 'warn' },
-  unknown: { label: 'Dati ancora insufficienti', cls: '' }
-}
+/** Stile dell'indicazione sul limite. */
+const ADVICE_CLASS: Record<Advice['action'], string> = { raise: 'ok', keep: '', lower: 'warn', unknown: '' }
 
 /**
  * Qualità della distillazione (Fase 10): per ogni fascia di posizione nel distillato, quanti
@@ -168,26 +283,21 @@ const ADVICE: Record<DistillQuality['advice']['action'], { label: string, cls: s
  * viene raggiunto; e un'indicazione per l'admin. Gli stessi dati su ogni PC del team.
  */
 export function DistillQualityCard () {
+  const s = useStrings(S)
   const q = useQuery({ queryKey: ['distillQuality'], queryFn: api.distillQuality })
   const d = q.data
-  const pct = (x: number) => `${Math.round(x * 100)}%`
-  if (!d) return <Card title='Qualità della distillazione'><ErrorBox error={q.error} /></Card>
-  const a = ADVICE[d.advice.action]
+  if (!d) return <Card title={s.quality}><ErrorBox error={q.error} /></Card>
   return (
-    <Card title='Qualità della distillazione'>
-      <p className='muted small' style={{ marginTop: 0 }}>
-        Limite in vigore: <strong>{d.maxMemories}</strong> ricordi per distillazione · {d.total} ricordi distillati con posizione nota ·
-        limite raggiunto in <strong>{d.saturation.atLimit}</strong> distillazioni su {d.saturation.batches} ({pct(d.saturation.rate)}).
-        Le percentuali contano i ricordi con più di 3 giorni (prima non hanno avuto il tempo di essere usati).
-      </p>
+    <Card title={s.quality}>
+      <p className='muted small' style={{ marginTop: 0 }}>{s.qualityIntro(d.maxMemories, d.total, d.saturation.atLimit, d.saturation.batches, pct(d.saturation.rate))}</p>
       <table className='small'>
         <thead>
-          <tr><th>Posizione nel distillato</th><th className='num'>Ricordi</th><th className='num'>Utili</th><th className='num'>Votati inutili</th><th className='num'>Fusi o archiviati</th><th className='num'>Mai usati</th><th className='num'>Punteggio</th><th className='num'>Recenti</th></tr>
+          <tr>{s.cols.map((c, i) => <th key={c} className={i > 0 ? 'num' : undefined}>{c}</th>)}</tr>
         </thead>
         <tbody>
           {d.buckets.map((b) => (
-            <tr key={b.label} className={b.from > d.maxMemories ? 'muted' : ''}>
-              <td>{b.label}{b.from > d.maxMemories ? ' (oltre il limite attuale)' : ''}</td>
+            <tr key={b.from} className={b.from > d.maxMemories ? 'muted' : ''}>
+              <td>{s.bucket(b.from, b.to)}{b.from > d.maxMemories ? s.beyondLimit : ''}</td>
               <td className='num'>{b.n}</td>
               <td className='num'>{b.n ? pct(b.useful) : '–'}</td>
               <td className='num'>{b.n ? pct(b.notUseful) : '–'}</td>
@@ -199,12 +309,10 @@ export function DistillQualityCard () {
           ))}
         </tbody>
       </table>
-      <div className={`notice ${a.cls}`} style={{ marginTop: 10 }}>
-        <strong>{a.label}.</strong> {d.advice.reason}
+      <div className={`notice ${ADVICE_CLASS[d.advice.action]}`} style={{ marginTop: 10 }}>
+        <strong>{s.adviceLabel[d.advice.action]}.</strong> {s.advice(d.advice)}
       </div>
-      <p className='muted small' style={{ marginBottom: 0 }}>
-        Punteggio = utili − votati inutili − fusi o archiviati (da −1 a +1). Utile = votato positivamente o usato dagli agenti.
-      </p>
+      <p className='muted small' style={{ marginBottom: 0 }}>{s.scoreNote}</p>
     </Card>
   )
 }
