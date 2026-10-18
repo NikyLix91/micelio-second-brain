@@ -96,8 +96,6 @@ export default function Nucleus () {
   const s = useStrings(S)
   const { lang } = useLang()
   const graph = useQuery({ queryKey: ['graph'], queryFn: api.graph })
-  // Con molte Radici ognuna è un po' meno luminosa: insieme non devono accecare (vedi rootCrowding)
-  const crowd = useMemo(() => rootCrowding((graph.data?.nodes ?? []).filter((n) => n.root).length), [graph.data])
   const status = useQuery({ queryKey: ['status'], queryFn: api.status })
   const fgRef = useRef<any>(null)
   const boxRef = useRef<HTMLDivElement>(null)
@@ -166,6 +164,16 @@ export default function Nucleus () {
     }
     return set
   }, [stop, q, search.data, focus, mode, graph.data, rootsOnly])
+
+  /**
+   * Con molte Radici ognuna è un po' meno luminosa: insieme non devono accecare (vedi rootCrowding).
+   * Conta le Radici ACCESE (tutte se nulla è filtrato): con filtri per autore o tipo, ricerca o tour
+   * le Radici accese possono essere decine, e a piena luce tornerebbero una palla bianca.
+   */
+  const crowd = useMemo(() => {
+    const roots = (graph.data?.nodes ?? []).filter((n) => n.root && (!lit || lit.has(n.id)))
+    return rootCrowding(roots.length)
+  }, [graph.data, lit])
 
   // Nelle modalità a colori il bagliore pieno satura tutto in bianco e la tinta non si vede:
   // lo attenuiamo; in "olografico" torna pieno.
@@ -255,7 +263,10 @@ export default function Nucleus () {
     const pts = data.nodes.filter((n: any) => ids.has(n.id) && n.x !== undefined) as any[]
     const c = centroid(pts)
     fg.controls().autoRotate = false
-    fg.cameraPosition(cameraFor(c, TOUR_DISTANCE), c, ms)
+    // Distanza dal centro: almeno TOUR_DISTANCE, e comunque tale che il gruppo entri tutto
+    // nell'inquadratura con margine (gruppi ampi o fitti di Radici, vedi rootCrowding)
+    const spread = Math.max(0, ...pts.map((p) => Math.hypot(p.x - c.x, p.y - c.y, p.z - c.z)))
+    fg.cameraPosition(cameraFor(c, Math.max(TOUR_DISTANCE, Math.hypot(c.x, c.y, c.z) + 3 * spread + 60)), c, ms)
   }, [data])
 
   // ── Tour guidato ────────────────────────────────────────────────────────────────────
@@ -303,9 +314,15 @@ export default function Nucleus () {
     if (n.root) {
       // Radice: stella ciano in olografico (colore di modalità altrimenti) + anello luminoso
       const star = on ? (colored ? colorOf(n) : ROOT_STAR) : '#5a6a6a'
-      // La Radice selezionata o accesa dalla ricerca resta piena; le altre si attenuano se sono tante
-      const c = n.id === selected?.id || (on && lit) ? 1 : crowd
-      return rootMarker(star, rootRing(n.root.status), (colored ? size * 0.85 : size) * 1.15 * (0.7 + 0.3 * c), (on ? 1 : 0.4) * c, c)
+      // Radice spenta (fuori da filtro, ricerca o tappa): puntino tenue SENZA anello. Gli anelli
+      // sono la parte più grande e luminosa: decine di anelli spenti sommati coprono quelli accesi.
+      if (!on) return starSprite('#5a6a6a', size * 0.6, 0.25)
+      // Solo la Radice selezionata resta piena; le altre più piccole e tenui se quelle accese sono tante
+      const c = n.id === selected?.id ? 1 : crowd
+      // Niente ingrandimento delle Radici accese (×1,5 per gli altri ricordi): si riconoscono già da
+      // colore e anello, e ingrandite si fondono fra loro
+      const rs = n.id === selected?.id ? size : base
+      return rootMarker(star, rootRing(n.root.status), (colored ? rs * 0.85 : rs) * 1.15 * (0.5 + 0.5 * c), c, c)
     }
     return starSprite(on ? colorOf(n) : '#8a6a3a', colored ? size * 0.85 : size, on ? (colored ? 0.9 : 1) : 0.4)
   }, [lit, degree, selected, colorOf, mode, crowd])

@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { contextLine, firstLine, promptContext, sessionContext } from '../../src/context/agent-context'
 import type { RecallHit } from '../../src/core/model'
 import { installHooks } from '../../src/node/integrations'
+import { relevanceCutoff } from '../../src/node/micelio-node'
 import { tmpHome } from '../helpers'
 
 const hit = (n: number, extra: Partial<RecallHit> = {}): RecallHit =>
@@ -17,6 +18,8 @@ const hit = (n: number, extra: Partial<RecallHit> = {}): RecallHit =>
 describe('composizione del contesto', () => {
   it('una riga per ricordo: tipo o Radice, titolo, prima riga, id e avvisi', () => {
     expect(firstLine('# Titolo\n\n> nota importante')).toBe('Titolo')
+    // callout di Obsidian: l'intestazione da sola non dice nulla, conta la riga dopo
+    expect(firstLine('> [!abstract] TL;DR\n> Il deploy usa blu-verde.')).toBe('Il deploy usa blu-verde.')
     expect(contextLine(hit(1))).toBe(`- [gotcha] Ricordo 1 — Titolo (id:${'1'.repeat(12)})`)
     const root = contextLine(hit(2, { root: { category: 'policy', status: 'review' } }))
     expect(root).toContain('[RADICE policy, da rivedere]')
@@ -65,5 +68,19 @@ describe('installazione degli hook', () => {
     expect(s.hooks.SessionStart).toBeUndefined()
     expect(cmds('UserPromptSubmit')).toEqual(['echo mio'])
     expect(cmds('SessionEnd')).toHaveLength(1)
+  })
+})
+
+describe('pertinenza del contesto per richiesta', () => {
+  it('passa solo ciò che si distacca nettamente dagli altri, oltre alla soglia fissa', () => {
+    // tutto «somiglia un po'» (punteggi compressi): nessuno si distacca → soglia sopra a tutti
+    const flat = [0.861, 0.862, 0.86, 0.863, 0.861, 0.862, 0.864, 0.86, 0.861, 0.862]
+    expect(Math.max(...flat)).toBeLessThan(relevanceCutoff(flat, 0.86) + 1e-9 + 0.001)
+    expect(flat.filter((x) => x >= relevanceCutoff(flat, 0.86)).length).toBeLessThanOrEqual(1)
+    // uno chiaramente più pertinente: passa solo lui
+    const peak = [...flat.map((x) => x - 0.02), 0.91]
+    expect(peak.filter((x) => x >= relevanceCutoff(peak, 0.86))).toEqual([0.91])
+    // pochi ricordi: vale la soglia fissa
+    expect(relevanceCutoff([0.9, 0.5], 0.86)).toBe(0.86)
   })
 })

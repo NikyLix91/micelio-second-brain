@@ -26,9 +26,15 @@ const ROOT_LABEL: Record<string, string> = {
   architecture: 'architettura', network: 'rete', interface: 'interfacce', domain: 'dominio', practice: 'best practice', policy: 'policy', other: 'altro'
 }
 
-/** Prima riga significativa del corpo, accorciata (saltando un'eventuale intestazione YAML). */
+/**
+ * Prima riga significativa del corpo, accorciata. Salta un'eventuale intestazione YAML e
+ * l'intestazione dei callout di Obsidian (`> [!abstract] TL;DR`): da sola non dice nulla.
+ */
 export function firstLine (body: string, max = 160): string {
-  const line = body.replace(/^---[ \t]*\n[\s\S]*?\n---[ \t]*(?:\n|$)/, '').split('\n').map((l) => l.replace(/^[#>*\-\s]+/, '').trim()).find((l) => l.length > 0) ?? ''
+  const line = body.replace(/^---[ \t]*\n[\s\S]*?\n---[ \t]*(?:\n|$)/, '').split('\n')
+    .map((l) => l.replace(/^[#>*\-\s]+/, '').trim())
+    .map((l) => (/^\[![\w-]+\][+-]?/.test(l) ? '' : l))
+    .find((l) => l.length > 0) ?? ''
   return line.length > max ? line.slice(0, max - 1) + '…' : line
 }
 

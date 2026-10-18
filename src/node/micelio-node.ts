@@ -279,6 +279,21 @@ function promptThreshold (model: string): number {
   return model.includes('e5') ? 0.86 : 0.45
 }
 
+/**
+ * Soglia effettiva del contesto per richiesta: la soglia fissa del modello, ma anche "nettamente
+ * sopra gli altri" (media + 2 deviazioni standard delle somiglianze della richiesta con TUTTI i
+ * ricordi). Con e5 i punteggi sono compressi (0,80–0,90): una frase qualunque supera la soglia
+ * fissa per molti ricordi, specie se si somigliano fra loro (es. note di un vault con la stessa
+ * struttura). Ciò che conta è distaccarsi dal resto. Con pochi ricordi la statistica non dice
+ * nulla: vale solo la soglia fissa.
+ */
+export function relevanceCutoff (scores: number[], floor: number): number {
+  if (scores.length < 8) return floor
+  const mean = scores.reduce((a, b) => a + b, 0) / scores.length
+  const std = Math.sqrt(scores.reduce((a, b) => a + (b - mean) ** 2, 0) / scores.length)
+  return Math.max(floor, mean + 2 * std)
+}
+
 /** Soglia "quasi duplicato" per il dreaming: più alta di quella di pertinenza. */
 function duplicateThreshold (model: string): number {
   return model.includes('e5') ? 0.92 : 0.7
@@ -1248,7 +1263,9 @@ export class MicelioNode extends EventEmitter {
   private async relevantTo (text: string, n: number): Promise<RecallHit[]> {
     if (!this.embedder) return []
     const [q] = await this.embedder.embed([text.slice(0, 2000)], 'query')
-    const ids = nearest(q, this.index.vectors(this.embedder.model), n, promptThreshold(this.embedder.model)).map((r) => r.id)
+    const all = nearest(q, this.index.vectors(this.embedder.model), Number.MAX_SAFE_INTEGER)
+    const cutoff = relevanceCutoff(all.map((x) => x.score), promptThreshold(this.embedder.model))
+    const ids = all.filter((r) => r.score >= cutoff).slice(0, n).map((r) => r.id)
     return this.enrich(this.index.getMany(ids))
   }
 

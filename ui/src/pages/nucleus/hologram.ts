@@ -105,11 +105,11 @@ export function rootMarker (starColor: string, ringColor: string, size: number, 
     map: ringTexture(),
     color: new THREE.Color(ringColor),
     transparent: true,
-    opacity: opacity * 0.9 * crowd,
+    opacity: opacity * 0.6 * crowd,
     depthWrite: false,
     blending: THREE.AdditiveBlending
   }))
-  const r = size * (1.5 + 0.8 * crowd)
+  const r = size * (1.3 + 0.5 * crowd)
   ring.scale.set(r, r, 1)
   group.add(ring)
   return group
@@ -222,25 +222,31 @@ export function animateHologram (group: THREE.Object3D): void {
  * avvio e l'altro), così i ricordi riempiono un guscio spesso invece di ammassarsi al centro.
  * Le Radici invece formano il nucleo al centro della sfera. Il nucleo si allarga con il numero di
  * Radici (radice cubica: il volume cresce come il loro numero), fino al 42% del raggio, sempre
- * dentro il guscio dei ricordi: con un raggio fisso, decine di Radici (es. un vault importato)
- * finivano ammassate in un punto e il bagliore le fondeva in una palla bianca.
+ * dentro il guscio dei ricordi. Oltre ROOT_CORE_MAX Radici (es. un vault importato) il nucleo non
+ * basta più: gli anelli si sovrappongono da qualunque distanza e il bagliore li fonde in una palla
+ * bianca. Allora le Radici si distribuiscono nel guscio come gli altri ricordi, e restano
+ * riconoscibili dalla stella ciano con l'anello.
  */
+/** Radici oltre le quali non formano più un nucleo al centro (vedi sphericalForce). */
+export const ROOT_CORE_MAX = 20
+
 /**
  * Spessore del nucleo delle Radici, in frazioni del raggio della sfera: 8–28% fino a 8 Radici, poi
- * cresce con la radice cubica del loro numero, fino a 15–42%.
+ * cresce con la radice cubica del loro numero, fino a 15–42%. Oltre ROOT_CORE_MAX: tutto il guscio.
  */
 export function rootCore (count: number): { inner: number, outer: number } {
+  if (count > ROOT_CORE_MAX) return { inner: 0.45, outer: 1 }
   const scale = Math.max(1, Math.cbrt(count / 8))
   return { inner: Math.min(0.15, 0.08 * scale), outer: Math.min(0.42, 0.28 * scale) }
 }
 
 /**
- * Quanto attenuare ogni Radice quando sono tante (1 = nessuna attenuazione, minimo 0,35): i loro
- * sprite si sommano (fusione additiva) e il bloom amplifica, quindi oltre la decina la luce totale
- * va contenuta.
+ * Quanto attenuare ogni Radice quando sono tante (1 = nessuna attenuazione, minimo 0,3): i loro
+ * sprite si sommano (fusione additiva) e il bloom amplifica. Già una manciata di Radici vicine
+ * (es. una tappa del tour) a piena luce si fonde in una macchia bianca: oltre 4 si attenuano.
  */
 export function rootCrowding (count: number): number {
-  return Math.max(0.35, Math.sqrt(10 / Math.max(10, count)))
+  return Math.max(0.3, Math.sqrt(4 / Math.max(4, count)))
 }
 
 export function sphericalForce (radius = SPHERE_RADIUS, strength = 0.08) {

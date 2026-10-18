@@ -13,11 +13,11 @@ La home: una sfera olografica navigabile.
 - **Esplorazione guidata**: la camera vola da un argomento all'altro (i tag più diffusi), con una didascalia.
 - **Accendi un argomento**: i ricordi pertinenti si accendono e la camera ci vola.
 - **Colori**: olografico (intensità secondo l'attivazione), per autore o per tipo; nelle ultime due la legenda è cliccabile e isola una voce.
-- **Radici**: al centro della sfera, con un anello bianco (rosso se da rivedere); «◆ Radici» le isola. Con molte Radici il nucleo si allarga e ognuna brilla un po' meno, così restano distinguibili.
+- **Radici**: al centro della sfera, con un anello bianco (rosso se da rivedere); «◆ Radici» le isola. Con molte Radici il nucleo si allarga, e oltre una ventina (es. un vault importato) le Radici si distribuiscono nel guscio come gli altri ricordi; più sono, più ognuna è piccola e tenue, e quelle fuori da filtro, ricerca o tappa del tour restano un puntino senza anello. Così restano distinguibili.
 
 ## La Mappa 2D {#map}
 
-La stessa costellazione in piano, per analisi mirate: colori per autore o per tipo, legenda cliccabile, ricerca che accende, etichette che compaiono avvicinandosi. Le Radici sono rombi.
+La stessa costellazione in piano, per analisi mirate: colori per autore o per tipo, legenda cliccabile, ricerca che accende, etichette che compaiono avvicinandosi. Le Radici sono rombi. Cliccando un nodo il dettaglio si apre sopra la mappa, in alto a destra.
 
 ## Prestazioni {#performance}
 

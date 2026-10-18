@@ -122,7 +122,9 @@ export function Constellation () {
   }, [data])
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: selected ? '1fr 360px' : '1fr', gap: 16, height: 'calc(100vh - 64px)' }}>
+    // Una sola colonna: il dettaglio si apre SOPRA la mappa (in alto a destra). Con una seconda
+    // colonna la mappa, larga in pixel, sbordava e spingeva il dettaglio fuori dallo schermo.
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16, height: 'calc(100vh - 64px)' }}>
       <div className='stack' style={{ minHeight: 0 }}>
         <div className='row'>
           <h1 style={{ margin: 0 }}>{s.title} <HelpButton topic='views#map' /></h1>
@@ -211,9 +213,13 @@ export function Constellation () {
               ctx.fill()
             }}
           />
+          {selected && (
+            <div className='map-detail'>
+              <MemoryPanel node={selected} onClose={() => setSelected(null)} />
+            </div>
+          )}
         </div>
       </div>
-      {selected && <div style={{ overflowY: 'auto' }}><MemoryPanel node={selected} onClose={() => setSelected(null)} /></div>}
     </div>
   )
 }
