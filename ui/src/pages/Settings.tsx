@@ -207,6 +207,59 @@ function DocumentsCard () {
   )
 }
 
+/**
+ * Modelli proposti nelle tendine. Sono gli alias della CLI di Claude Code (`claude --model …`),
+ * che puntano sempre all'ultima versione di ciascuna famiglia. Con «Altro…» si scrive qualunque
+ * nome accettato dalla CLI (es. l'id completo di una versione precisa).
+ */
+export const MODEL_OPTIONS = [
+  { value: 'haiku', label: 'Haiku: veloce ed economico' },
+  { value: 'sonnet', label: 'Sonnet: equilibrato' },
+  { value: 'opus', label: 'Opus: il più capace, più lento' }
+]
+
+/** Spiegazione leggibile dell'adapter LLM in uso. */
+const ADAPTER_TEXT: Record<string, string> = {
+  claude: 'Claude Code (la CLI installata su questo PC): usa il tuo abbonamento, nessuna API key.',
+  fake: 'FINTO, solo per demo e test: non chiama Claude, classifica e distilla con regole banali sul testo. Il team demo lo usa apposta, per non consumare l\'abbonamento.',
+  none: 'Nessuno: niente classificazione né distillazione automatica, i casi dubbi vanno tutti in inbox.'
+}
+
+/**
+ * Tendina di scelta del modello: alias noti più «Altro…», che mostra un campo libero.
+ * Un valore già salvato che non è un alias noto (es. un id completo) apre direttamente «Altro…».
+ */
+export function ModelSelect ({ value, onChange, label }: { value: string, onChange: (v: string) => void, label: string }) {
+  const known = MODEL_OPTIONS.some((o) => o.value === value)
+  const [custom, setCustom] = useState(!known)
+  return (
+    <div style={{ flex: 1 }}>
+      <label>{label}</label>
+      <select
+        aria-label={label}
+        value={custom ? '__altro' : value}
+        onChange={(e) => {
+          if (e.target.value === '__altro') { setCustom(true); return }
+          setCustom(false)
+          onChange(e.target.value)
+        }}
+      >
+        {MODEL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        <option value='__altro'>Altro…</option>
+      </select>
+      {custom && (
+        <input
+          style={{ marginTop: 6 }}
+          aria-label={`${label}: nome del modello`}
+          value={known ? '' : value}
+          placeholder='nome o id del modello, es. claude-opus-5-5'
+          onChange={(e) => onChange(e.target.value.trim())}
+        />
+      )}
+    </div>
+  )
+}
+
 /** Modelli e budget giornaliero: hanno effetto subito, senza riavviare il daemon. */
 function LlmCard () {
   const client = useQueryClient()
@@ -226,19 +279,13 @@ function LlmCard () {
 
   return (
     <Card title='Intelligenza (LLM)'>
-      <p className='muted' style={{ marginTop: 0 }}>
-        Adapter: <strong>{llm.adapter}</strong> ({llm.command}). Usa il tuo abbonamento tramite la CLI, nessuna API key.
-        Per cambiare adapter modifica <code>config.json</code> e riavvia il daemon.
-      </p>
-      <div className='row'>
-        <div style={{ flex: 1 }}>
-          <label>Modello per classificare (veloce)</label>
-          <input value={draft.classifyModel ?? llm.classifyModel} onChange={(e) => setDraft({ ...draft, classifyModel: e.target.value })} />
-        </div>
-        <div style={{ flex: 1 }}>
-          <label>Modello per distillare (più capace)</label>
-          <input value={draft.distillModel ?? llm.distillModel} onChange={(e) => setDraft({ ...draft, distillModel: e.target.value })} />
-        </div>
+      <div className={`notice small ${llm.adapter === 'fake' ? 'warn' : ''}`} style={{ marginBottom: 10 }}>
+        <strong>LLM in uso: {llm.adapter}</strong>{llm.adapter === 'claude' ? ` (comando: ${llm.command})` : ''}. {ADAPTER_TEXT[llm.adapter] ?? ''}
+        {' '}Per cambiarlo modifica <code>llm.adapter</code> in <code>config.json</code> e riavvia il daemon.
+      </div>
+      <div className='row' style={{ alignItems: 'flex-start' }}>
+        <ModelSelect label='Modello per classificare (veloce)' value={draft.classifyModel ?? llm.classifyModel} onChange={(v) => setDraft({ ...draft, classifyModel: v })} />
+        <ModelSelect label='Modello per distillare (più capace)' value={draft.distillModel ?? llm.distillModel} onChange={(v) => setDraft({ ...draft, distillModel: v })} />
         <div style={{ width: 200 }}>
           <label>Chiamate massime al giorno</label>
           <input type='number' min={0} value={draft.dailyBudget ?? String(llm.dailyBudget)} onChange={(e) => setDraft({ ...draft, dailyBudget: e.target.value })} />

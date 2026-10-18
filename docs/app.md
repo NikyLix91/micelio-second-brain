@@ -121,7 +121,7 @@ Il nodo a colpo d'occhio: ruolo, peer connessi, ricordi, LLM e budget di oggi, c
 - **Impostazioni:**
   - **Rete:** DHT pubblica o DHT privata del team, con i nodi di avvio. *Verifica* prova la scelta senza applicarla; *Applica* chiede conferma e ricollega subito il nodo;
   - cartelle abilitate alla raccolta automatica (nell'app c'è il selettore di cartelle);
-  - modelli e budget LLM, con effetto immediato;
+  - modelli e budget LLM, con effetto immediato. I modelli si scelgono da una tendina (Haiku, Sonnet, Opus) o con «Altro…» scrivendo qualunque nome accettato dalla CLI. La scheda dice anche quale LLM è in uso: `claude`, oppure `fake`, l'LLM finto del team demo che non chiama Claude;
   - configurazione di Claude Code (MCP + hook), con conferma, perché modifica il tuo profilo.
 
 ![Impostazioni](img/impostazioni.png)
