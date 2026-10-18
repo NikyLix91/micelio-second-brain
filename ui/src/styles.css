@@ -218,3 +218,13 @@ th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .lang-switch { display: inline-flex; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
 .lang-btn { background: transparent; border: 0; padding: 1px 8px; font-size: 11px; color: var(--muted); cursor: pointer; }
 .lang-btn.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+
+/* Guida in linea (B2): pulsante «?», pannello laterale, pagina della guida */
+.help-btn { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--border); background: var(--surface); color: var(--muted); font-size: 11px; font-weight: 700; cursor: pointer; vertical-align: middle; padding: 0; line-height: 1; }
+.help-btn:hover { color: var(--accent); border-color: var(--accent); }
+.help-drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(520px, 92vw); background: var(--surface); border-left: 1px solid var(--border); box-shadow: -8px 0 24px rgb(0 0 0 / 18%); padding: 16px 18px; overflow-y: auto; z-index: 50; }
+.help-section { border-left: 3px solid transparent; padding-left: 10px; margin-left: -13px; }
+.help-section.focus { border-left-color: var(--accent); background: var(--accent-soft); border-radius: 4px; }
+.help-topic h3 { margin: 16px 0 6px; }
+.help-topic table { margin: 6px 0; }
+.guide { align-items: start; }

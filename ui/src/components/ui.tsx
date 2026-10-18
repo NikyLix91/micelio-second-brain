@@ -4,6 +4,7 @@
  */
 import { type ReactNode, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
+import { HelpButton } from '../help'
 import { defineStrings, useStrings } from '../i18n'
 
 const S = defineStrings({
@@ -11,12 +12,15 @@ const S = defineStrings({
   en: { confirm: 'Confirm', cancel: 'Cancel' }
 })
 
-/** Intestazione di pagina con titolo e sottotitolo. */
-export function PageHeader ({ title, subtitle, actions }: { title: string, subtitle?: ReactNode, actions?: ReactNode }) {
+/**
+ * Intestazione di pagina con titolo e sottotitolo.
+ * @param help argomento della guida in linea ("argomento" o "argomento#ancora"): mostra il «?»
+ */
+export function PageHeader ({ title, subtitle, actions, help }: { title: string, subtitle?: ReactNode, actions?: ReactNode, help?: string }) {
   return (
     <div className='page-header row'>
       <div>
-        <h1>{title}</h1>
+        <h1>{title}{help && <> <HelpButton topic={help} /></>}</h1>
         {subtitle && <p>{subtitle}</p>}
       </div>
       <div className='spacer' />
@@ -25,13 +29,16 @@ export function PageHeader ({ title, subtitle, actions }: { title: string, subti
   )
 }
 
-/** Riquadro con titolo opzionale. */
-export function Card ({ title, children, actions }: { title?: string, children: ReactNode, actions?: ReactNode }) {
+/**
+ * Riquadro con titolo opzionale.
+ * @param help argomento della guida in linea ("argomento#ancora"): mostra il «?» accanto al titolo
+ */
+export function Card ({ title, children, actions, help }: { title?: string, children: ReactNode, actions?: ReactNode, help?: string }) {
   return (
     <section className='card'>
       {(title || actions) && (
         <div className='row' style={{ marginBottom: 10 }}>
-          {title && <h2 style={{ margin: 0 }}>{title}</h2>}
+          {title && <h2 style={{ margin: 0 }}>{title}{help && <> <HelpButton topic={help} /></>}</h2>}
           <div className='spacer' />
           {actions}
         </div>

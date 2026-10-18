@@ -10,12 +10,14 @@
  * (es. Mappa 2D con filtri per autore e tipo).
  */
 import { useQuery } from '@tanstack/react-query'
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { HashRouter, NavLink, Route, Routes, useLocation } from 'react-router-dom'
 import { api } from './api/client'
 import { useLiveEvents } from './api/live'
 import { ErrorBox } from './components/ui'
+import { HelpProvider, useHelp } from './help'
 import { defineStrings, LangSwitch, useStrings } from './i18n'
+import { Guide } from './pages/Guide'
 import { Constellation } from './pages/Constellation'
 import { Dashboard } from './pages/Dashboard'
 import { Inbox } from './pages/Inbox'
@@ -33,14 +35,14 @@ const S = defineStrings({
   it: {
     connecting: 'Connessione al nodo…',
     nucleusLoading: 'Accensione del nucleo…',
-    nav: { nucleus: 'Nucleo', map: 'Mappa 2D', memory: 'Memoria', roots: 'Radici', inbox: 'Inbox', team: 'Team', dreams: 'Sogni', status: 'Stato', private: 'Registro privato', security: 'Sicurezza', settings: 'Impostazioni' },
+    nav: { nucleus: 'Nucleo', map: 'Mappa 2D', memory: 'Memoria', roots: 'Radici', inbox: 'Inbox', team: 'Team', dreams: 'Sogni', status: 'Stato', private: 'Registro privato', security: 'Sicurezza', settings: 'Impostazioni', guide: 'Guida' },
     live: 'Aggiornamenti in tempo reale',
     reconnecting: 'Riconnessione…'
   },
   en: {
     connecting: 'Connecting to the node…',
     nucleusLoading: 'Powering up the nucleus…',
-    nav: { nucleus: 'Nucleus', map: '2D map', memory: 'Memory', roots: 'Roots', inbox: 'Inbox', team: 'Team', dreams: 'Dreams', status: 'Status', private: 'Private log', security: 'Security', settings: 'Settings' },
+    nav: { nucleus: 'Nucleus', map: '2D map', memory: 'Memory', roots: 'Roots', inbox: 'Inbox', team: 'Team', dreams: 'Dreams', status: 'Status', private: 'Private log', security: 'Security', settings: 'Settings', guide: 'Guide' },
     live: 'Live updates',
     reconnecting: 'Reconnecting…'
   }
@@ -60,6 +62,7 @@ export function App () {
 
   return (
     <HashRouter>
+      <HelpProvider>
         <Shell live={live} team={status.data.team?.name ?? ''} node={status.data.nodeName ?? ''}>
           <Routes>
             <Route path='/' element={<Suspense fallback={<div className='hud hud-center'>{s.nucleusLoading}</div>}><Nucleus /></Suspense>} />
@@ -73,10 +76,19 @@ export function App () {
             <Route path='/privato' element={<Private />} />
             <Route path='/sicurezza' element={<Security />} />
             <Route path='/impostazioni' element={<Settings />} />
+            <Route path='/guida' element={<Guide />} />
           </Routes>
         </Shell>
+      </HelpProvider>
     </HashRouter>
   )
+}
+
+/** Argomento della guida per ogni pagina (F1). */
+const PAGE_TOPIC: Record<string, string> = {
+  '/': 'views#nucleus', '/mappa': 'views#map', '/memoria': 'memory', '/radici': 'roots', '/inbox': 'inbox',
+  '/team': 'team', '/sogni': 'dreams', '/stato': 'status', '/privato': 'private', '/sicurezza': 'security',
+  '/impostazioni': 'settings', '/guida': 'overview'
 }
 
 /**
@@ -86,6 +98,17 @@ export function App () {
 function Shell ({ children, live, team, node }: { children: React.ReactNode, live: boolean, team: string, node: string }) {
   const { pathname } = useLocation()
   const holo = pathname === '/'
+  // F1: guida sull'argomento della pagina corrente
+  const { open } = useHelp()
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'F1') return
+      e.preventDefault()
+      open(PAGE_TOPIC[pathname] ?? 'overview')
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open, pathname])
   return (
     <div className={`app ${holo ? 'holo' : ''}`}>
       <Sidebar live={live} team={team} node={node} />
@@ -118,6 +141,7 @@ function Sidebar ({ live, team, node }: { live: boolean, team: string, node: str
       <NavLink to='/privato' className={link}>{n.private}</NavLink>
       <NavLink to='/sicurezza' className={link}>{n.security}</NavLink>
       <NavLink to='/impostazioni' className={link}>{n.settings}</NavLink>
+      <NavLink to='/guida' className={link}>{n.guide}</NavLink>
       <div className='sidebar-footer'>
         <div className='row'><span className={`dot ${live ? 'on' : ''}`} />{live ? s.live : s.reconnecting}</div>
         <div className='row'><span>{node}</span><span className='spacer' /><LangSwitch /></div>
