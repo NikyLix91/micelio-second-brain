@@ -203,7 +203,16 @@ export class MemoryIndex {
   /** Salva i vettori calcolati (Float32 come BLOB). */
   setVectors (model: string, items: { id: string, vec: Float32Array }[]): void {
     const ins = this.db.prepare('INSERT INTO vectors (id, model, vec) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET model = excluded.model, vec = excluded.vec')
-    for (const { id, vec } of items) ins.run(id, model, Buffer.from(vec.buffer, vec.byteOffset, vec.byteLength))
+    // Una transazione per gruppo: senza, ogni riga era un commit su disco (con 5 000 ricordi da
+    // indicizzare, es. dopo il ripristino di un backup, 33 secondi solo qui)
+    this.db.exec('BEGIN')
+    try {
+      for (const { id, vec } of items) ins.run(id, model, Buffer.from(vec.buffer, vec.byteOffset, vec.byteLength))
+      this.db.exec('COMMIT')
+    } catch (err) {
+      this.db.exec('ROLLBACK')
+      throw err
+    }
     // Cache dei vettori: aggiornata, o scartata se era di un altro modello
     if (this.vecCache?.model === model) for (const { id, vec } of items) this.vecCache.map.set(id, vec)
     else this.vecCache = null

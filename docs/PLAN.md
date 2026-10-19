@@ -330,6 +330,37 @@ Richieste dell'utente del 2026-10-18 (B1–B3) e brainstorming sui concorrenti d
 | G | **Galassie: viste dense per progetti grandi** | `feature/galassie` | ✅ Fatto. Oltre 250 ricordi Nucleo e Mappa 2D partono da una galassia per argomento (Louvain sui collegamenti, nomi dai tag caratteristici), si entra con un clic, ricerca e filtri mostrano solo i risultati o accendono le galassie che li contengono, tour fra le galassie, al massimo 600 stelle per galassia. Prestazioni misurate a 5 000 ricordi: scrittura ~0,3 s, ricerca < 10 ms, costellazione in cache ~70 ms, avvio senza ricalcoli (vicini salvati); ricalcoli pesanti in sottofondo e a blocchi |
 | B5 | **Estensione per VS Code** | `feature/vscode` | Da fare dopo B4. Ricordi e Radici pertinenti al file aperto, ricerca, salvataggio di un ricordo dalla selezione, stato del nodo |
 | B6 | **Connettori per code review e issue** (GitHub, GitLab, Jira) | da definire | In roadmap, non pianificato. I commenti delle PR e le issue sono dove nascono molte decisioni: distillarli (passando dallo stesso filtro privacy) |
+| B7 | **Backup e ripristino del sapere di un team** | `feature/backup-team` | Approvato il 2026-10-19, in corso. Vedi «B7 in dettaglio» sotto |
+| B8 | **Server privato che funziona davvero** | `feature/server-privato` | Dalla prova reale del 2026-10-19: con il server privato due colleghi restano a 0 peer per 9 minuti, con la DHT pubblica si collegano in 3 secondi. Prova controllata (entrambi in privato insieme), log dei contatti sul server, relay sul server se l'hole punching non basta |
+| B9 | **Pacchetto Linux** (AppImage e .deb) | `feature/package-linux` | Script scritto (`npm run package:linux`, parti comuni con Windows in `scripts/package-common.js`), da provare su Linux |
+| B10 | **Chatbot per interrogare la memoria con l'AI** | da definire | Richiesta del 2026-10-19, da fare dopo B7–B9. Domande in linguaggio naturale sulla memoria del team, con risposte basate sui ricordi e sulle Radici. Dettagli da decidere insieme all'utente prima di pianificare |
+
+### B7 in dettaglio: backup e ripristino del sapere di un team
+
+**A cosa serve.** Oggi il sapere di un team sopravvive finché c'è almeno un PC del team con i dati: la replica P2P è una copia, non un backup. Non protegge da una redazione sbagliata o da un team abbandonato, e non permette di spostare il sapere in un team nuovo. Il backup è un **file** che contiene il sapere del team e si ripristina in un team nuovo o in uno esistente.
+
+**Cosa c'è nel file** (`<team>-<data>.micelio-backup`: JSON compresso con un manifesto):
+- ricordi attivi **e** storico (archiviati, sostituiti, con il motivo), con autore e data originali;
+- Radici (categoria, stato, segnalazioni), collegamenti, voti e ricordi fissati, lacune di conoscenza;
+- configurazione condivisa del team (lingua dei ricordi e simili).
+
+**Cosa NON c'è:** chiavi, membri, inviti (un team ripristinato ha chiavi nuove: i colleghi rientrano con un invito); archivio privato, Inbox e ricordi personali (stanno su un solo PC); originali dei documenti; ricordi redatti.
+
+**Sicurezza:** il file contiene tutto il sapere del team. Cifratura con password (scrypt + AES-256-GCM).
+
+**Ripristino:**
+- in un **team nuovo** (chi ripristina ne diventa fondatore) o **dentro un team esistente** (fusione);
+- i duplicati si saltano da soli: l'id di un ricordo deriva dal contenuto;
+- autore e data originali restano visibili e contano per l'attivazione: un ricordo vecchio non torna "nuovo";
+- scrittura a blocchi e un solo aggiornamento dell'indice alla fine. Obiettivo: 5 000 ricordi in meno di un minuto, con il daemon che continua a rispondere.
+
+**Decisioni dell'utente (2026-10-19):**
+- **backup:** qualunque membro (vede già tutto il sapere);
+- **ripristino dentro un team esistente:** solo admin. In un team nuovo chiunque, perché ne diventa admin;
+- **password obbligatoria;**
+- **backup automatici giornalieri:** per team, spenti di default, in una cartella scelta, si tengono gli ultimi N (default 7). La password dei backup automatici si imposta una volta e resta solo sul PC, in `teams/<id>/settings.json`: i dati del team su quel disco sono già in chiaro, e la cifratura protegge le copie nella cartella di backup (che può essere condivisa o di rete).
+
+**Dove si usa:** pagina Team (scheda «Backup e ripristino»), CLI `micelio backup create|restore`, API. Guida in linea IT/EN con il funzionamento interno; test, compresa una prova a 5 000 ricordi.
 
 ---
 

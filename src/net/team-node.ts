@@ -313,6 +313,18 @@ export class TeamNode extends EventEmitter {
   }
 
   /**
+   * Appende più eventi in UNA scrittura (Autobase accetta un array): per il ripristino di un
+   * backup, dove migliaia di scritture singole costerebbero minuti. Ogni evento è validato prima:
+   * se uno non è valido non si scrive nulla.
+   */
+  async appendMany (payloads: EventPayload[]): Promise<void> {
+    if (!this.base?.writable) throw new Error('Questo nodo non è (ancora) un writer del team')
+    if (!payloads.length) return
+    const now = Date.now()
+    await this.base.append(payloads.map((p) => envelope(p, now)))
+  }
+
+  /**
    * Crea un invito monouso valido 24 ore.
    *
    * `replicated` indica se almeno un peer ha già ricevuto l'evento `invite.add`. Solo in quel
@@ -431,6 +443,13 @@ export class TeamNode extends EventEmitter {
   async config<T = unknown> (key: string): Promise<T | undefined> {
     const rec = await this.getRecord<{ value: T }>(KEYS.config(key))
     return rec?.value
+  }
+
+  /** Tutta la configurazione condivisa del team (`team.config`): chiave → valore. */
+  async configs (): Promise<Record<string, unknown>> {
+    const out: Record<string, unknown> = {}
+    for await (const { key, value } of this.base.view.createReadStream(RANGES.configs)) out[String(key).slice('config/'.length)] = (value as { value: unknown }).value
+    return out
   }
 
   async team (): Promise<TeamRecord | null> {
