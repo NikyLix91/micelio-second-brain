@@ -29,6 +29,19 @@ Due livelli: la connessione è cifrata (Noise) e i blocchi del log sono cifrati 
 
 **Verifica** in quella scheda prova la scelta senza applicarla: dice se la DHT risponde, con che IP pubblico esci e se il tuo router ha un NAT "simmetrico" (il caso difficile per l'hole punching).
 
+## Il relay del server del team {#relay}
+
+Fra due reti aziendali, o con router molto restrittivi, l'hole punching può non riuscire: i due PC si trovano ma non si collegano, e restano a 0 peer. Con la **DHT privata** il server del team (dalla versione 0.2.0) fa da **relay**: in quei casi la connessione passa dal server.
+
+- Il relay è **cieco**: inoltra i pacchetti di una connessione già cifrata fra i due PC (Noise). Il server non ha le chiavi e non legge nulla.
+- Si usa **solo quando serve**: dopo un hole punching fallito, o se il NAT del tuo PC è simmetrico. Altrimenti la connessione resta diretta.
+- **Nessuna configurazione**: la chiave del relay si ricava dall'indirizzo del server, che ogni PC del team conosce già.
+- Il PC prova il relay all'avvio e ogni 10 minuti, e lo usa solo se risponde. Con un server di una versione precedente, o non raggiungibile, restano solo le connessioni dirette: non si rischia di restare scollegati.
+
+**Rete → Verifica** dice se il server offre il relay. La pagina **Stato** dice quante connessioni sono passate da lì.
+
+**Come funziona dietro.** Il relay è un `blind-relay` di Holepunch che vive sullo stesso nodo DHT del server, quindi sulla stessa porta UDP (nessuna porta in più da aprire). I PC lo trovano perché un nodo DHT risponde anche per i servizi in ascolto su sé stesso. La chiave è derivata con SHA-256 da `micelio-relay/v1` più l'indirizzo `host:porta`. Chi conosce l'indirizzo potrebbe quindi avviare un finto relay. Il traffico però resta cifrato fra i PC: il peggio che può fare è non inoltrarlo. In una DHT privata l'indirizzo lo conosce solo il team.
+
 ## Offline {#offline}
 
 Micelio funziona anche da solo: ricerca, raccolta e distillazione sono locali. Ciò che scrivi resta nel tuo feed e arriva ai colleghi alla prossima connessione; ciò che scrivono loro arriva a te allo stesso modo. Un **nodo sempre acceso** (es. sul server del team) rende il sapere disponibile anche quando i PC sono spenti.

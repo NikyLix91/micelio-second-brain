@@ -13,6 +13,7 @@
  * server privato a nodo singolo l'indicazione non è disponibile (vedi server/README.md, --extra-nodes).
  */
 import HyperDHT from 'hyperdht'
+import { relayKeyFor } from './relay-key'
 
 export interface NetworkCheck {
   /** "pubblica" (Holepunch) o l'elenco dei nodi di avvio privati. */
@@ -27,6 +28,11 @@ export interface NetworkCheck {
   randomizedPort: boolean | null
   /** Millisecondi impiegati per entrare nella DHT. */
   ms: number
+  /**
+   * Solo DHT privata (B8): il server del team offre il relay, il piano B quando l'hole punching
+   * fra due PC non riesce? null = DHT pubblica (nessun relay) o DHT non raggiungibile.
+   */
+  relay: boolean | null
 }
 
 /**
@@ -46,15 +52,27 @@ export async function checkNetwork (bootstrap: { host: string, port: number }[] 
     const nodes = dht.toArray().length
     // Il campionatore NAT di dht-rpc: `host` noto e `port` 0 = porta diversa per ogni destinazione.
     const host: string | null = dht.host ?? null
+    const relay = bootstrap?.length && nodes > 0 ? await relayAnswers(dht, relayKeyFor(bootstrap[0].host, bootstrap[0].port)) : null
     return {
       dht: bootstrap ? bootstrap.map((b) => `${b.host}:${b.port}`).join(', ') : 'pubblica (Holepunch)',
       reachable: nodes > 0,
       nodes,
       publicHost: host,
       randomizedPort: host === null || nodes < 2 ? null : dht.port === 0,
-      ms: Date.now() - t0
+      ms: Date.now() - t0,
+      relay
     }
   } finally {
     await dht.destroy()
   }
+}
+
+/** true se il relay con quella chiave accetta una connessione entro 10 secondi. */
+function relayAnswers (dht: any, key: Buffer): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = dht.connect(key)
+    const timer = setTimeout(() => { socket.destroy(); resolve(false) }, 10_000)
+    socket.once('open', () => { clearTimeout(timer); socket.destroy(); resolve(true) })
+    socket.once('error', () => { clearTimeout(timer); resolve(false) })
+  })
 }

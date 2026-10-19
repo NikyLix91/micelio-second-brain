@@ -2260,6 +2260,7 @@ export class MicelioNode extends EventEmitter {
       indexer: team.isIndexer,
       role: me?.role ?? null,
       peers: team.peers,
+      ...(this.opts.bootstrap?.length ? { relay: team.relay } : {}),
       members: members.length,
       memories: this.index.count() - this.personalIds.size
     }

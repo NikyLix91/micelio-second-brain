@@ -281,12 +281,14 @@ network.command('check')
     console.log(`Raggiungibile:  ${r.reachable ? `sì (${r.nodes} nodi, ${r.ms} ms)` : 'NO'}`)
     console.log(`IP pubblico:    ${r.publicHost ?? 'non determinato'}`)
     console.log(`NAT simmetrico: ${r.randomizedPort === null ? 'non determinabile (servono almeno 2 nodi DHT)' : r.randomizedPort ? 'SÌ' : 'no'}`)
+    // B8: con la DHT privata, il piano B quando l'hole punching fra due PC non riesce
+    if (r.relay !== null) console.log(`Relay:          ${r.relay ? 'sì (se l\'hole punching non riesce, la connessione passa dal server, sempre cifrata)' : 'NO: il server non offre un relay (aggiornalo alla versione 0.2.0)'}`)
     if (!r.reachable) {
       console.log('\nNessun nodo ha risposto. Possibili cause: server spento, porta UDP chiusa sul server, oppure questa rete blocca l\'UDP in uscita.')
       process.exitCode = 1
     } else if (r.randomizedPort) {
       console.log('\nIl router cambia porta per ogni destinazione: la connessione diretta può fallire con colleghi nella stessa situazione.')
-      console.log('Il sapere arriva comunque passando da un nodo sempre acceso raggiungibile da tutti (vedi server/README.md).')
+      console.log(r.relay ? 'Il relay del server del team fa da piano B: il sapere arriva comunque.' : 'Con la DHT privata e un server aggiornato (relay) il sapere arriva comunque (vedi server/README.md).')
     } else {
       console.log('\nOK: questo PC può collegarsi agli altri nodi del team.')
     }
