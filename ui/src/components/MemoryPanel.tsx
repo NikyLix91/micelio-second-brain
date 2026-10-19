@@ -36,6 +36,7 @@ const S = defineStrings({
     commits: 'Commit',
     activation: 'Attivazione',
     usage: (uses: number, votes: string) => `${uses} usi · voti ${votes}`,
+    usefulTimes: (n: number) => ` · utile ${n} ${n === 1 ? 'volta' : 'volte'} agli agenti del team`,
     useful: 'Utile',
     misleading: 'Fuorviante o obsoleto',
     unpin: 'Sblocca',
@@ -77,6 +78,7 @@ const S = defineStrings({
     commits: 'Commits',
     activation: 'Activation',
     usage: (uses: number, votes: string) => `${uses} uses · votes ${votes}`,
+    usefulTimes: (n: number) => ` · useful ${n} ${n === 1 ? 'time' : 'times'} to the team's agents`,
     useful: 'Useful',
     misleading: 'Misleading or outdated',
     unpin: 'Unpin',
@@ -221,7 +223,7 @@ function CodeBox ({ code }: { code: CodeRefs }) {
  * Priorità del ricordo (Fase 5): attivazione, usi, voti e pin. I voti e il pin sono segnali per
  * tutto il team: i ricordi utili salgono nelle ricerche, quelli fissati non decadono mai.
  */
-function Signals ({ id, activation, votes, uses, pinned }: { id: string, activation: number, votes: number, uses: number, pinned: boolean }) {
+function Signals ({ id, activation, votes, uses, useful = 0, pinned }: { id: string, activation: number, votes: number, uses: number, useful?: number, pinned: boolean }) {
   const s = useStrings(S)
   const client = useQueryClient()
   const refresh = () => { void client.invalidateQueries({ queryKey: ['memories'] }); void client.invalidateQueries({ queryKey: ['graph'] }) }
@@ -232,7 +234,8 @@ function Signals ({ id, activation, votes, uses, pinned }: { id: string, activat
       <div className='row small'><span>{s.activation}</span><span className='spacer' /><span>{Math.round(activation * 100)}%</span></div>
       <Meter value={activation} max={1} />
       <div className='row small' style={{ marginTop: 8 }}>
-        <span className='muted'>{s.usage(uses, `${votes > 0 ? '+' : ''}${votes}`)}</span>
+        {/* B11: utilità per gli agenti (confermata a fine sessione), sommata su tutto il team */}
+        <span className='muted'>{s.usage(uses, `${votes > 0 ? '+' : ''}${votes}`)}{useful > 0 ? s.usefulTimes(useful) : ''}</span>
         <span className='spacer' />
         <button className='btn small' title={s.useful} onClick={() => vote.mutate(1)}>👍</button>
         <button className='btn small' title={s.misleading} onClick={() => vote.mutate(-1)}>👎</button>
@@ -281,7 +284,7 @@ export function MemoryPanel ({ node, onClose }: { node: GraphNode, onClose: () =
         <div className='notice warn small' style={{ marginTop: 10 }}>{s.stale(full.data.stale.commits, full.data.stale.missing)} <HelpButton topic='memory#stale' /></div>
       )}
       {full.data?.personal && <PersonalBox id={node.id} onDone={onClose} />}
-      {full.data && !full.data.personal && <Signals id={node.id} activation={full.data.activation ?? 0} votes={full.data.votes ?? 0} uses={full.data.uses ?? 0} pinned={!!full.data.pinned} />}
+      {full.data && !full.data.personal && <Signals id={node.id} activation={full.data.activation ?? 0} votes={full.data.votes ?? 0} uses={full.data.uses ?? 0} useful={full.data.useful ?? 0} pinned={!!full.data.pinned} />}
       {full.data && !full.data.personal && <RootBox key={`${node.id}-${full.data.root?.category ?? ''}`} id={node.id} root={full.data.root} />}
       {full.data?.source?.code && <CodeBox code={full.data.source.code} />}
       {full.data?.source?.type === 'document' && <SourceBox id={node.id} name={full.data.source.name ?? s.document} size={full.data.source.size} />}

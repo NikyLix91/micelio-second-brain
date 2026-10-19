@@ -1040,7 +1040,12 @@ program.command('hook')
     try {
       // Anti-loop: le sessioni lanciate da Micelio stesso per classificare/distillare non si raccolgono.
       if (process.env.MICELIO_INTERNAL || !['session-end', 'session-start', 'prompt'].includes(event)) return
-      const raw = await Promise.race([readStdin(), new Promise<string>((r) => setTimeout(() => r(''), 2000))])
+      // Il timer di sicurezza (input che non arriva) va spento appena l'input c'è: acceso, teneva
+      // vivo il processo per 2 secondi a OGNI hook, cioè 2 secondi in più su ogni messaggio
+      // scritto a Claude Code (misurato: 2,3 s → pochi decimi)
+      let guard: NodeJS.Timeout | undefined
+      const raw = await Promise.race([readStdin(), new Promise<string>((r) => { guard = setTimeout(() => r(''), 2000) })])
+      clearTimeout(guard)
       const input = JSON.parse(raw || '{}')
       if (event === 'session-start' || event === 'prompt') return await contextHook(event, input)
       if (!input.session_id || !input.transcript_path) return

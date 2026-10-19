@@ -48,9 +48,31 @@ export const Distilled = z.object({
     // Suggerimento di RADICE (Fase 8): categoria se il ricordo è sapere fondante, altrimenti "none".
     // È solo un suggerimento: la promozione la decide una persona (salvo cartelle "di Radici").
     root: z.enum([...ROOT_CATEGORIES, 'none'])
-  }))
+  })),
+  // Efficacia (B11): giudizio sui ricordi che MICELIO ha fornito all'assistente durante la
+  // sessione, se ce ne sono (elencati in fondo al testo). Vuoto per i documenti.
+  micelio: z.array(z.object({
+    id: z.string(),
+    verdict: z.enum(['used', 'ignored', 'wrong']),
+    reason: z.string()
+  })).default([])
 })
 export type Distilled = z.infer<typeof Distilled>
+
+/** Intestazione dell'elenco dei ricordi forniti da Micelio, in coda al testo della sessione. */
+export const MICELIO_DELIVERED_HEADER = '=== RICORDI FORNITI DA MICELIO IN QUESTA SESSIONE ==='
+
+/**
+ * Regola aggiunta al prompt di distillazione quando nella sessione Micelio ha fornito ricordi
+ * all'assistente (B11). Severa su "used": il pollice in su automatico dipende da questo giudizio.
+ */
+export const MICELIO_JUDGE_RULE = `
+- micelio: se in fondo al testo c'è la sezione "${MICELIO_DELIVERED_HEADER}", per OGNI ricordo elencato
+  indica id (i 12 caratteri tra parentesi quadre), verdict e reason (una frase con la prova presa dal testo):
+  used = l'assistente l'ha usato DAVVERO (ha seguito la procedura, applicato la soluzione, rispettato la regola,
+  usato il comando o il file indicato, o l'ha citato per decidere); ignored = non ha avuto un ruolo visibile;
+  wrong = era sbagliato, superato o contraddetto da ciò che è emerso nella sessione. Sii severo con used: solo
+  se l'uso è evidente nel testo. Senza quella sezione, micelio è una lista vuota.`
 
 /**
  * Prompt di sistema della distillazione.

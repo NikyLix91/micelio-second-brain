@@ -6,7 +6,9 @@
  * - nuovi elementi in inbox (aumento del conteggio);
  * - nodo isolato da più di 10 minuti (nessun peer connesso), tranne in modalità solo locale (B4);
  * - budget LLM oltre il 90% (una volta al giorno);
- * - riepilogo settimanale (B4): il lunedì dalle 9, una volta a settimana, se c'è qualcosa da dire.
+ * - riepilogo settimanale (B4): il lunedì dalle 9, una volta a settimana, se c'è qualcosa da dire;
+ * - efficacia (B11): un ricordo è stato utile a un agente (confermato) o era sbagliato. Il daemon
+ *   restituisce questi esiti solo se le notifiche sono accese in Impostazioni.
  *
  * La logica di "quando notificare" è in `NotificationRules`, pura e testabile; il resto è
  * collegamento allo stream.
@@ -29,6 +31,10 @@ export class NotificationRules {
   private isolatedSince: number | null = null
   private isolationNotified = false
   private budgetNotifiedDay: string | null = null
+  /** Ultimo esito di efficacia già visto (all'avvio: adesso, così non si ripetono quelli vecchi). */
+  private efficacySince = Date.now()
+  /** Da quando chiedere gli esiti al daemon. */
+  get efficacyCursor (): number { return this.efficacySince }
 
   /** Nuovi elementi in inbox: notifica solo gli AUMENTI (non al primo valore letto). */
   inbox (count: number): Notice | null {
@@ -66,6 +72,19 @@ export class NotificationRules {
     return week === lastWeek ? null : week
   }
 
+  /**
+   * Efficacia (B11): esiti nuovi da notificare. Al massimo 3 per volta: una sessione lunga può
+   * giudicarne molti insieme, e una raffica di notifiche è peggio di nessuna.
+   */
+  efficacy (notices: { ts: number, verdict: string, title: string, reason: string | null }[]): Notice[] {
+    const fresh = notices.filter((n) => n.ts > this.efficacySince).sort((a, b) => a.ts - b.ts)
+    if (!fresh.length) return []
+    this.efficacySince = fresh[fresh.length - 1].ts
+    return fresh.slice(-3).map((n) => n.verdict === 'wrong'
+      ? { title: t().wrongTitle, body: t().wrongBody(n.title, n.reason), route: '/efficacia' }
+      : { title: t().usefulTitle, body: t().usefulBody(n.title), route: '/efficacia' })
+  }
+
   /** Budget: una notifica al giorno quando si supera il 90%. */
   budget (used: number, limit: number, now = Date.now()): Notice | null {
     const day = new Date(now).toISOString().slice(0, 10)
@@ -93,6 +112,10 @@ export function watchDaemon (info: DaemonInfo, notify: (n: Notice) => void, week
         if (a) notify(a)
         const b = s.llm ? rules.budget(s.llm.budget.used, s.llm.budget.limit) : null
         if (b) notify(b)
+      }
+      if (topic === 'efficacy') {
+        const list = await get<{ ts: number, verdict: string, title: string, reason: string | null }[]>(info, `/api/efficacy/notices?since=${rules.efficacyCursor}`)
+        for (const n of rules.efficacy(list)) notify(n)
       }
       if (topic === 'status' || topic === 'init' || topic === 'tick') {
         const st = await get<{ configured: boolean, peers: number, localOnly?: boolean }>(info, '/api/status')

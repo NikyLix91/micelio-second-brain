@@ -109,10 +109,13 @@ export function createMcpServer (node: MicelioNode): McpServer {
     },
     annotations: { readOnlyHint: true }
   }, async ({ query, limit }) => {
+    const t0 = Date.now()
     const hits = await node.recallHybrid(query, limit ?? 5)
     // Radici pertinenti non già fra i risultati: il sapere fondante arriva anche se la ricerca
     // non lo mette in cima (è il motivo per cui le Radici esistono).
     const roots = await node.relatedRoots(query, hits.map((h) => h.id))
+    // B11: ogni richiesta di un agente finisce nel registro dell'efficacia (anche senza risultati)
+    node.consulted('recall', query, [...hits, ...roots].map((h) => h.id), Date.now() - t0)
     if (hits.length === 0 && roots.length === 0) return text(`Nessun ricordo del team trovato per "${query}".`)
     const main = hits.length ? hits.map((h) => formatHit(h)).join('\n\n---\n\n') : `Nessun ricordo specifico trovato per "${query}".`
     const extra = roots.length ? `\n\n=== RADICI PERTINENTI (sapere fondante del team: tienine conto) ===\n\n${roots.map((h) => formatHit(h)).join('\n\n---\n\n')}` : ''
@@ -135,6 +138,7 @@ export function createMcpServer (node: MicelioNode): McpServer {
     },
     annotations: { readOnlyHint: true }
   }, async ({ project, category, files, query }) => {
+    const t0 = Date.now()
     let roots = await node.roots({ project, category, files, query })
     // Un progetto senza Radici proprie: valgono comunque quelle generali del team (best practice,
     // policy…), cioè quelle che non appartengono a nessun progetto.
@@ -143,6 +147,8 @@ export function createMcpServer (node: MicelioNode): McpServer {
       roots = (await node.roots({ category, query })).filter((r) => !r.memory.source?.code?.project)
       note = `Nessuna Radice specifica per il progetto "${project}": ecco quelle generali del team.\n\n`
     }
+    // B11: registro dell'efficacia (la "domanda" è il filtro usato)
+    node.consulted('architecture', [project, category, query, ...(files ?? [])].filter(Boolean).join(' · ') || null, roots.map((r) => r.memory.id), Date.now() - t0, { project: project ?? null })
     if (roots.length === 0) return text('Il team non ha ancora Radici' + (category ? ` di categoria ${category}` : '') + '.')
     // Raggruppate per categoria; limite di lunghezza per non saturare il contesto dell'agente
     const out: string[] = []
@@ -241,7 +247,9 @@ export function createMcpServer (node: MicelioNode): McpServer {
     inputSchema: { id: z.string().min(6).describe('Id del ricordo') },
     annotations: { readOnlyHint: true }
   }, async ({ id }) => {
+    const t0 = Date.now()
     const hit = node.get(id)
+    node.consulted('get', id, hit ? [hit.id] : [], Date.now() - t0)
     return hit ? text(formatHit(hit, true)) : error(`Nessun ricordo con id ${id}`)
   })
 
@@ -257,7 +265,10 @@ export function createMcpServer (node: MicelioNode): McpServer {
     inputSchema: { id: z.string().min(6).describe('Id del ricordo (come mostrato da recall)') }
   }, async ({ id }) => {
     try {
+      const t0 = Date.now()
       const f = await node.fetchSource(id)
+      const rec = node.get(id)
+      node.consulted('fetch_source', id, rec ? [rec.id] : [], Date.now() - t0)
       const textContent = await node.sourceText(f.path)
       return text(`Documento: ${f.name} (${Math.round(f.size / 1024)} KB)\nPercorso locale: ${f.path}\n\n` +
         (textContent ? `--- Testo (primi 20.000 caratteri) ---\n${textContent}` : '(testo non estraibile: apri il file dal percorso indicato)'))

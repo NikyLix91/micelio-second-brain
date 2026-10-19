@@ -10,6 +10,8 @@
  *             testo più corto di 30 caratteri → discard; altrimenti → team;
  *             "[incerto]" nel testo → confidenza 0.5 (caso dubbio → inbox).
  * - distill:  un ricordo per ogni riga "LEZIONE: titolo | corpo [| rif: file, simbolo, commit, radice=categoria]";
+ *             giudizio sui ricordi forniti da Micelio (B11), per ogni "- [id] titolo" dell'elenco in
+ *             coda: "USATO <id>" nel testo → used, "SBAGLIATO <id>" → wrong, altrimenti ignored;
  * - consolidate (dreaming): "[collega]" nel testo → link; altrimenti fonde il gruppo.
  * - root-review: un ricordo recente con "[contraddice]" nel testo → contradicts; altrimenti consistent.
  * - write-update (B4): "[aggiorna]" nel ricordo nuovo → aggiorna il primo esistente non protetto;
@@ -59,7 +61,13 @@ export class FakeAdapter implements LlmAdapter {
           files: refs.filter(isFile), commits: refs.filter(isCommit), symbols: refs.filter((r) => !isFile(r) && !isCommit(r)), root
         }
       })
-      return task.schema.parse({ memories })
+      // B11: elenco dei ricordi forniti da Micelio in coda al testo
+      const micelio = [...task.input.matchAll(/^- \[([0-9a-f]{6,64})\] /gm)].map((m) => ({
+        id: m[1],
+        verdict: task.input.includes(`USATO ${m[1]}`) ? 'used' : task.input.includes(`SBAGLIATO ${m[1]}`) ? 'wrong' : 'ignored',
+        reason: 'giudizio finto (test)'
+      }))
+      return task.schema.parse({ memories, micelio })
     }
     if (task.name === 'root-review') {
       // Ricordi recenti nel formato "[<id>] titolo\ncorpo": contraddice quello che contiene il marcatore

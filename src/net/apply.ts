@@ -41,6 +41,8 @@ export const KEYS = {
   root: (id: string) => `root/${id}`,
   /** Uso di un ricordo da parte di un nodo: contatore cumulativo e ultimo uso. */
   usage: (id: string, node: string) => `usage/${id}/${node}`,
+  /** Volte in cui un ricordo è stato utile a un agente su un nodo (B11). */
+  useful: (id: string, node: string) => `useful/${id}/${node}`,
   /** Collegamento esplicito fra ricordi (dreaming). */
   link: (from: string, to: string) => `link/${from}/${to}`,
   /** Chi ha "vinto" il sogno di un'epoca. */
@@ -63,6 +65,7 @@ export const RANGES = {
   pins: { gt: 'pin/', lt: 'pin0' },
   roots: { gt: 'root/', lt: 'root0' },
   usage: { gt: 'usage/', lt: 'usage0' },
+  useful: { gt: 'useful/', lt: 'useful0' },
   links: { gt: 'link/', lt: 'link0' },
   dreamLogs: { gt: 'dreamlog/', lt: 'dreamlog0' },
   gaps: { gt: 'gap/', lt: 'gap0' },
@@ -312,9 +315,10 @@ async function applyEvent (ev: TeamEvent, author: string, view: any, host: any):
     // ── usage.report ─────────────────────────────────────────────────────────────────
     // G-Counter: per ogni (ricordo, nodo autore del report) si tiene il MASSIMO dei contatori
     // cumulativi ricevuti. Report ripetuti o fuori ordine non alterano il totale.
-    case 'usage.report': {
+    case 'usage.report':
+    case 'useful.report': {
       for (const [id, u] of Object.entries(ev.counts)) {
-        const key = KEYS.usage(id, author)
+        const key = ev.type === 'usage.report' ? KEYS.usage(id, author) : KEYS.useful(id, author)
         const prev = await get<{ count: number, last: number }>(view, key)
         if (!prev || u.count > prev.count || u.last > prev.last) {
           await view.put(key, { count: Math.max(u.count, prev?.count ?? 0), last: Math.max(u.last, prev?.last ?? 0) })

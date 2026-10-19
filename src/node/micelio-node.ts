@@ -37,6 +37,9 @@ import type { MemoryRecord } from '../core/model'
 import os from 'node:os'
 import { BACKUP_EXT, type BackupContent, type BackupManifest, backupFileName, countsOf, decodeBackup, encodeBackup } from '../backup/archive'
 import { planRestore } from '../backup/restore-plan'
+import { actionsAfter, findDeliveries, judgeUse, parseLines } from '../insight/efficacy'
+import type { Consultation, Outcome, OutcomeVerdict } from '../store/private-store'
+import type { Distilled } from '../ingest/prompts'
 import { type ExplicitOutcome, filterMemory, IngestPipeline, InboxNotFoundError } from '../ingest/pipeline'
 import { ClaudeCliAdapter } from '../llm/claude-cli'
 import { FakeAdapter } from '../llm/fake'
@@ -107,6 +110,34 @@ export interface MicelioNodeOptions {
 /** Errore causato dall'utente o dallo stato del nodo: messaggio pensato per essere mostrato. */
 export class UserError extends LocalizedError {}
 
+/** Un ricordo nel resoconto di efficacia (B11). */
+export interface EfficacyMemory { id: string, title: string, root: boolean, teamUseful: number }
+/** Resoconto per la pagina «Efficacia» (B11, vedi MicelioNode.efficacyReport). */
+export interface EfficacyReport {
+  days: number
+  summary: {
+    consultations: number
+    withResults: number
+    byChannel: Record<string, number>
+    /** Ricordi forniti in sessioni già valutate. */
+    delivered: number
+    /** Utili: confermati dall'LLM o con tracce d'uso (euristica). */
+    useful: number
+    confirmed: number
+    wrong: number
+    thumbsUp: number
+    msMedian: number
+    msP95: number
+    slow: number
+  }
+  consultations: (Consultation & { memories: EfficacyMemory[] })[]
+  outcomes: (Omit<Outcome, 'memory'> & { memory: EfficacyMemory })[]
+  topUseful: (EfficacyMemory & { returned: number, useful: number, unused: number, wrong: number })[]
+  noisy: (EfficacyMemory & { returned: number, useful: number, unused: number, wrong: number })[]
+  wrong: (EfficacyMemory & { reason: string | null, session: string, ts: number })[]
+  unanswered: { query: string, count: number }[]
+}
+
 /**
  * Parti dello stato che possono cambiare, usate come "argomento" degli eventi `change`:
  * - status:    stato del nodo e del team (peer, ruolo, configurazione del team);
@@ -114,7 +145,7 @@ export class UserError extends LocalizedError {}
  * - inbox, jobs, decisions: archivio privato (inbox, coda di ingestione, registro);
  * - settings:  impostazioni locali (cartelle abilitate, LLM).
  */
-export type ChangeTopic = 'status' | 'memories' | 'members' | 'inbox' | 'jobs' | 'decisions' | 'settings' | 'roots' | 'security' | 'gaps'
+export type ChangeTopic = 'status' | 'memories' | 'members' | 'inbox' | 'jobs' | 'decisions' | 'settings' | 'roots' | 'security' | 'gaps' | 'efficacy'
 
 /** Una lacuna del team come la mostrano UI e CLI (B4). */
 export interface GapView extends GapRecord {
@@ -134,6 +165,8 @@ export interface NodeSettings {
   network: NetworkSettings
   /** Contesto automatico per gli agenti (B4). */
   context: { sessionStart: boolean, prompt: boolean, maxChars: number }
+  /** Efficacia (B11): notifiche del desktop per gli esiti "utile" e "sbagliato". */
+  efficacy: { notify: boolean }
 }
 
 /** Impostazioni di rete come le mostra la UI. */
@@ -353,6 +386,10 @@ const RESTORE_BATCH = 500
  * totali è N² (5 000 ricordi: 13 s), il ricalcolo completo N²/2 ed è a blocchi, in sottofondo.
  */
 const BULK_NEIGHBORS = 200
+/** Efficacia (B11): consultazioni ed esiti si conservano 90 giorni. */
+const EFFICACY_KEEP_MS = 90 * 24 * 60 * 60 * 1000
+/** Una risposta a un agente oltre questo tempo è "lenta" nelle statistiche (l'hook ha 10 s in tutto). */
+const SLOW_CONSULTATION_MS = 1000
 
 /** Dopo quanti giorni le copie scaricate escono dalla cache (decisione D11). */
 const SOURCE_CACHE_DAYS = 30
@@ -393,6 +430,8 @@ export class MicelioNode extends EventEmitter {
   private injected = new Map<string, Set<string>>()
   /** Id dei ricordi PERSONALI presenti nell'indice (B4): restano su questo PC. */
   private personalIds = new Set<string>()
+  /** Volte in cui ogni ricordo è stato utile a un agente, nel team (B11, da useful.report). */
+  private usefulCounts = new Map<string, number>()
   /** Nome del team letto all'ultima materializzazione (vedi teamName). */
   private teamNameCache: string | null = null
   private readonly index: MemoryIndex
@@ -464,6 +503,11 @@ export class MicelioNode extends EventEmitter {
       gitChanges: () => this.config.watch.gitChanges,
       log: this.log,
       notify: (topic) => this.changed(topic),
+      // B11: efficacia dei ricordi forniti agli agenti
+      efficacy: {
+        evaluate: (transcriptPath, fromLine, sessionId, cwd) => this.evaluateSession(transcriptPath, fromLine, sessionId, cwd),
+        verdicts: (sessionId, cwd, verdicts) => this.applyVerdicts(sessionId, cwd, verdicts)
+      },
       // Radici (Fase 8): suggerimenti del distillatore e cartelle di documenti "di Radici"
       suggestRoot: (id, category, title) => {
         if (this.rootsById.has(id)) return
@@ -505,7 +549,9 @@ export class MicelioNode extends EventEmitter {
     this.pipeline.start()
     this.sweepSourceCache()
     // Pubblicazione periodica dell'uso locale dei ricordi (Fase 5).
-    this.usageTimer = setInterval(() => { this.flushUsage().catch(() => {}) }, USAGE_FLUSH_MS)
+    this.usageTimer = setInterval(() => { this.flushUsage().catch(() => {}); this.flushUseful().catch(() => {}) }, USAGE_FLUSH_MS)
+    // B11: conservazione di consultazioni ed esiti (all'avvio basta: il daemon si riavvia spesso)
+    try { this.privateStore.pruneEfficacy(Date.now() - EFFICACY_KEEP_MS) } catch { /* archivio non ancora pronto */ }
     this.usageTimer.unref()
     // Raccolta delle sessioni in corso e recupero di quelle finite mentre il daemon era spento.
     const scanEvery = this.config.watch.sessionScan.intervalMinutes * 60_000
@@ -551,6 +597,7 @@ export class MicelioNode extends EventEmitter {
     if (this.backupTimer) clearInterval(this.backupTimer)
     while (this.dreamer.busy) await new Promise((r) => setTimeout(r, 200))
     await this.flushUsage().catch(() => {})
+    await this.flushUseful().catch(() => {})
     await this.embedding.catch(() => {})
     // Si chiude solo l'embedder creato qui: quello passato da fuori è condiviso con altri team.
     if (this.opts.embedder === undefined) await this.embedder?.close()
@@ -1209,6 +1256,168 @@ export class MicelioNode extends EventEmitter {
     this.privateStore.markUsageReported(counts)
   }
 
+  /** Pubblica al team le volte in cui i ricordi sono stati utili agli agenti (B11, useful.report). */
+  async flushUseful (): Promise<void> {
+    if (!this.team?.writable) return
+    const counts = Object.fromEntries(Object.entries(this.privateStore.unreportedUseful()).filter(([id]) => !this.personalIds.has(id)))
+    if (Object.keys(counts).length === 0) return
+    await this.team.append({ type: 'useful.report', counts })
+    this.privateStore.markUsefulReported(counts)
+  }
+
+  // ═══════════════════════════ Efficacia (B11) ═══════════════════════════
+
+  /**
+   * Registra una richiesta di un agente a Micelio (tool MCP o contesto automatico) e avvisa la UI.
+   * Sincrona e leggera (un INSERT): la risposta all'agente non deve aspettare.
+   */
+  consulted (channel: string, query: string | null, ids: string[], ms: number, extra: { project?: string | null, session?: string | null } = {}): void {
+    try {
+      // La domanda (es. il testo di un prompt) passa dalla redazione dei segreti: resta su questo PC,
+      // ma si vede nella pagina «Efficacia» e un prompt può contenere una password incollata
+      const q = query ? applyFilter(query.slice(0, 500)).text : null
+      this.privateStore.addConsultation({ channel, query: q, ids, ms, project: extra.project ?? null, session: extra.session ?? null })
+      this.changed('efficacy')
+    } catch (err) {
+      this.log(`consultazione non registrata: ${(err as Error).message}`)
+    }
+  }
+
+  /**
+   * Parte nuova di una sessione (B11): cosa ha fornito Micelio e se l'agente ne ha lasciato tracce
+   * (euristica, src/insight/efficacy.ts). Salva gli esiti e restituisce i ricordi forniti, per il
+   * giudizio dell'LLM alla distillazione.
+   */
+  private evaluateSession (transcriptPath: string, fromLine: number, sessionId: string, cwd: string): { id: string, short: string, title: string }[] {
+    const raw = fs.readFileSync(transcriptPath, 'utf8').split('\n').slice(fromLine)
+    const rows = parseLines(raw)
+    const deliveries = findDeliveries(rows)
+    if (!deliveries.length) return []
+    const project = projectOf(cwd)
+    // Per ricordo l'esito migliore fra le consegne della sessione ("probabilmente utile" vince)
+    const best = new Map<string, { short: string, title: string, verdict: 'likely' | 'none', evidence: string | null }>()
+    for (const d of deliveries) {
+      const after = actionsAfter(rows, d.index)
+      for (const short of d.ids) {
+        const rec = this.index.get(short)
+        if (!rec) continue
+        const prev = best.get(rec.id)
+        if (prev?.verdict === 'likely') continue
+        const j = judgeUse(rec, after)
+        best.set(rec.id, { short, title: rec.title, verdict: j.verdict, evidence: j.evidence })
+      }
+    }
+    let changed = false
+    for (const [id, b] of best) changed = this.privateStore.setOutcome({ session: sessionId, memory: id, verdict: b.verdict, judge: 'heuristic', evidence: b.evidence, project }) || changed
+    if (changed) this.changed('efficacy')
+    return [...best].map(([id, b]) => ({ id, short: b.short, title: b.title }))
+  }
+
+  /**
+   * Giudizio dell'LLM sui ricordi forniti (B11). "used" → pollice in su automatico (voto +1 di
+   * questo nodo, mai sopra un voto già dato) e +1 al contatore di utilità del team.
+   */
+  private applyVerdicts (sessionId: string, cwd: string, verdicts: Distilled['micelio']): void {
+    const project = projectOf(cwd)
+    let changed = false
+    for (const v of verdicts) {
+      const rec = /^[0-9a-f]{6,64}$/.test(v.id) ? this.index.get(v.id) : null
+      if (!rec) continue
+      if (!this.privateStore.setOutcome({ session: sessionId, memory: rec.id, verdict: v.verdict, judge: 'llm', evidence: v.reason.slice(0, 300), project })) continue
+      changed = true
+      if (v.verdict === 'used' && !this.personalIds.has(rec.id)) {
+        this.privateStore.countUseful(rec.id)
+        this.autoThumbsUp(sessionId, rec.id).catch((err) => this.log(`pollice in su non dato: ${(err as Error).message}`))
+      }
+      if (v.verdict === 'wrong') this.log(`ricordo forse sbagliato o superato (sessione ${sessionId.slice(0, 8)}): ${rec.title}`)
+    }
+    if (changed) this.changed('efficacy')
+  }
+
+  /** Voto +1 automatico, solo se questo nodo non ha già votato quel ricordo (decisione dell'utente). */
+  private async autoThumbsUp (sessionId: string, id: string): Promise<void> {
+    const team = this.team
+    if (!team?.writable) return
+    if ((await team.myVote(id)) === null) await team.append({ type: 'memory.vote', id, delta: 1 })
+    this.privateStore.markOutcomeVoted(sessionId, id)
+  }
+
+  /**
+   * Resoconto per la pagina «Efficacia»: consultazioni, esiti, ricordi più utili, rumore,
+   * ricordi sbagliati, domande senza risposta, tempi di risposta.
+   * @param days periodo (giorni)
+   * @param project solo un progetto (nome della cartella), se indicato
+   */
+  efficacyReport (days = 30, project?: string): EfficacyReport {
+    const since = Date.now() - days * 24 * 60 * 60 * 1000
+    const match = (p: string | null) => !project || (p ?? '').toLowerCase() === project.toLowerCase()
+    // Tutte quelle del periodo per i conteggi (90 giorni di uso intenso sono decine di migliaia di
+    // righe piccole: si leggono in decimi di secondo); solo le ultime 100 vanno nell'elenco
+    const cons = this.privateStore.consultations(since, 1_000_000).filter((c) => match(c.project))
+    const outs = this.privateStore.outcomes(since, 1_000_000).filter((o) => match(o.project))
+    // Titoli e contatori di team, una lettura per tutti gli id coinvolti
+    const ids = new Set<string>([...cons.flatMap((c) => c.ids), ...outs.map((o) => o.memory)])
+    const byId = new Map(this.index.getMany([...ids]).map((h) => [h.id, h]))
+    const mem = (id: string) => ({ id, title: byId.get(id)?.title ?? '(ricordo non più presente)', root: this.rootsById.has(id), teamUseful: this.usefulCounts.get(id) ?? 0 })
+
+    const ms = cons.map((c) => c.ms).sort((a, b) => a - b)
+    const pct = (q: number) => (ms.length ? ms[Math.min(ms.length - 1, Math.floor(q * ms.length))] : 0)
+    const useful = (o: Outcome) => o.verdict === 'used' || (o.verdict === 'likely')
+    // Per ricordo: volte restituito, esiti utili, esiti senza uso
+    const stats = new Map<string, { returned: number, useful: number, unused: number, wrong: number }>()
+    const st = (id: string) => { if (!stats.has(id)) stats.set(id, { returned: 0, useful: 0, unused: 0, wrong: 0 }); return stats.get(id)! }
+    for (const c of cons) for (const id of c.ids) st(id).returned++
+    for (const o of outs) {
+      if (useful(o)) st(o.memory).useful++
+      else if (o.verdict === 'wrong') st(o.memory).wrong++
+      else st(o.memory).unused++
+    }
+    const misses = new Map<string, number>()
+    for (const c of cons) if (!c.ids.length && c.query && (c.channel === 'recall' || c.channel === 'architecture')) misses.set(c.query, (misses.get(c.query) ?? 0) + 1)
+
+    return {
+      days,
+      summary: {
+        consultations: cons.length,
+        withResults: cons.filter((c) => c.ids.length > 0).length,
+        byChannel: Object.fromEntries([...new Set(cons.map((c) => c.channel))].map((ch) => [ch, cons.filter((c) => c.channel === ch).length])),
+        delivered: outs.length,
+        useful: outs.filter(useful).length,
+        confirmed: outs.filter((o) => o.verdict === 'used').length,
+        wrong: outs.filter((o) => o.verdict === 'wrong').length,
+        thumbsUp: outs.filter((o) => o.voted).length,
+        msMedian: pct(0.5),
+        msP95: pct(0.95),
+        slow: cons.filter((c) => c.ms > SLOW_CONSULTATION_MS).length
+      },
+      consultations: cons.slice(0, 100).map((c) => ({ ...c, memories: c.ids.slice(0, 8).map(mem) })),
+      outcomes: outs.slice(0, 100).map((o) => ({ ...o, memory: mem(o.memory) })),
+      topUseful: [...stats].filter(([, s]) => s.useful > 0).sort((a, b) => b[1].useful - a[1].useful).slice(0, 10).map(([id, s]) => ({ ...mem(id), ...s })),
+      // Rumore: restituiti spesso ma mai utili (almeno 5 volte e qualche esito senza uso)
+      noisy: [...stats].filter(([, s]) => s.returned >= 5 && s.useful === 0 && s.unused > 0).sort((a, b) => b[1].returned - a[1].returned).slice(0, 10).map(([id, s]) => ({ ...mem(id), ...s })),
+      wrong: outs.filter((o) => o.verdict === 'wrong').slice(0, 20).map((o) => ({ ...mem(o.memory), reason: o.evidence, session: o.session, ts: o.ts })),
+      unanswered: [...misses].sort((a, b) => b[1] - a[1]).slice(0, 15).map(([query, count]) => ({ query, count }))
+    }
+  }
+
+  /**
+   * Esiti da notificare sul desktop (B11): "utile" (confermato) e "sbagliato" dopo `since`.
+   * Vuoto se le notifiche sono spente in Impostazioni.
+   */
+  efficacyNotices (since: number): { ts: number, verdict: OutcomeVerdict, title: string, reason: string | null }[] {
+    if (!this.config.efficacy.notify) return []
+    return this.privateStore.outcomes(since + 1, 50)
+      .filter((o) => o.judge === 'llm' && (o.verdict === 'used' || o.verdict === 'wrong'))
+      .map((o) => ({ ts: o.ts, verdict: o.verdict, title: this.index.get(o.memory)?.title ?? o.memory.slice(0, 8), reason: o.evidence }))
+  }
+
+  /** Notifiche dell'efficacia accese o spente (impostazione di questo PC). */
+  setEfficacyNotify (notify: boolean): { notify: boolean } {
+    this.config = updateConfig(this.paths, (c) => { c.efficacy.notify = notify })
+    this.changed('settings')
+    return { notify: this.config.efficacy.notify }
+  }
+
   /**
    * Attivazione 0..1 di un ricordo (vedi src/rank/activation.ts), ridotta se il codice citato è
    * cambiato dopo il ricordo (B4). Radici e ricordi fissati non si riducono: per le Radici c'è la
@@ -1223,7 +1432,7 @@ export class MicelioNode extends EventEmitter {
     const rec = known ?? this.index.get(id)
     if (!rec) return 0
     const root = this.rootsById.has(id)
-    const a = activation({ kind: rec.kind, createdAt: rec.ts, lastUsed: s?.lastUsed ?? undefined, uses: s?.uses ?? 0, votes: s?.votes ?? 0, degree: this.degrees.get(id) ?? 0, pinned: !!s?.pinned, root })
+    const a = activation({ kind: rec.kind, createdAt: rec.ts, lastUsed: s?.lastUsed ?? undefined, uses: s?.uses ?? 0, useful: this.usefulCounts.get(id) ?? 0, votes: s?.votes ?? 0, degree: this.degrees.get(id) ?? 0, pinned: !!s?.pinned, root })
     return root || s?.pinned ? a : a * stalenessFactor(this.staleness.get(id))
   }
 
@@ -1264,6 +1473,7 @@ export class MicelioNode extends EventEmitter {
         activation: this.activationOf(h.id, signals, h),
         votes: s?.votes ?? 0,
         uses: s?.uses ?? 0,
+        useful: this.usefulCounts.get(h.id) ?? 0,
         pinned: !!s?.pinned,
         ...(r ? { root: { category: r.category, status: r.status } } : {}),
         ...(this.personalIds.has(h.id) ? { personal: true } : {}),
@@ -1386,6 +1596,7 @@ export class MicelioNode extends EventEmitter {
   async agentContext (o: { event: 'session-start' | 'prompt', cwd: string, sessionId?: string, prompt?: string }): Promise<string> {
     const cfg = this.config.context
     if (!this.team) return ''
+    const t0 = Date.now()
     try {
       const seen = o.sessionId ? (this.injected.get(o.sessionId) ?? new Set<string>()) : new Set<string>()
       const team = this.teamNameCache ?? ''
@@ -1415,6 +1626,8 @@ export class MicelioNode extends EventEmitter {
         // Memoria limitata: le sessioni più vecchie si dimenticano
         if (this.injected.size > 200) this.injected.delete(this.injected.keys().next().value!)
       }
+      // B11: la consultazione (anche senza risultati: è una domanda a cui Micelio non sapeva rispondere)
+      this.consulted(o.event, o.event === 'prompt' ? (o.prompt ?? null) : null, text ? shown.map((h) => h.id) : [], Date.now() - t0, { project: projectOf(o.cwd), session: o.sessionId ?? null })
       return text
     } catch (err) {
       this.log(`contesto per l'agente non calcolato: ${(err as Error).message}`)
@@ -1842,7 +2055,7 @@ export class MicelioNode extends EventEmitter {
   /** Impostazioni locali correnti (per la schermata Impostazioni). */
   settings (): NodeSettings {
     const { adapter, command, classifyModel, distillModel, dailyBudget } = this.config.llm
-    return { llm: { adapter, command, classifyModel, distillModel, dailyBudget }, watched: this.config.watch.sessions, documents: this.config.watch.documents, port: this.config.port, network: this.networkSettings(), context: { ...this.config.context } }
+    return { llm: { adapter, command, classifyModel, distillModel, dailyBudget }, watched: this.config.watch.sessions, documents: this.config.watch.documents, port: this.config.port, network: this.networkSettings(), context: { ...this.config.context }, efficacy: { ...this.config.efficacy } }
   }
 
   // ═══════════════════════════ Sicurezza (Fase 9) ═══════════════════════════
@@ -2359,7 +2572,8 @@ export class MicelioNode extends EventEmitter {
       this.materializedVersion = team.viewVersion
       // Tempi per fase: finiscono nel log solo se l'aggiornamento è lento (vedi in fondo)
       const lap = phaseTimer()
-      const [all, members, votes, pins, usage, links, roots] = await Promise.all([team.memories(), team.members(), team.votes(), team.pins(), team.usage(), team.links(), team.roots()])
+      const [all, members, votes, pins, usage, links, roots, useful] = await Promise.all([team.memories(), team.members(), team.votes(), team.pins(), team.usage(), team.links(), team.roots(), team.useful()])
+      this.usefulCounts = useful
       lap('vista')
       this.rootsById = roots
       this.teamNameCache = (await team.team())?.name ?? this.teamNameCache

@@ -72,6 +72,16 @@ CREATE TABLE IF NOT EXISTS personal (id TEXT PRIMARY KEY, memory TEXT NOT NULL, 
 CREATE TABLE IF NOT EXISTS search_misses (key TEXT PRIMARY KEY, query TEXT NOT NULL, count INTEGER NOT NULL, first INTEGER NOT NULL, last INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'open');
 -- B4: quanto i file citati da un ricordo sono cambiati dopo la sua scrittura (repository di questo PC).
 CREATE TABLE IF NOT EXISTS code_staleness (id TEXT PRIMARY KEY, commits INTEGER NOT NULL, missing INTEGER NOT NULL, checked INTEGER NOT NULL);
+-- B11: efficacia. Ogni richiesta di un agente a Micelio (tool MCP o contesto automatico) e cosa
+-- ha ricevuto: id completi dei ricordi in JSON, tempo di risposta. Solo su questo PC.
+CREATE TABLE IF NOT EXISTS consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, channel TEXT NOT NULL, query TEXT, project TEXT, session TEXT, ids TEXT NOT NULL, ms INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS consultations_ts ON consultations(ts);
+-- B11: esito di un ricordo fornito in una sessione: 'likely' (euristica), 'used' | 'ignored' |
+-- 'wrong' (LLM, che prevale), 'none' (euristica: nessuna traccia d'uso). voted = pollice dato.
+CREATE TABLE IF NOT EXISTS outcomes (session TEXT NOT NULL, memory TEXT NOT NULL, verdict TEXT NOT NULL, judge TEXT NOT NULL, evidence TEXT, project TEXT, ts INTEGER NOT NULL, voted INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (session, memory));
+CREATE INDEX IF NOT EXISTS outcomes_ts ON outcomes(ts);
+-- B11: volte in cui un ricordo è stato UTILE (confermato dall'LLM), contatori cumulativi pubblicati al team.
+CREATE TABLE IF NOT EXISTS useful_local (id TEXT PRIMARY KEY, count INTEGER NOT NULL, last INTEGER NOT NULL, reported INTEGER NOT NULL DEFAULT 0);
 `
 
 /** Dopo quanto un elemento non deciso esce dall'inbox (D9). */
@@ -94,6 +104,25 @@ export interface DocumentRecord {
   memories: number
   updated: number
 }
+
+/** Una richiesta di un agente a Micelio (B11): canale, domanda, ricordi restituiti, tempo. */
+export interface Consultation {
+  id: number
+  ts: number
+  /** recall | architecture | get | fetch_source | session-start | prompt */
+  channel: string
+  query: string | null
+  project: string | null
+  session: string | null
+  /** Id completi dei ricordi restituiti. */
+  ids: string[]
+  /** Tempo di risposta del daemon, in millisecondi. */
+  ms: number
+}
+
+/** Esito di un ricordo fornito: vedi la tabella `outcomes`. */
+export type OutcomeVerdict = 'likely' | 'none' | 'used' | 'ignored' | 'wrong'
+export interface Outcome { session: string, memory: string, verdict: OutcomeVerdict, judge: 'heuristic' | 'llm', evidence: string | null, project: string | null, ts: number, voted: boolean }
 
 /** Voce del registro di sicurezza (vedi addSecurityLog). */
 export interface SecurityLogEntry {
@@ -123,6 +152,11 @@ export class PrivateStore {
   constructor (file: string) {
     if (file !== ':memory:') fs.mkdirSync(path.dirname(file), { recursive: true })
     this.db = new DatabaseSync(file)
+    // WAL + synchronous=NORMAL: senza, ogni scrittura aspettava il disco (~10 ms su Windows) e la
+    // registrazione delle consultazioni degli agenti (B11) rallentava ogni risposta. Resta coerente
+    // anche se il processo cade; con un'interruzione di corrente si perdono al massimo le ultime
+    // scritture (l'indice si ricostruisce comunque dal log del team).
+    this.db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;')
     this.db.exec(SCHEMA)
   }
 
@@ -369,6 +403,68 @@ export class PrivateStore {
   markUsageReported (counts: Record<string, { count: number }>): void {
     const up = this.db.prepare('UPDATE usage_local SET reported = ? WHERE id = ?')
     for (const [id, c] of Object.entries(counts)) up.run(c.count, id)
+  }
+
+  // ---------- Efficacia (B11) ----------
+
+  /** Registra una richiesta di un agente a Micelio. @returns id della consultazione */
+  addConsultation (c: { channel: string, query?: string | null, project?: string | null, session?: string | null, ids: string[], ms: number }, now = Date.now()): Consultation {
+    const r = this.db.prepare('INSERT INTO consultations (ts, channel, query, project, session, ids, ms) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(now, c.channel, c.query ?? null, c.project ?? null, c.session ?? null, JSON.stringify(c.ids), Math.round(c.ms))
+    return { id: Number(r.lastInsertRowid), ts: now, channel: c.channel, query: c.query ?? null, project: c.project ?? null, session: c.session ?? null, ids: c.ids, ms: Math.round(c.ms) }
+  }
+
+  /** Consultazioni dal più recente, a partire da `since`. */
+  consultations (since = 0, limit = 5000): Consultation[] {
+    return (this.db.prepare('SELECT * FROM consultations WHERE ts >= ? ORDER BY ts DESC LIMIT ?').all(since, limit) as any[])
+      .map((r) => ({ id: r.id, ts: r.ts, channel: r.channel, query: r.query, project: r.project, session: r.session, ids: JSON.parse(r.ids), ms: r.ms }))
+  }
+
+  /**
+   * Esito di un ricordo fornito in una sessione. Il giudizio dell'LLM prevale sull'euristica: un
+   * esito euristico non sovrascrive mai quello dell'LLM.
+   * @returns true se l'esito è nuovo o cambiato
+   */
+  setOutcome (o: { session: string, memory: string, verdict: OutcomeVerdict, judge: 'heuristic' | 'llm', evidence?: string | null, project?: string | null }, now = Date.now()): boolean {
+    const prev = this.db.prepare('SELECT verdict, judge FROM outcomes WHERE session = ? AND memory = ?').get(o.session, o.memory) as any
+    if (prev && prev.judge === 'llm' && o.judge === 'heuristic') return false
+    if (prev && prev.verdict === o.verdict && prev.judge === o.judge) return false
+    this.db.prepare(`INSERT INTO outcomes (session, memory, verdict, judge, evidence, project, ts) VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(session, memory) DO UPDATE SET verdict = excluded.verdict, judge = excluded.judge, evidence = excluded.evidence, project = COALESCE(excluded.project, project), ts = excluded.ts`)
+      .run(o.session, o.memory, o.verdict, o.judge, o.evidence ?? null, o.project ?? null, now)
+    return true
+  }
+
+  /** Esiti dal più recente, a partire da `since`. */
+  outcomes (since = 0, limit = 5000): Outcome[] {
+    return (this.db.prepare('SELECT * FROM outcomes WHERE ts >= ? ORDER BY ts DESC LIMIT ?').all(since, limit) as any[])
+      .map((r) => ({ session: r.session, memory: r.memory, verdict: r.verdict, judge: r.judge, evidence: r.evidence, project: r.project, ts: r.ts, voted: !!r.voted }))
+  }
+
+  /** Il pollice in su automatico per questo esito è stato dato (o deciso di non darlo). */
+  markOutcomeVoted (session: string, memory: string): void {
+    this.db.prepare('UPDATE outcomes SET voted = 1 WHERE session = ? AND memory = ?').run(session, memory)
+  }
+
+  /** Un ricordo è stato utile (confermato): contatore cumulativo da pubblicare al team. */
+  countUseful (id: string, now = Date.now()): void {
+    this.db.prepare('INSERT INTO useful_local (id, count, last) VALUES (?, 1, ?) ON CONFLICT(id) DO UPDATE SET count = count + 1, last = excluded.last').run(id, now)
+  }
+
+  unreportedUseful (): Record<string, { count: number, last: number }> {
+    const rows = this.db.prepare('SELECT id, count, last FROM useful_local WHERE count > reported').all() as any[]
+    return Object.fromEntries(rows.map((r) => [r.id, { count: r.count, last: r.last }]))
+  }
+
+  markUsefulReported (counts: Record<string, { count: number }>): void {
+    const up = this.db.prepare('UPDATE useful_local SET reported = ? WHERE id = ?')
+    for (const [id, c] of Object.entries(counts)) up.run(c.count, id)
+  }
+
+  /** Toglie consultazioni ed esiti più vecchi di `before` (conservazione: vedi EFFICACY_KEEP_MS). */
+  pruneEfficacy (before: number): void {
+    this.db.prepare('DELETE FROM consultations WHERE ts < ?').run(before)
+    this.db.prepare('DELETE FROM outcomes WHERE ts < ?').run(before)
   }
 
   // ---------- Avanzamento sessioni ----------

@@ -317,7 +317,9 @@ Il motivo del limite non è il costo (con la CLI dell'abbonamento le chiamate no
 
 ---
 
-## Backlog (da affrontare, ognuno su un branch dedicato staccato da `main`)
+## Backlog (da affrontare, ognuno su un branch dedicato staccato da `develop`)
+
+**Flusso dei branch (dal 2026-10-19):** `develop` è stato staccato da `main`. Ogni `feature/*` si stacca da `develop` e, finita, si rimergia in `develop`; poi `develop` si mergia in `main`. Fino a B9 i branch partivano direttamente da `main`.
 
 Richieste dell'utente del 2026-10-18 (B1–B3) e brainstorming sui concorrenti dello stesso giorno (B4–B6).
 
@@ -334,7 +336,7 @@ Richieste dell'utente del 2026-10-18 (B1–B3) e brainstorming sui concorrenti d
 | B8 | **Server privato che funziona davvero** | `feature/server-privato` | ✅ Fatto (codice). Relay `blind-relay` sul nodo del server, stessa porta UDP, chiave ricavata dall'indirizzo (nessuna configurazione sui PC); i PC lo usano solo dopo un hole punching fallito o con NAT simmetrico, e solo se risponde. Log del server con l'attività ogni 15 minuti. `network check`, Impostazioni → Rete e Stato dicono se c'è il relay e quanto è usato. Server 0.2.0. Resta: immagine Docker da pubblicare e prova reale fra due reti diverse. Vedi «B8 in dettaglio» |
 | B9 | **Pacchetto Linux** (AppImage e .deb) | `feature/package-linux` | ✅ Fatto. `npm run package:linux` (anche in un container), parti comuni con Windows in `scripts/package-common.js`. Provato in Debian 12 pulito: .deb con dipendenze, `micelio` nel PATH, daemon con il Node incluso, app desktop su schermo virtuale, rimozione. Corretta la dipendenza mancante dalla libreria audio. Da provare su un desktop Linux reale |
 | B10 | **Chatbot per interrogare la memoria con l'AI** | da definire | Richiesta del 2026-10-19, da fare dopo B7–B9. Domande in linguaggio naturale sulla memoria del team, con risposte basate sui ricordi e sulle Radici. Dettagli da decidere insieme all'utente prima di pianificare |
-| B11 | **Misurazione dell'efficienza del sistema** | da definire | Richiesta del 2026-10-19, da fare dopo B7–B9. L'utente spiegherà cosa intende: dettagli da definire insieme prima di pianificare |
+| B11 | **Misurazione dell'efficienza del sistema** | `feature/efficacia` | ✅ Fatto. Pagina «Efficacia»: consultazioni degli agenti in tempo reale (tool MCP e contesto automatico, con il tempo di risposta), esiti per ricordo a sessione finita (euristica sempre, LLM nella stessa chiamata della distillazione), pollice in su automatico sui ricordi confermati utili (mai sopra un voto a mano), utilità condivisa con il team (`useful.report`, peso 3 nell'attivazione), rumore, sbagliati, domande senza risposta, notifiche del desktop solo per utile/sbagliato. Vedi «B11 in dettaglio» |
 
 ### B7 in dettaglio: backup e ripristino del sapere di un team
 
@@ -377,6 +379,34 @@ Richieste dell'utente del 2026-10-18 (B1–B3) e brainstorming sui concorrenti d
 5. **Test:** relay forzato fra due nodi con una DHT di test. Prova reale con te e il collega su reti diverse.
 6. **Guida** (Rete, P2P) e `server/README.md`.
 
+### B11 in dettaglio: efficacia di Micelio per gli agenti
+
+**Richiesta (2026-10-19).** Vedere nella UI ogni volta che Claude Code interroga Micelio e se riceve dati utili. I ricordi con un uso positivo certo ricevono in automatico un pollice in su.
+
+**Decisioni dell'utente:**
+- **Notifiche:** la pagina «Efficacia» con il flusso in tempo reale; le notifiche del desktop solo per gli esiti «utile» e «sbagliato», disattivabili.
+- **Giudizio:** euristica sempre (gratis), più l'LLM quando la sessione si distilla. Il pollice in su scatta solo con la conferma dell'LLM.
+- **Condivisione:** si condivide con il team anche quante volte un ricordo è stato utile.
+
+**Piano:**
+1. **Registro delle consultazioni** (`private.db`, solo su questo PC). Ogni richiesta di un agente: tool MCP (`recall`, `architecture`, `get`, `fetch_source`) e contesto automatico (inizio sessione, richiesta). Si registrano ora, progetto, sessione, domanda e ricordi restituiti. La UI riceve ogni consultazione subito (evento `efficacy`). Conservazione: 90 giorni.
+2. **Esito per ogni ricordo restituito**, quando la sessione è finita (lo stesso momento in cui oggi si raccoglie). Dalla trascrizione si ricavano i ricordi che Micelio ha davvero fornito (risultati dei tool e contesto inserito, che portano l'id) e cosa ha fatto Claude dopo.
+   - **Euristica, per tutte le sessioni:** nei messaggi e nei comandi successivi compaiono elementi distintivi del ricordo (file, comandi, simboli, configurazioni, URL). Esito «probabilmente utile», con la prova (es. «ha eseguito `npm cache clean` dal ricordo X»).
+   - **LLM, per le sessioni che si distillano:** nella chiamata di distillazione già prevista, una domanda in più: per ogni ricordo fornito, «usato», «ignorato» o «sbagliato o superato», con il motivo.
+   - **Pollice in su automatico** (voto +1 del tuo nodo) solo con l'LLM che conferma «usato». Mai sopra un voto dato a mano.
+   - **«Sbagliato»:** notifica e azione proposta nella pagina (rivedi, vota giù, archivia; per una Radice, «segnala da rivedere»). Niente di automatico.
+3. **Utilità condivisa con il team.** Nuovo evento `useful.report`: contatori cumulativi per ricordo e per nodo, come `usage.report`; i nodi di versioni precedenti lo ignorano. Il dettaglio di un ricordo mostra «utile N volte nel team». L'attivazione (priorità) dà più peso all'uso UTILE che al semplice «restituito»: oggi un ricordo conta come usato appena viene restituito.
+4. **Pagina «Efficacia»:**
+   - flusso delle consultazioni con gli esiti che arrivano dopo;
+   - metriche: consultazioni al giorno, percentuale con risultati, percentuale utile;
+   - ricordi che aiutano di più;
+   - ricordi restituiti spesso ma mai usati (rumore);
+   - ricordi segnalati come sbagliati;
+   - domande senza risposta (collegate alle lacune).
+   Filtri per progetto e periodo. Impostazioni: notifiche on/off.
+5. **Prestazioni:** registrare una consultazione non deve rallentare la risposta all'agente (scrittura in sottofondo, indici). Euristica lineare nella lunghezza della sessione. Prova con migliaia di consultazioni.
+6. **Guida** «Efficacia» IT/EN con il funzionamento interno; test unitari (euristica, piano dei voti) e d'integrazione (consultazione → esito → voto → contatore di team).
+
 ---
 
 ## Registro
@@ -409,6 +439,7 @@ Richieste dell'utente del 2026-10-18 (B1–B3) e brainstorming sui concorrenti d
 | 2026-10-18 | Correzioni dalla prova reale (versione 0.3.2): Nucleo ancora bianco con i filtri per autore/tipo e nel tour (le Radici accese tornavano a piena luce; oltre 20 Radici ora stanno nel guscio, quelle spente senza anello, tour con distanza in base all'ampiezza della tappa); Mappa 2D con il dettaglio fuori schermo (ora sopra la mappa); contesto per richiesta ancora fuori tema (ora passa solo ciò che si distacca dagli altri: media + 2 deviazioni standard), callout di Obsidian nella prima riga |
 | 2026-10-18 | Correzioni dalla prova reale (versione 0.3.1): Nucleo inusabile con 63 Radici da un vault (nucleo che si allarga con il numero di Radici, Radici e anelli attenuati quando sono tante); import che lasciava l'intestazione YAML di Obsidian nel testo e collegava tutto con il tag `import` (ora titolo e tag dall'intestazione, e reimportare aggiorna i file cambiati); contesto per richiesta con Radici fuori tema (soglia più alta e uguale per ricordi e Radici) |
 | 2026-10-18 | Installer di Windows (7.7) sul branch `feature/installer-windows`, su richiesta dell'utente per provare una versione reale. Trovati e risolti: electron-builder esclude `node_modules` dalle risorse extra (copia in `afterPack`), metteva il `node_modules` della radice in `app.asar`, Windows Defender blocca a tratti `Micelio.exe` (nuovi tentativi) |
+| 2026-10-19 | B11 efficacia. Misurando il contesto automatico sul PC dell'utente: ogni messaggio a Claude Code aspettava ~2,3 s per un timer di sicurezza che teneva vivo l'hook (ora ~0,4 s; con il daemon occupato l'hook arrivava al limite di 10 s e veniva annullato, 6 volte su 14 in una giornata). Prova di carico: senza WAL ogni scrittura su SQLite costava ~12 ms (attesa del disco), ora 0,14 ms; il resoconto leggeva al massimo 5 000 consultazioni (totali sbagliati oltre), corretto |
 | 2026-10-19 | B9 pacchetti Linux, costruiti in un container `node:24-bookworm`. Trovati e corretti: il .deb richiede `homepage`; su un sistema minimo l'app non partiva per la libreria audio mancante (aggiunta alle dipendenze). Riverificato anche l'installer di Windows con le parti comuni |
 | 2026-10-19 | B8 server privato: con due nodi sullo stesso PC il server privato funziona (invito in 1 s); il caso reale (due reti diverse, 0 peer) non si riproduce da un PC solo. Aggiunti relay sul server e log dell'attività. Prototipo verificato prima: un nodo DHT risponde anche per i servizi in ascolto su sé stesso, quindi il relay non richiede un'altra porta. Il relay si usa solo se risponde, altrimenti con un server vecchio due PC resterebbero scollegati per sempre |
 | 2026-10-19 | B7 backup e ripristino (branch `feature/backup-team`). Trovati e corretti con la prova a 5 000 ricordi: vettori salvati con un commit su disco per riga (33 s, ora una transazione per gruppo), vicini per significato aggiornati uno per uno anche con migliaia di ricordi nuovi (13 s, ora ricalcolo unico in sottofondo): servono anche a import e primo avvio. Ripristino da 58 s a ~10 s. Corretto anche un errore della CLI di Windows all'uscita con errore dopo più chiamate al daemon |

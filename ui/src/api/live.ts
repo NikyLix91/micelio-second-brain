@@ -31,7 +31,9 @@ export const TOPIC_QUERIES: Record<string, string[][]> = {
   // Lacune di conoscenza (B4)
   gaps: [['gaps'], ['digest']],
   roots: [['roots'], ['rootSuggestions']],
-  security: [['security']]
+  security: [['security']],
+  // B11: consultazioni degli agenti ed esiti
+  efficacy: [['efficacy']]
 }
 
 /** Un evento SSE già interpretato. */

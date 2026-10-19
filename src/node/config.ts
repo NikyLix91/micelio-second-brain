@@ -161,6 +161,11 @@ const Config = z.object({
   context: ContextConfig,
   backup: BackupConfig,
   /**
+   * Efficacia (B11): notifiche del desktop per gli esiti "utile" e "sbagliato" dei ricordi forniti
+   * agli agenti. Impostazione della macchina (le notifiche sono di questo PC).
+   */
+  efficacy: z.object({ notify: z.boolean().default(true) }).prefault({}),
+  /**
    * File di istruzioni per gli agenti tenuti aggiornati con le Radici (B4, src/roots/agent-files.ts):
    * cartella del progetto, formato (claude = CLAUDE.md, agents = AGENTS.md, cursor = regole di
    * Cursor) e progetto (assente = nome della cartella). Impostazione del team.

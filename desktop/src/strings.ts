@@ -27,6 +27,10 @@ const STRINGS = {
     isolatedBody: 'Da più di 10 minuti nessun collega è raggiungibile: il sapere non si sta sincronizzando.',
     budgetTitle: 'Micelio · budget quasi esaurito',
     budgetBody: (used: number, limit: number) => `Oggi ${used} chiamate su ${limit}. Oltre il limite il lavoro aspetta domani.`,
+    usefulTitle: 'Micelio · ricordo utile 👍',
+    usefulBody: (title: string) => `L'agente ha usato «${title}». Pollice in su dato in automatico.`,
+    wrongTitle: 'Micelio · ricordo forse sbagliato',
+    wrongBody: (title: string, reason: string | null) => `«${title}»${reason ? `: ${reason}` : ''}. Aprilo in Efficacia e decidi.`,
     digestTitle: 'Micelio · la settimana del team',
     digestBody: (added: number, gaps: number) => `${added === 1 ? 'Un ricordo nuovo' : `${added} ricordi nuovi`}${gaps ? `, ${gaps === 1 ? 'una lacuna aperta' : `${gaps} lacune aperte`}` : ''}. Apri il riepilogo.`
   },
@@ -42,6 +46,10 @@ const STRINGS = {
     isolatedBody: 'No colleague has been reachable for more than 10 minutes: knowledge is not being synchronised.',
     budgetTitle: 'Micelio · budget almost used up',
     budgetBody: (used: number, limit: number) => `Today ${used} calls out of ${limit}. Beyond the limit work waits for tomorrow.`,
+    usefulTitle: 'Micelio · useful memory 👍',
+    usefulBody: (title: string) => `The agent used "${title}". Thumbs up given automatically.`,
+    wrongTitle: 'Micelio · memory possibly wrong',
+    wrongBody: (title: string, reason: string | null) => `"${title}"${reason ? `: ${reason}` : ''}. Open it in Efficacy and decide.`,
     digestTitle: 'Micelio · the team\'s week',
     digestBody: (added: number, gaps: number) => `${added === 1 ? 'One new memory' : `${added} new memories`}${gaps ? `, ${gaps === 1 ? 'one open gap' : `${gaps} open gaps`}` : ''}. Open the digest.`
   }
