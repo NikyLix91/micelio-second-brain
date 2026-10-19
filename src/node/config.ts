@@ -106,6 +106,20 @@ const ContextConfig = z.object({
   maxChars: z.number().int().min(500).max(20_000).default(4000)
 }).prefault({})
 
+/**
+ * Backup automatici del sapere del team (B7, src/backup): uno al giorno nella cartella scelta, si
+ * tengono gli ultimi `keep`. Impostazione del team (ogni team ha la sua), spenta di default.
+ * La password resta su questo PC: i dati del team qui sono già in chiaro, e la cifratura protegge
+ * le copie nella cartella dei backup (che può essere condivisa o di rete).
+ */
+const BackupConfig = z.object({
+  enabled: z.boolean().default(false),
+  folder: z.string().default(''),
+  keep: z.number().int().min(1).max(365).default(7),
+  password: z.string().default('')
+}).prefault({})
+export type BackupConfig = z.infer<typeof BackupConfig>
+
 /** Formato di un nodo di avvio: "host:porta" (host senza spazi né due punti). */
 export const BOOTSTRAP_RE = /^[^\s:]+:\d{1,5}$/
 
@@ -145,6 +159,7 @@ const Config = z.object({
   dream: DreamConfig,
   network: NetworkConfig,
   context: ContextConfig,
+  backup: BackupConfig,
   /**
    * File di istruzioni per gli agenti tenuti aggiornati con le Radici (B4, src/roots/agent-files.ts):
    * cartella del progetto, formato (claude = CLAUDE.md, agents = AGENTS.md, cursor = regole di
@@ -164,7 +179,7 @@ export type Config = z.infer<typeof Config>
  * cartelle, la sua DHT e il suo orario di sogno, in `teams/<id>/settings.json`.
  * Il resto (porta, token, LLM, embedding) resta in config.json: è uno per macchina.
  */
-const TEAM_SECTIONS = ['watch', 'network', 'dream', 'agentFiles'] as const
+const TEAM_SECTIONS = ['watch', 'network', 'dream', 'agentFiles', 'backup'] as const
 
 /** true se configurazione e impostazioni del team stanno nello stesso file (struttura a un team). */
 const singleFile = (paths: NodePaths) => path.resolve(paths.config) === path.resolve(paths.settings)

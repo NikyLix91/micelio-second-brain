@@ -15,10 +15,18 @@
  * istante e i router lasciano passare la connessione, che da lì è DIRETTA fra i PC). Non vede
  * né i contenuti né le chiavi dei team: solo impronte (hash) e indirizzi IP.
  *
+ * RELAY (B8). Se due PC non riescono a collegarsi direttamente (reti aziendali, NAT restrittivi),
+ * la connessione passa dal server, sempre cifrata fra i PC: vedi relay.ts. Stessa porta UDP.
+ *
+ * ATTIVITÀ (B8). Il server conta chi lo contatta e cosa chiede (PC distinti, annunci, ricerche,
+ * hole punching fatti da intermediario, connessioni in relay): finisce nel log a intervalli, così
+ * un problema di rete si vede anche dal server e non solo dai PC.
+ *
  * Facoltativamente avvia altri nodi DHT sulle porte successive (`extraNodes`), per avere più di
  * un nodo che conserva gli annunci. Richiedono altrettante porte UDP aperte.
  */
 import HyperDHT from 'hyperdht'
+import { type RelayStats, startRelay } from './relay'
 
 export interface ServerOptions {
   /**
@@ -43,8 +51,32 @@ export interface RunningServer {
    * client con IP pubblico). I PC dietro NAT sono nodi "effimeri" e non compaiono qui.
    */
   dhtNodes: () => number
+  /** Chiave pubblica del relay (hex): i PC la ricavano da soli dall'indirizzo. */
+  relayKey: string
+  /**
+   * Attività dall'ultima chiamata (e azzera i contatori): PC distinti, richieste per tipo, relay.
+   * La usa il battito periodico del log.
+   */
+  activity: () => Activity
   close: () => Promise<void>
 }
+
+/** Attività del server in un intervallo. */
+export interface Activity {
+  /** Indirizzi IP distinti che hanno contattato il server. */
+  clients: number
+  /** Annunci ricevuti (un PC che dice "per questo team rispondo io"). */
+  announces: number
+  /** Ricerche di un team o di un PC. */
+  lookups: number
+  /** Presentazioni fra due PC fatte da intermediario (inizio dell'hole punching). */
+  handshakes: number
+  holepunches: number
+  relay: RelayStats
+}
+
+/** Comandi di HyperDHT (hyperdht/lib/constants.js): servono solo a contare l'attività. */
+const CMD = { PEER_HANDSHAKE: 0, PEER_HOLEPUNCH: 1, FIND_PEER: 2, LOOKUP: 3, ANNOUNCE: 4 }
 
 /** Porta standard dei nodi di avvio HyperDHT. */
 export const DEFAULT_PORT = 49737
@@ -58,6 +90,26 @@ export async function startServer (opts: ServerOptions): Promise<RunningServer> 
   const boot = HyperDHT.bootstrapper(opts.port, opts.publicHost, { host: bindHost })
   await boot.ready()
   log(`nodo di avvio in ascolto su ${bindHost}:${opts.port} (UDP), annunciato come ${opts.publicHost}:${opts.port}`)
+
+  // Contatori dell'attività. HyperDHT gestisce le richieste nel metodo `onrequest` (non con un
+  // evento), quindi lo avvolgiamo: contiamo e poi lasciamo fare a lui, senza cambiare nulla.
+  const ips = new Set<string>()
+  const counts = { announces: 0, lookups: 0, handshakes: 0, holepunches: 0 }
+  const handle = boot.onrequest.bind(boot)
+  boot.onrequest = (req: any) => {
+    if (req?.from?.host) ips.add(req.from.host)
+    switch (req?.command) {
+      case CMD.ANNOUNCE: counts.announces++; break
+      case CMD.LOOKUP: case CMD.FIND_PEER: counts.lookups++; break
+      case CMD.PEER_HANDSHAKE: counts.handshakes++; break
+      case CMD.PEER_HOLEPUNCH: counts.holepunches++; break
+    }
+    return handle(req)
+  }
+
+  // Relay sullo stesso nodo (stessa porta): piano B quando l'hole punching non riesce
+  const relay = await startRelay(boot, opts.publicHost, opts.port)
+  log(`relay attivo (chiave ${relay.publicKey.slice(0, 12)}…, ricavata dall'indirizzo: i PC la conoscono da soli)`)
 
   // 2) Nodi aggiuntivi: persistenti, si appoggiano al nodo di avvio.
   // Tipo strutturale (non `HyperDHT[]`): questo file è compilato anche dai test della radice,
@@ -80,7 +132,15 @@ export async function startServer (opts: ServerOptions): Promise<RunningServer> 
   return {
     bootstrap: `${opts.publicHost}:${opts.port}`,
     dhtNodes: () => boot.toArray().length,
+    relayKey: relay.publicKey,
+    activity: () => {
+      const out: Activity = { clients: ips.size, ...counts, relay: relay.stats() }
+      ips.clear()
+      counts.announces = counts.lookups = counts.handshakes = counts.holepunches = 0
+      return out
+    },
     close: async () => {
+      await relay.close().catch(() => {})
       for (const n of extra) await n.destroy()
       await boot.destroy()
     }

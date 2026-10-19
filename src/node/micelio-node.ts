@@ -35,6 +35,8 @@ import { hybridRank, nearest } from '../rank/hybrid'
 import { currentEpoch, Dreamer, type DreamReport, dreamOrder } from '../dream/dreamer'
 import type { MemoryRecord } from '../core/model'
 import os from 'node:os'
+import { BACKUP_EXT, type BackupContent, type BackupManifest, backupFileName, countsOf, decodeBackup, encodeBackup } from '../backup/archive'
+import { planRestore } from '../backup/restore-plan'
 import { type ExplicitOutcome, filterMemory, IngestPipeline, InboxNotFoundError } from '../ingest/pipeline'
 import { ClaudeCliAdapter } from '../llm/claude-cli'
 import { FakeAdapter } from '../llm/fake'
@@ -339,6 +341,18 @@ function projectOf (dir: string): string {
 /** Ricordi e codice (B4): primo controllo dopo l'avvio, poi ogni 6 ore. */
 const STALE_FIRST_CHECK_MS = 60 * 1000
 const STALE_CHECK_MS = 6 * 60 * 60 * 1000
+/** Ogni quanto si controlla se è ora del backup automatico (B7): uno al giorno. */
+const AUTO_BACKUP_CHECK_MS = 60 * 60 * 1000
+const AUTO_BACKUP_EVERY_MS = 24 * 60 * 60 * 1000
+/** Eventi per scrittura durante un ripristino: blocchi grandi, ma il daemon risponde fra l'uno e l'altro. */
+const RESTORE_BATCH = 500
+/**
+ * Oltre questi ricordi nuovi in un solo giro di embedding (ripristino di un backup, import, primo
+ * avvio con un team già pieno) i vicini per significato si ricalcolano tutti insieme invece che uno
+ * per uno: l'aggiornamento singolo costa un confronto con TUTTI gli altri, quindi N nuovi su N
+ * totali è N² (5 000 ricordi: 13 s), il ricalcolo completo N²/2 ed è a blocchi, in sottofondo.
+ */
+const BULK_NEIGHBORS = 200
 
 /** Dopo quanti giorni le copie scaricate escono dalla cache (decisione D11). */
 const SOURCE_CACHE_DAYS = 30
@@ -360,9 +374,21 @@ export class MicelioNode extends EventEmitter {
   private semantic = new SemanticNeighbors(2)
   /** Ricordi con un vettore nuovo arrivati durante un ricalcolo completo dei vicini. */
   private semanticPending: string[] = []
+  /** Un ricalcolo completo dei vicini è stato chiesto mentre ne era già in corso uno. */
+  private semanticRedo = false
   /** Ricordi il cui codice citato è cambiato (B4, src/rank/code-staleness.ts), da private.db. */
   private staleness = new Map<string, { commits: number, missing: number, checked: number }>()
   private staleTimer: NodeJS.Timeout | null = null
+  /** Timer del backup automatico (B7). */
+  private backupTimer: NodeJS.Timeout | null = null
+  /** Esito dell'ultimo backup automatico, per Impostazioni. */
+  private lastAutoBackup: { at: number, file?: string, error?: string } | null = null
+  /**
+   * true durante il ripristino di un backup: gli aggiornamenti della vista non si materializzano a
+   * ogni blocco (con migliaia di ricordi sarebbero secondi ciascuno), ma una volta sola alla fine.
+   */
+  private bulkWriting = false
+  private bulkPending = false
   /** Contesto automatico (B4): ricordi già mostrati in ogni sessione, per non ripeterli. */
   private injected = new Map<string, Set<string>>()
   /** Id dei ricordi PERSONALI presenti nell'indice (B4): restano su questo PC. */
@@ -495,6 +521,11 @@ export class MicelioNode extends EventEmitter {
     firstCheck.unref()
     this.staleTimer = setInterval(() => { this.checkStaleness() }, STALE_CHECK_MS)
     this.staleTimer.unref()
+    // B7: backup automatico giornaliero (se attivato). Primo controllo poco dopo l'avvio.
+    const firstBackup = setTimeout(() => { this.autoBackup().catch(() => {}) }, STALE_FIRST_CHECK_MS)
+    firstBackup.unref()
+    this.backupTimer = setInterval(() => { this.autoBackup().catch(() => {}) }, AUTO_BACKUP_CHECK_MS)
+    this.backupTimer.unref()
     const state = loadState(this.paths)
     if (!state) {
       this.log('nodo non ancora configurato: usa `micelio init` o `micelio join`')
@@ -517,6 +548,7 @@ export class MicelioNode extends EventEmitter {
     if (this.dreamTimer) clearInterval(this.dreamTimer)
     if (this.scanTimer) clearInterval(this.scanTimer)
     if (this.staleTimer) clearInterval(this.staleTimer)
+    if (this.backupTimer) clearInterval(this.backupTimer)
     while (this.dreamer.busy) await new Promise((r) => setTimeout(r, 200))
     await this.flushUsage().catch(() => {})
     await this.embedding.catch(() => {})
@@ -834,6 +866,137 @@ export class MicelioNode extends EventEmitter {
     await this.sync()
   }
 
+  // ═══════════════════════════ Backup e ripristino (B7) ═══════════════════════════
+
+  /**
+   * Il sapere del team, pronto per il backup: ricordi attivi e storico (non i redatti), Radici,
+   * collegamenti, voti, ricordi fissati, uso, lacune, configurazione condivisa. Letto dalla vista,
+   * non dall'indice locale: comprende anche ciò che l'indice non tiene. Mai i ricordi personali.
+   */
+  private async backupSnapshot (): Promise<{ content: BackupContent, manifest: BackupManifest }> {
+    const team = this.requireTeam()
+    await this.sync()
+    const [all, members, roots, links, votes, pins, usage, gaps, config, info] = await Promise.all([
+      team.memories(), team.members(), team.roots(), team.links(), team.votes(), team.pins(), team.usage(), team.gaps(), team.configs(), team.team()
+    ])
+    const names = new Map(members.map((m) => [m.key, m.name]))
+    const kept = all.filter((m) => m.status !== 'redacted')
+    const ids = new Set(kept.map((m) => m.id))
+    const content: BackupContent = {
+      memories: kept.map((m) => ({ ...m, authorName: names.get(m.author) ?? null })),
+      roots: [...roots.values()].filter((r) => ids.has(r.id)),
+      links: links.filter((l) => ids.has(l.from) && ids.has(l.to)),
+      votes: Object.fromEntries([...votes].filter(([id, v]) => v !== 0 && ids.has(id))),
+      pins: [...pins].filter((id) => ids.has(id)),
+      usage: Object.fromEntries([...usage].filter(([id]) => ids.has(id))),
+      gaps,
+      config
+    }
+    const manifest: BackupManifest = { team: info?.name ?? this.teamNameCache ?? 'team', createdAt: Date.now(), createdBy: this.nodeName ?? '', counts: countsOf(content) }
+    return { content, manifest }
+  }
+
+  /**
+   * Crea il file di backup del team, cifrato con la password. Qualunque membro (decisione
+   * dell'utente): vede già tutto il sapere del team.
+   * @returns il file, il nome suggerito e il manifesto (cosa contiene)
+   */
+  async createBackup (password: string): Promise<{ file: Buffer, name: string, manifest: BackupManifest }> {
+    const t0 = Date.now()
+    const { content, manifest } = await this.backupSnapshot()
+    const file = encodeBackup(content, manifest, password)
+    this.log(`backup creato: ${manifest.counts.memories} ricordi, ${(file.length / 1024).toFixed(0)} kB in ${Date.now() - t0} ms`)
+    return { file, name: backupFileName(manifest.team), manifest }
+  }
+
+  /**
+   * Ripristina un backup in QUESTO team.
+   * - In un team esistente solo un admin (decisione dell'utente): scrive per tutti.
+   * - `fresh`: team appena creato per il ripristino (MicelioHost.restoreAsNewTeam), di cui chi
+   *   ripristina è fondatore; si riprende anche la configurazione condivisa del backup.
+   * Gli eventi si scrivono a blocchi (RESTORE_BATCH) e la vista si materializza UNA volta alla fine.
+   * @returns quanti ricordi erano nel backup, quanti sono stati aggiunti e quanti c'erano già
+   */
+  async restoreBackup (file: Buffer, password: string, { fresh = false }: { fresh?: boolean } = {}): Promise<{ team: string, memories: number, added: number, existing: number, events: number, ms: number }> {
+    const team = this.requireTeam()
+    if (!fresh) await this.requireAdmin()
+    const t0 = Date.now()
+    const lap = phaseTimer()
+    const { manifest, content } = decodeBackup(file, password)
+    lap('decifratura')
+    const before = new Set((await team.memories()).map((m) => m.id))
+    const events = planRestore(content, { includeConfig: fresh, sourceTeam: manifest.team })
+    this.bulkWriting = true
+    try {
+      for (let i = 0; i < events.length; i += RESTORE_BATCH) {
+        await team.appendMany(events.slice(i, i + RESTORE_BATCH))
+        // Fra un blocco e l'altro il daemon risponde alle altre richieste
+        await new Promise((r) => setImmediate(r))
+      }
+    } finally {
+      this.bulkWriting = false
+    }
+    lap('scrittura')
+    this.bulkPending = false
+    await this.sync()
+    lap('sincronizzazione')
+    await this.materialize(true)
+    lap('indice')
+    const inBackup = content.memories.filter((m) => m.status !== 'redacted')
+    const existing = inBackup.filter((m) => before.has(m.id)).length
+    const report = { team: manifest.team, memories: inBackup.length, added: inBackup.length - existing, existing, events: events.length, ms: Date.now() - t0 }
+    this.log(`backup di «${report.team}» ripristinato: ${report.added} ricordi aggiunti, ${report.existing} già presenti, ${report.events} eventi (${lap.report(0)})`)
+    return report
+  }
+
+  /** Impostazioni dei backup automatici (senza la password) ed esito dell'ultimo. */
+  backupSettings (): { enabled: boolean, folder: string, keep: number, hasPassword: boolean, last: { at: number, file?: string, error?: string } | null } {
+    const b = this.config.backup
+    return { enabled: b.enabled, folder: b.folder, keep: b.keep, hasPassword: b.password.length > 0, last: this.lastAutoBackup }
+  }
+
+  /**
+   * Cambia le impostazioni dei backup automatici. `password` vuota o assente = resta quella salvata.
+   * @throws UserError se si attivano senza cartella o senza password
+   */
+  async setBackupSettings (s: { enabled?: boolean, folder?: string, keep?: number, password?: string }): Promise<void> {
+    const next = { ...this.config.backup, ...Object.fromEntries(Object.entries(s).filter(([k, v]) => v !== undefined && !(k === 'password' && v === ''))) }
+    if (next.enabled && !next.folder.trim()) throw new UserError('Scegli la cartella dei backup', 'Choose the backup folder')
+    if (next.enabled && next.password.length < 8) throw new UserError('Imposta una password di almeno 8 caratteri per i backup', 'Set a backup password of at least 8 characters')
+    if (next.enabled) fs.mkdirSync(next.folder, { recursive: true })
+    this.config = updateConfig(this.paths, (c) => { c.backup = next })
+    this.changed('settings')
+    // Appena attivati: il primo backup subito, senza aspettare il controllo orario
+    if (next.enabled) this.autoBackup().catch(() => {})
+  }
+
+  /**
+   * Backup automatico: se attivato e l'ultimo backup di questo team nella cartella ha più di un
+   * giorno (o non c'è), ne crea uno e tiene solo gli ultimi `keep`. Errori nel log e in Impostazioni.
+   */
+  private async autoBackup (): Promise<void> {
+    const b = this.config.backup
+    if (!b.enabled || !b.folder || !b.password || !this.team || !this.teamNameCache) return
+    try {
+      const prefix = backupFileName(this.teamNameCache).replace(/-\d{4}-\d{2}-\d{2}-\d{4}\.micelio-backup$/, '-')
+      const mine = () => fs.readdirSync(b.folder).filter((f) => f.startsWith(prefix) && f.endsWith(BACKUP_EXT)).sort()
+      const files = fs.existsSync(b.folder) ? mine() : []
+      const newest = files.length ? fs.statSync(path.join(b.folder, files[files.length - 1])).mtimeMs : 0
+      if (Date.now() - newest < AUTO_BACKUP_EVERY_MS) return
+      fs.mkdirSync(b.folder, { recursive: true })
+      const { file, name } = await this.createBackup(b.password)
+      fs.writeFileSync(path.join(b.folder, name), file)
+      // Si tengono gli ultimi `keep` (il nome contiene la data: in ordine alfabetico = cronologico)
+      const all = mine()
+      for (const old of all.slice(0, Math.max(0, all.length - b.keep))) fs.rmSync(path.join(b.folder, old), { force: true })
+      this.lastAutoBackup = { at: Date.now(), file: name }
+    } catch (err) {
+      this.lastAutoBackup = { at: Date.now(), error: (err as Error).message }
+      this.log(`backup automatico non riuscito: ${(err as Error).message}`)
+    }
+    this.changed('settings')
+  }
+
   /** Metriche sintetiche del nodo (per monitoraggio esterno o diagnostica). */
   async metrics (): Promise<Record<string, unknown>> {
     const s = await this.status()
@@ -1127,20 +1290,24 @@ export class MicelioNode extends EventEmitter {
     if (!embedder) return
     this.embedding = this.embedding.catch(() => {}).then(async () => {
       let done = 0
+      /** Tanti ricordi nuovi in questo giro: i vicini si ricalcolano tutti alla fine (BULK_NEIGHBORS). */
+      let bulk = false
       for (;;) {
         const batch = this.index.missingVectors(embedder.model, 32)
         if (batch.length === 0) break
         const vecs = await embedder.embed(batch.map((b) => b.text), 'passage')
         this.index.setVectors(embedder.model, batch.map((b, i) => ({ id: b.id, vec: vecs[i] })))
-        // Vicini per significato: solo i ricordi nuovi contro gli altri, non tutte le coppie; salvati su disco
+        done += batch.length
+        // Vicini per significato: solo i ricordi nuovi contro gli altri, non tutte le coppie; salvati su disco.
         // Durante un ricalcolo completo in sottofondo si mettono da parte: si aggiungono alla fine
         if (this.semantic.rebuilding) this.semanticPending.push(...batch.map((b) => b.id))
+        else if (done > BULK_NEIGHBORS) bulk = true
         else if (this.semantic.model === embedder.model) {
           this.semantic.add(batch.map((b) => b.id), this.index.vectors(embedder.model), semanticThreshold(embedder.model))
           this.index.saveNeighbors(embedder.model, this.semantic.takeDirty())
         }
-        done += batch.length
       }
+      if (bulk) this.startSemanticRebuild(embedder.model, semanticThreshold(embedder.model))
       if (done > 0) {
         this.log(`embedding calcolati per ${done} ricordi`)
         // Nuovi collegamenti per significato: la costellazione va ricalcolata
@@ -1168,17 +1335,33 @@ export class MicelioNode extends EventEmitter {
     // Altrimenti (primo avvio, modello cambiato, troppe liste vecchie): ricalcolo completo A BLOCCHI,
     // in sottofondo; intanto la costellazione usa ciò che c'è, e si ricalcola alla fine
     if ((this.semantic.model !== model || this.semantic.staleShare(present) > 0.1) && !this.semantic.rebuilding) {
-      const t0 = Date.now()
-      this.semantic.rebuildAsync(this.index.vectors(model), min, model).then(() => {
-        // Vettori arrivati durante il ricalcolo: non erano nella fotografia di partenza
-        const pending = this.semanticPending.splice(0)
-        if (pending.length) this.semantic.add(pending, this.index.vectors(model), min)
-        this.index.saveNeighbors(model, this.semantic.takeDirty(), true)
-        this.log(`vicini per significato ricalcolati per ${present.size} ricordi in ${Date.now() - t0} ms (in sottofondo)`)
-        this.scheduleGraph(0)
-      }).catch((err) => this.log(`vicini per significato non calcolati: ${err.message}`))
+      this.startSemanticRebuild(model, min)
     }
     return this.semantic.links(min, present)
+  }
+
+  /**
+   * Ricalcolo completo dei vicini per significato, A BLOCCHI e in sottofondo; alla fine si salvano e
+   * si ricalcola la costellazione. Se ne è già in corso uno, se ne fa un altro alla fine (i vettori
+   * nuovi non erano nella sua fotografia di partenza).
+   */
+  private startSemanticRebuild (model: string, min: number): void {
+    if (this.semantic.rebuilding) { this.semanticRedo = true; return }
+    const t0 = Date.now()
+    const vectors = this.index.vectors(model)
+    this.semantic.rebuildAsync(vectors, min, model).then(() => {
+      // Vettori arrivati durante il ricalcolo: pochi si aggiungono uno per uno, tanti → un altro giro
+      const pending = this.semanticPending.splice(0)
+      if (this.semanticRedo || pending.length > BULK_NEIGHBORS) {
+        this.semanticRedo = false
+        this.startSemanticRebuild(model, min)
+        return
+      }
+      if (pending.length) this.semantic.add(pending, this.index.vectors(model), min)
+      this.index.saveNeighbors(model, this.semantic.takeDirty(), true)
+      this.log(`vicini per significato ricalcolati per ${vectors.size} ricordi in ${Date.now() - t0} ms (in sottofondo)`)
+      this.scheduleGraph(0)
+    }).catch((err) => this.log(`vicini per significato non calcolati: ${err.message}`))
   }
 
   /** Collegamenti creati dal dreaming, fra ricordi ancora attivi (peso fisso: sono "decisi"). */
@@ -2077,6 +2260,7 @@ export class MicelioNode extends EventEmitter {
       indexer: team.isIndexer,
       role: me?.role ?? null,
       peers: team.peers,
+      ...(this.opts.bootstrap?.length ? { relay: team.relay } : {}),
       members: members.length,
       memories: this.index.count() - this.personalIds.size
     }
@@ -2128,6 +2312,8 @@ export class MicelioNode extends EventEmitter {
    * fila, ma basta reindicizzare una volta alla fine della raffica.
    */
   private scheduleMaterialize (): void {
+    // Ripristino in corso: si materializza una volta sola alla fine (vedi restoreBackup)
+    if (this.bulkWriting) { this.bulkPending = true; return }
     if (this.timer) return
     this.timer = setTimeout(() => {
       this.timer = null
@@ -2178,6 +2364,9 @@ export class MicelioNode extends EventEmitter {
       this.rootsById = roots
       this.teamNameCache = (await team.team())?.name ?? this.teamNameCache
       // Solo i ricordi ATTIVI entrano in ricerca, costellazione ed export; gli altri sono storico.
+      // Ricordi ripristinati da un backup (B7): contano con la data d'ORIGINE, così un ricordo
+      // vecchio non torna "nuovo" (attivazione, ordinamenti, riepiloghi)
+      for (let i = 0; i < all.length; i++) { const o = all[i].source?.origin?.ts; if (o) all[i] = { ...all[i], ts: o } }
       const memories = all.filter((m) => (m.status ?? 'active') === 'active')
       this.inactive = all.filter((m) => (m.status ?? 'active') !== 'active')
       this.dreamLinks = links

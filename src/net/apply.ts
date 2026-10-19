@@ -65,7 +65,8 @@ export const RANGES = {
   usage: { gt: 'usage/', lt: 'usage0' },
   links: { gt: 'link/', lt: 'link0' },
   dreamLogs: { gt: 'dreamlog/', lt: 'dreamlog0' },
-  gaps: { gt: 'gap/', lt: 'gap0' }
+  gaps: { gt: 'gap/', lt: 'gap0' },
+  configs: { gt: 'config/', lt: 'config0' }
 } as const
 
 /**

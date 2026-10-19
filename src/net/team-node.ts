@@ -29,6 +29,7 @@ import z32 from 'z32'
 import { envelope, type EventPayload } from '../core/events'
 import type { GapRecord, InviteRecord, MemberRecord, MemoryRecord, RootRecord, TeamRecord } from '../core/model'
 import { KEYS, RANGES, applyNodes, openView } from './apply'
+import { relayKeyFor } from './relay-key'
 
 /**
  * Le due chiavi che identificano un team. Vanno salvate (state.json) e protette:
@@ -65,6 +66,8 @@ const INVITE_TTL_MS = 24 * 60 * 60 * 1000
 const REFRESH_ISOLATED_MS = 5_000
 /** Ogni quanto rinfrescarla comunque (per scoprire peer nuovi anche se ne abbiamo già). */
 const REFRESH_NORMAL_MS = 60_000
+/** Ogni quanto si riprova se il relay del server del team risponde (B8). */
+const RELAY_PROBE_MS = 10 * 60_000
 
 /**
  * Un nodo connesso a un team. Ciclo di vita: `create` | `open` | `join` → uso → `close`.
@@ -83,6 +86,10 @@ export class TeamNode extends EventEmitter {
   private member: any = null
   private discovery: any = null
   private refreshTimer: NodeJS.Timeout | null = null
+  /** Prova periodica del relay del server del team (B8). */
+  private relayTimer: NodeJS.Timeout | null = null
+  /** Il relay del server risponde? null = mai provato (o DHT pubblica). */
+  private relayReachable: boolean | null = null
   private base: any = null
   private readonly log: (msg: string) => void
 
@@ -168,6 +175,7 @@ export class TeamNode extends EventEmitter {
   /** Chiude tutto in ordine inverso di apertura. Gli errori di chiusura sono ignorati. */
   async close (): Promise<void> {
     if (this.refreshTimer) clearInterval(this.refreshTimer)
+    if (this.relayTimer) clearInterval(this.relayTimer)
     if (this.member) await this.member.close().catch(() => {})
     if (this.pairing) await this.pairing.close().catch(() => {})
     if (this.swarm) await this.swarm.destroy().catch(() => {})
@@ -190,11 +198,17 @@ export class TeamNode extends EventEmitter {
       this.log('modalità solo locale: nessuna connessione di rete')
       return
     }
+    // B8: con la DHT privata, il relay del server del team come piano B quando l'hole punching
+    // fallisce (o il nostro NAT è simmetrico). Hyperswarm chiama la funzione a ogni connessione:
+    // `force` = un tentativo diretto con quel peer è già fallito.
+    const relay = this.opts.bootstrap?.length ? relayKeyFor(this.opts.bootstrap[0].host, this.opts.bootstrap[0].port) : null
     this.swarm = new Hyperswarm({
       // Chiave stabile del nodo sulla DHT, conservata nel Corestore.
       keyPair: await this.store.createKeyPair('hyperswarm'),
-      ...(this.opts.bootstrap?.length ? { bootstrap: this.opts.bootstrap } : {})
+      ...(this.opts.bootstrap?.length ? { bootstrap: this.opts.bootstrap } : {}),
+      ...(relay ? { relayThrough: (force: boolean, swarm: any) => ((force || swarm.dht.randomized) && this.relayReachable ? relay : null) } : {})
     })
+    if (relay) this.watchRelay(relay)
     this.swarm.on('connection', (conn: any, info: any) => {
       // Un errore su una singola connessione (peer che cade) non deve far crashare il nodo.
       conn.on('error', () => {})
@@ -313,6 +327,18 @@ export class TeamNode extends EventEmitter {
   }
 
   /**
+   * Appende più eventi in UNA scrittura (Autobase accetta un array): per il ripristino di un
+   * backup, dove migliaia di scritture singole costerebbero minuti. Ogni evento è validato prima:
+   * se uno non è valido non si scrive nulla.
+   */
+  async appendMany (payloads: EventPayload[]): Promise<void> {
+    if (!this.base?.writable) throw new Error('Questo nodo non è (ancora) un writer del team')
+    if (!payloads.length) return
+    const now = Date.now()
+    await this.base.append(payloads.map((p) => envelope(p, now)))
+  }
+
+  /**
    * Crea un invito monouso valido 24 ore.
    *
    * `replicated` indica se almeno un peer ha già ricevuto l'evento `invite.add`. Solo in quel
@@ -360,6 +386,43 @@ export class TeamNode extends EventEmitter {
   /** Chiave del feed locale (hex): è l'identità di questo nodo nel team. */
   get localKey (): string | null { return this.base ? hex(this.base.local.key) : null }
   get peers (): number { return this.swarm?.connections.size ?? 0 }
+
+  /**
+   * Relay del server del team (B8): raggiungibile o no (null = DHT pubblica o non ancora provato),
+   * e quante connessioni sono passate da lì. Per lo stato del nodo e `micelio network check`.
+   */
+  get relay (): { reachable: boolean | null, attempts: number, successes: number } {
+    const r = this.swarm?.dht?.stats?.relaying
+    return { reachable: this.relayReachable, attempts: r?.attempts ?? 0, successes: r?.successes ?? 0 }
+  }
+
+  /**
+   * Il relay si usa SOLO se risponde. Hyperswarm, deciso il relay per un peer, continua a usarlo:
+   * con un server senza relay (versione precedente a B8) un solo hole punching fallito lascerebbe
+   * quei due PC scollegati per sempre. Si prova all'avvio e poi ogni RELAY_PROBE_MS.
+   */
+  private watchRelay (key: Buffer): void {
+    const probe = () => {
+      const swarm = this.swarm
+      if (!swarm) return
+      const socket = swarm.dht.connect(key)
+      const timer = setTimeout(() => { socket.destroy() }, 15_000)
+      socket.once('open', () => {
+        if (this.relayReachable !== true) this.log('relay del server del team raggiungibile: piano B attivo se l\'hole punching non riesce')
+        this.relayReachable = true
+        clearTimeout(timer)
+        socket.destroy()
+      })
+      socket.once('error', () => {
+        if (this.relayReachable !== false) this.log('il server del team non offre un relay (versione precedente o non raggiungibile): solo connessioni dirette')
+        this.relayReachable = false
+        clearTimeout(timer)
+      })
+    }
+    probe()
+    this.relayTimer = setInterval(probe, RELAY_PROBE_MS)
+    this.relayTimer.unref()
+  }
 
   /**
    * Coppia di chiavi del feed locale: la pubblica è l'identità del nodo nel team, la segreta
@@ -431,6 +494,13 @@ export class TeamNode extends EventEmitter {
   async config<T = unknown> (key: string): Promise<T | undefined> {
     const rec = await this.getRecord<{ value: T }>(KEYS.config(key))
     return rec?.value
+  }
+
+  /** Tutta la configurazione condivisa del team (`team.config`): chiave → valore. */
+  async configs (): Promise<Record<string, unknown>> {
+    const out: Record<string, unknown> = {}
+    for await (const { key, value } of this.base.view.createReadStream(RANGES.configs)) out[String(key).slice('config/'.length)] = (value as { value: unknown }).value
+    return out
   }
 
   async team (): Promise<TeamRecord | null> {

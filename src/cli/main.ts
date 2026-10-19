@@ -29,6 +29,7 @@ import { claudeSettingsFile, hookCommand, IntegrationError, mcpAddArgs, setupCla
 import type { TeamSummary } from '../node/micelio-host'
 import type { GapView, IngestStatus, NetworkSettings, RootReviewResult, RootView, SecurityFinding, SecurityRules, SecurityTestResult } from '../node/micelio-node'
 import type { Digest } from '../insight/digest'
+import type { BackupManifest } from '../backup/archive'
 import type { SecurityLogEntry } from '../store/private-store'
 import type { Decision, InboxItem } from '../store/private-store'
 import { DaemonClient, DaemonError } from './client'
@@ -280,12 +281,14 @@ network.command('check')
     console.log(`Raggiungibile:  ${r.reachable ? `sì (${r.nodes} nodi, ${r.ms} ms)` : 'NO'}`)
     console.log(`IP pubblico:    ${r.publicHost ?? 'non determinato'}`)
     console.log(`NAT simmetrico: ${r.randomizedPort === null ? 'non determinabile (servono almeno 2 nodi DHT)' : r.randomizedPort ? 'SÌ' : 'no'}`)
+    // B8: con la DHT privata, il piano B quando l'hole punching fra due PC non riesce
+    if (r.relay !== null) console.log(`Relay:          ${r.relay ? 'sì (se l\'hole punching non riesce, la connessione passa dal server, sempre cifrata)' : 'NO: il server non offre un relay (aggiornalo alla versione 0.2.0)'}`)
     if (!r.reachable) {
       console.log('\nNessun nodo ha risposto. Possibili cause: server spento, porta UDP chiusa sul server, oppure questa rete blocca l\'UDP in uscita.')
       process.exitCode = 1
     } else if (r.randomizedPort) {
       console.log('\nIl router cambia porta per ogni destinazione: la connessione diretta può fallire con colleghi nella stessa situazione.')
-      console.log('Il sapere arriva comunque passando da un nodo sempre acceso raggiungibile da tutti (vedi server/README.md).')
+      console.log(r.relay ? 'Il relay del server del team fa da piano B: il sapere arriva comunque.' : 'Con la DHT privata e un server aggiornato (relay) il sapere arriva comunque (vedi server/README.md).')
     } else {
       console.log('\nOK: questo PC può collegarsi agli altri nodi del team.')
     }
@@ -363,6 +366,109 @@ teams.command('leave')
     }
     const list = await client().call<TeamSummary[]>('DELETE', `/api/teams/${encodeURIComponent(team)}`)
     console.log(`Team tolto da questo PC. Restano: ${list.map((t) => t.name).join(', ') || 'nessuno'}`)
+  })
+
+// ═══════════════════════════ Backup e ripristino (B7) ═══════════════════════════
+
+/**
+ * Password del backup: da MICELIO_BACKUP_PASSWORD (script) o chiesta senza mostrarla. Mai come
+ * argomento: finirebbe nella cronologia della shell e nell'elenco dei processi.
+ * @param confirm chiederla due volte (creazione: una password sbagliata renderebbe il backup inutile)
+ */
+async function backupPassword (confirm: boolean): Promise<string> {
+  if (process.env.MICELIO_BACKUP_PASSWORD) return process.env.MICELIO_BACKUP_PASSWORD
+  if (!process.stdin.isTTY) throw new Error('Password del backup: imposta MICELIO_BACKUP_PASSWORD (terminale non interattivo)')
+  const first = await askHidden('Password del backup: ')
+  if (confirm && (await askHidden('Ripeti la password: ')) !== first) throw new Error('Le due password non coincidono')
+  return first
+}
+
+/** Legge una riga dal terminale senza mostrarla (né asterischi). */
+function askHidden (prompt: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    process.stdout.write(prompt)
+    const stdin = process.stdin
+    stdin.setRawMode(true)
+    stdin.resume()
+    stdin.setEncoding('utf8')
+    let value = ''
+    const done = (err?: Error) => {
+      stdin.setRawMode(false)
+      stdin.pause()
+      stdin.off('data', onData)
+      process.stdout.write('\n')
+      if (err) reject(err); else resolve(value)
+    }
+    const onData = (chunk: string) => {
+      for (const ch of chunk) {
+        if (ch === '\r' || ch === '\n') return done()
+        if (ch === '\u0003') return done(new Error('annullato'))
+        if (ch === '\u007f' || ch === '\b') value = value.slice(0, -1)
+        else value += ch
+      }
+    }
+    stdin.on('data', onData)
+  })
+}
+
+const backup = program.command('backup').description('backup e ripristino del sapere del team (create | restore | auto)')
+
+backup.command('create')
+  .description('crea il file di backup del team (cifrato con una password)')
+  .option('--out <percorso>', 'file o cartella di destinazione (default: cartella corrente)')
+  .action(async (o: { out?: string }) => {
+    const password = await backupPassword(true)
+    const r = await client().call<{ name: string, manifest: BackupManifest, data: string }>('POST', '/api/backup', { password })
+    const target = o.out && fs.existsSync(o.out) && fs.statSync(o.out).isDirectory() ? path.join(o.out, r.name) : (o.out ?? r.name)
+    fs.writeFileSync(target, Buffer.from(r.data, 'base64'))
+    const c = r.manifest.counts
+    console.log(`Backup di «${r.manifest.team}»: ${c.memories} ricordi (${c.active} attivi), ${c.roots} Radici, ${c.gaps} lacune`)
+    console.log(`Salvato in ${path.resolve(target)}`)
+    console.log('Conserva la password: senza, il backup non si può aprire.')
+  })
+
+backup.command('restore')
+  .description('ripristina un backup: in un team nuovo (--new-team) o dentro il team corrente (solo admin)')
+  .argument('<file>', 'file .micelio-backup')
+  .option('--new-team [nome]', 'crea un team nuovo dal backup (nome default: quello del team d\'origine)')
+  .option('--name <tuo-nome>', 'con --new-team su un PC senza team: come ti vedranno i colleghi')
+  .option('--network <rete>', 'con --new-team: public | private | local')
+  .action(async (file: string, o: { newTeam?: string | boolean, name?: string, network?: NetworkMode }) => {
+    const data = fs.readFileSync(file).toString('base64')
+    const m = await client().call<BackupManifest>('POST', '/api/backup/manifest', { data })
+    console.log(`Backup di «${m.team}» del ${new Date(m.createdAt).toLocaleString('it-IT')} (da ${m.createdBy}): ${m.counts.memories} ricordi, ${m.counts.roots} Radici`)
+    const password = await backupPassword(false)
+    type Report = { team: string, memories: number, added: number, existing: number, ms: number }
+    if (o.newTeam !== undefined) {
+      const teamName = typeof o.newTeam === 'string' ? o.newTeam : undefined
+      const r = await client().call<{ id: string, report: Report }>('POST', '/api/teams/restore', { data, password, teamName, name: o.name, network: o.network }, 600_000)
+      console.log(`Team nuovo ${r.id} creato: ${r.report.added} ricordi ripristinati in ${(r.report.ms / 1000).toFixed(1)} s.`)
+      console.log('Sei admin del team. I colleghi entrano con un invito: micelio --team ' + r.id + ' invite')
+    } else {
+      const r = await client().call<Report>('POST', '/api/backup/restore', { data, password }, 600_000)
+      console.log(`Ripristinati ${r.added} ricordi; ${r.existing} c'erano già (restano come sono). ${(r.ms / 1000).toFixed(1)} s.`)
+    }
+  })
+
+backup.command('auto')
+  .description('backup automatici giornalieri del team: mostra o cambia (on | off)')
+  .argument('[stato]', 'on | off')
+  .option('--folder <cartella>', 'dove salvarli')
+  .option('--keep <n>', 'quanti tenerne (default 7)')
+  .action(async (state: string | undefined, o: { folder?: string, keep?: string }) => {
+    type S = { enabled: boolean, folder: string, keep: number, hasPassword: boolean, last: { at: number, file?: string, error?: string } | null }
+    let s: S
+    if (state || o.folder || o.keep) {
+      const enabled = state === undefined ? undefined : state === 'on'
+      // La password serve solo la prima volta (o per cambiarla con MICELIO_BACKUP_PASSWORD)
+      const cur = await client().call<S>('GET', '/api/settings/backup')
+      const password = enabled && (!cur.hasPassword || process.env.MICELIO_BACKUP_PASSWORD) ? await backupPassword(true) : undefined
+      s = await client().call<S>('PUT', '/api/settings/backup', { enabled, folder: o.folder ? path.resolve(o.folder) : undefined, keep: o.keep ? Number(o.keep) : undefined, password })
+    } else {
+      s = await client().call<S>('GET', '/api/settings/backup')
+    }
+    console.log(`Backup automatici: ${s.enabled ? 'attivi' : 'spenti'}${s.folder ? ` · cartella ${s.folder}` : ''} · tenuti ${s.keep}`)
+    if (s.last) console.log(s.last.error ? `Ultimo tentativo ${new Date(s.last.at).toLocaleString('it-IT')}: ERRORE ${s.last.error}` : `Ultimo backup ${new Date(s.last.at).toLocaleString('it-IT')}: ${s.last.file}`)
   })
 
 program.command('invite')
@@ -1077,5 +1183,8 @@ program.command('ui')
 program.parseAsync().catch((err: Error) => {
   // Gli errori "attesi" (DaemonError) si mostrano come messaggio; gli altri con lo stack.
   console.error(err instanceof DaemonError ? `✘ ${err.message}` : err)
-  process.exit(1)
+  // exitCode e non process.exit(1): con una connessione HTTP ancora in chiusura (più chiamate al
+  // daemon nello stesso comando, es. `backup restore`) process.exit su Windows faceva fallire
+  // un'asserzione interna di Node (UV_HANDLE_CLOSING). Così il processo finisce da solo.
+  process.exitCode = 1
 })

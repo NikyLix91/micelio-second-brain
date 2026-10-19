@@ -81,12 +81,12 @@ In alternativa a `install.sh` il server gira in un container (`server/Dockerfile
 
 ```bash
 # costruzione (dalla cartella server/)
-docker build -t <registry>/micelio-server:0.1.0 .
+docker build -t <registry>/micelio-server:0.2.0 .
 
 # esecuzione sulla macchina del server
 docker run -d --name micelio-server --restart unless-stopped --network host \
   -e MICELIO_SERVER_HOST=<IP pubblico della macchina> \
-  <registry>/micelio-server:0.1.0
+  <registry>/micelio-server:0.2.0
 
 docker logs -f micelio-server     # deve comparire "pronto. Sui PC del team: micelio network set <IP>:49737"
 ```
@@ -115,7 +115,27 @@ Per tornare alla DHT pubblica: `micelio network public` (l'indirizzo del server 
 - con quale IP pubblico si presenta;
 - se il router ha un NAT simmetrico (serve `--extra-nodes`).
 
-Se due colleghi hanno **entrambi** un NAT simmetrico, oppure una rete che blocca l'UDP, la connessione diretta fra loro può non riuscire. Il sapere passa comunque attraverso un nodo sempre acceso, vedi sotto.
+Se due colleghi hanno **entrambi** un NAT simmetrico, o reti aziendali che bloccano l'hole punching, la connessione diretta fra loro può non riuscire. Dalla versione 0.2.0 il server fa da **relay**, vedi sotto.
+
+## Relay (dalla versione 0.2.0)
+
+Quando due PC non riescono a collegarsi direttamente, la connessione passa dal server.
+- **Cieco:** `blind-relay` di Holepunch inoltra pacchetti già cifrati fra i due PC (Noise); il server non può leggerli.
+- **Stessa porta UDP** del nodo di avvio: niente da aprire in più.
+- **Nessuna configurazione sui PC:** la chiave del relay si ricava dall'indirizzo del server (SHA-256 di `micelio-relay/v1` + `host:porta`, in `src/relay.ts` e, identica, in `src/net/relay-key.ts` della radice). Chi conosce l'indirizzo può calcolarla e avviare un finto relay, ma il traffico resta cifrato: al massimo non inoltra.
+- I PC lo usano **solo** dopo un hole punching fallito o con un NAT simmetrico, e solo se risponde (lo provano all'avvio e ogni 10 minuti).
+- `micelio network check` dice se il server offre il relay.
+
+**Aggiornare un server Docker alla 0.2.0:**
+
+```bash
+docker pull <registry>/micelio-server:0.2.0
+docker rm -f micelio-server
+docker run -d --name micelio-server --restart unless-stopped --network host -e MICELIO_SERVER_HOST=<IP pubblico> <registry>/micelio-server:0.2.0
+docker logs -f micelio-server   # "relay attivo (chiave …)"
+```
+
+I PC non vanno riconfigurati: indirizzo e porta restano gli stessi.
 
 ## Nodo del team sempre acceso (consigliato, sulla stessa macchina)
 
@@ -142,17 +162,30 @@ Il nodo non ha Claude installato, quindi non distilla sessioni: replica e conser
 
 ```bash
 systemctl status micelio-server
-journalctl -u micelio-server -f        # log: avvio e un battito ogni 15 minuti
+journalctl -u micelio-server -f        # log: avvio e un battito ogni 15 minuti (vedi sotto)
 sudo systemctl restart micelio-server  # dopo aver modificato /etc/default/micelio-server
 sudo ./uninstall.sh [--purge]          # --purge rimuove anche configurazione e utente
 ```
+
+### Cosa dice il log
+
+Ogni 15 minuti il server scrive cosa è successo nell'intervallo, per esempio:
+
+```
+attivo; ultimi 15 min: 2 PC, 8 annunci, 14 ricerche, 3 presentazioni, 3 hole punching; relay: 1 connessioni aperte (4 dall'avvio)
+```
+
+- **0 PC:** il server non viene contattato. Indirizzo sbagliato sui PC, porta UDP chiusa (firewall, cloud, router) o PC ancora sulla DHT pubblica.
+- **PC e annunci, ma nessuna presentazione:** i PC non si cercano a vicenda, probabilmente perché sono in team diversi o non sono tutti sulla DHT privata.
+- **Presentazioni e hole punching, ma 0 peer sui PC:** l'hole punching fallisce. Con la 0.2.0 interviene il relay, e il contatore del relay sale.
 
 ## Struttura
 
 | File | Contenuto |
 |---|---|
 | `src/dht-server.ts` | Avvio del nodo di avvio e dei nodi aggiuntivi (`startServer`) |
-| `src/main.ts` | Riga di comando e variabili d'ambiente, chiusura ordinata |
+| `src/relay.ts` | Relay per le connessioni che l'hole punching non riesce a stabilire (B8) |
+| `src/main.ts` | Riga di comando e variabili d'ambiente, log periodico dell'attività, chiusura ordinata |
 | `src/hyperdht.d.ts` | Tipi minimi di `hyperdht` |
 | `install.sh` / `uninstall.sh` | Installazione come servizio systemd |
 
@@ -161,6 +194,7 @@ Test: `test/integration/dht-server.test.ts` nella radice della repo. Due nodi Mi
 ## Cosa è verificato
 
 - **Funzionamento della DHT privata:** test automatico su 127.0.0.1 con invito e replica dei ricordi; `network check` contro il server, anche con `--extra-nodes 2`.
+- **Relay:** test automatico con due client costretti a passare dal relay (si scambiano dati, il server conta le sessioni); diagnosi del relay in `network check`; chiave uguale su server e PC.
 - **`install.sh`:** provato in un container Debian (`node:24-bookworm-slim`) con `--no-systemd`. Ha compilato, creato l'utente e la configurazione; il server si è avviato e un client si è collegato. La reinstallazione ha mantenuto la configurazione.
 - **Ancora da provare su una macchina vera:**
   - il servizio systemd;

@@ -11,7 +11,11 @@ import type { CodeRefs, MemoryKind, RootCategory } from './events'
 export type Role = 'admin' | 'member'
 
 /** Origine di un ricordo (vedi MemoryInput.source in events.ts). */
-export interface MemorySource { type: string, ref?: string, name?: string, size?: number, mime?: string, code?: CodeRefs, rank?: number, batch?: number }
+export interface MemorySource {
+  type: string, ref?: string, name?: string, size?: number, mime?: string, code?: CodeRefs, rank?: number, batch?: number
+  /** Ricordo ripristinato da un backup (B7): autore, chiave, data e team d'origine. */
+  origin?: { author?: string, key?: string, ts?: number, team?: string }
+}
 
 /** Un ricordo del team come appare nella vista. */
 export interface MemoryRecord {
@@ -173,6 +177,11 @@ export interface NodeStatus {
   role: Role | null
   /** Connessioni P2P attive in questo momento. */
   peers: number
+  /**
+   * Relay del server del team (B8, solo con la DHT privata): se risponde (null = non ancora
+   * provato) e quante connessioni sono passate da lì perché l'hole punching non riusciva.
+   */
+  relay?: { reachable: boolean | null, attempts: number, successes: number }
   /** Membri attivi (esclusi gli espulsi). */
   members: number
   /** Ricordi presenti nell'indice locale. */

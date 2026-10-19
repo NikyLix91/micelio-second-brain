@@ -106,7 +106,20 @@ export const MemoryInput = z.object({
      * ricordi aveva proposto il modello. Servono alle metriche di qualità (src/ingest/quality.ts).
      */
     rank: z.number().int().min(1).max(100).optional(),
-    batch: z.number().int().min(0).max(100).optional()
+    batch: z.number().int().min(0).max(100).optional(),
+    /**
+     * Solo per i ricordi RIPRISTINATI da un backup (B7, src/backup): autore e data nel team
+     * d'origine. L'autore per il team resta il nodo che ha ripristinato (il feed firmato non si
+     * falsifica); questi dati servono a mostrare chi l'aveva scritto e a non far sembrare "nuovo"
+     * un ricordo vecchio (l'attivazione usa la data d'origine). I nodi di versioni precedenti
+     * ignorano il campo.
+     */
+    origin: z.object({
+      author: z.string().max(100).optional(),
+      key: hexKey.optional(),
+      ts: z.number().int().nonnegative().optional(),
+      team: z.string().max(100).optional()
+    }).optional()
   }).default({ type: 'api' })
 })
 /** Forma accettata in ingresso (campi con default opzionali). */

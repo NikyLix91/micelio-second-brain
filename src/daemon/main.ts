@@ -26,8 +26,10 @@ export async function startDaemon (paths: NodePaths = nodePaths()): Promise<Nest
     MicelioModule.forRoot({ paths, config }),
     { logger: ['log', 'warn', 'error'], bodyParser: true }
   )
-  // Limite più alto del default (100 kB): i ricordi possono arrivare a 20 kB di testo più metadati.
-  app.useBodyParser('json', { limit: '1mb' })
+  // Limite più alto del default (100 kB): i ricordi possono arrivare a 20 kB di testo più metadati,
+  // e il ripristino di un backup (B7) invia il file intero in base64 (pochi MB anche per migliaia
+  // di ricordi). L'API ascolta solo su questo PC e vuole il token.
+  app.useBodyParser('json', { limit: '200mb' })
   // Su macOS/Linux SIGINT/SIGTERM attivano la chiusura ordinata; su Windows vedi shutdown.ts.
   app.enableShutdownHooks()
   await app.listen(config.port, config.host)

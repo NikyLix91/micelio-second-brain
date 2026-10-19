@@ -8,7 +8,7 @@ Un team in modalità **solo locale** non usa nessuna rete: il nodo non entra nel
 
 Per invitare qualcuno si sceglie prima una rete (pubblica o privata): il nodo si ricollega e nulla va perso. In modalità solo locale gli inviti vengono rifiutati con questa spiegazione, e l'app desktop non avvisa di «nodo isolato».
 
-Attenzione: da soli i dati esistono solo su questo PC. Fai un backup della cartella del nodo, oppure invita un tuo secondo PC: è anche una copia di riserva.
+Attenzione: da soli i dati esistono solo su questo PC. Attiva i **backup automatici** (Impostazioni → Backup automatici, vedi «Backup e ripristino»), oppure invita un tuo secondo PC: è anche una copia di riserva.
 
 ## Ricordi personali {#personal}
 
