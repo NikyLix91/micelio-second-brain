@@ -172,6 +172,26 @@ export class ApiController {
     return this.micelio.host.restoreAsNewTeam(Buffer.from(data, 'base64'), password, { teamName, nodeName: name, network })
   }
 
+  // ═══════════════════════════ Efficacia (B11) ═══════════════════════════
+
+  /** Consultazioni degli agenti, esiti, ricordi più utili, rumore, sbagliati, domande senza risposta. */
+  @Get('efficacy')
+  efficacy (@Query('days') days?: string, @Query('project') project?: string) {
+    const d = Math.min(365, Math.max(1, Number(days) || 30))
+    return this.node.efficacyReport(d, project || undefined)
+  }
+
+  /** Esiti da notificare sul desktop dopo `since` (vuoto se le notifiche sono spente). */
+  @Get('efficacy/notices')
+  efficacyNotices (@Query('since') since?: string) {
+    return this.node.efficacyNotices(Number(since) || 0)
+  }
+
+  @Put('settings/efficacy')
+  updateEfficacy (@Body() body: unknown) {
+    return this.node.setEfficacyNotify(z.object({ notify: z.boolean() }).parse(body).notify)
+  }
+
   /** Backup automatici del team corrente (la password non torna mai indietro). */
   @Get('settings/backup')
   backupSettings () {

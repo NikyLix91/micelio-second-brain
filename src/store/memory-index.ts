@@ -76,6 +76,11 @@ export class MemoryIndex {
   constructor (file: string) {
     if (file !== ':memory:') fs.mkdirSync(path.dirname(file), { recursive: true })
     this.db = new DatabaseSync(file)
+    // WAL + synchronous=NORMAL: senza, ogni scrittura aspettava il disco (~10 ms su Windows) e la
+    // registrazione delle consultazioni degli agenti (B11) rallentava ogni risposta. Resta coerente
+    // anche se il processo cade; con un'interruzione di corrente si perdono al massimo le ultime
+    // scritture (l'indice si ricostruisce comunque dal log del team).
+    this.db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;')
     // L'indice è derivato: se lo schema è cambiato (es. colonna aggiunta in una versione nuova)
     // lo si butta e ricrea, verrà ripopolato dalla vista alla prossima materializzazione.
     const cols = (this.db.prepare("SELECT name FROM pragma_table_info('memories')").all() as any[]).map((c) => c.name)

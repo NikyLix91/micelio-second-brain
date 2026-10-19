@@ -39,7 +39,7 @@ import { isBlockedPath } from '../privacy/paths'
 import { sensitiveMatch } from '../privacy/sensitive-files'
 import type { DocumentRecord, InboxItem, Job, PrivateStore, SourceRef } from '../store/private-store'
 import { CHUNK_CHARS, chunkText, extractText, MAX_CHUNKS, mimeOf } from './extract'
-import { CLASSIFY_SYSTEM, Classification, Distilled, distillSystem } from './prompts'
+import { CLASSIFY_SYSTEM, Classification, Distilled, distillSystem, MICELIO_DELIVERED_HEADER, MICELIO_JUDGE_RULE } from './prompts'
 import { type ChangeSummary, codeRefs, repoInfo, type RepoInfo, summarizeChanges } from './git-changes'
 import { extractTranscript } from './transcript'
 
@@ -88,6 +88,15 @@ export interface PipelineDeps {
   log: (msg: string) => void
   /** Avvisa chi osserva il nodo (UI) che una parte dello stato privato è cambiata. */
   notify?: (topic: 'inbox' | 'jobs' | 'decisions' | 'security') => void
+  /**
+   * Efficacia (B11). `evaluate` guarda la parte nuova della trascrizione: cosa ha fornito Micelio,
+   * esito euristico; restituisce i ricordi forniti (per chiedere il giudizio all'LLM).
+   * `verdicts` riceve il giudizio dell'LLM dato alla distillazione.
+   */
+  efficacy?: {
+    evaluate: (transcriptPath: string, fromLine: number, sessionId: string, cwd: string) => { id: string, short: string, title: string }[]
+    verdicts: (sessionId: string, cwd: string, verdicts: Distilled['micelio']) => void
+  }
 }
 
 /** Esito di un salvataggio esplicito, restituito a CLI e MCP. */
@@ -232,8 +241,13 @@ export class IngestPipeline {
     if (!existsSync(transcriptPath)) return log(`trascrizione assente: ${transcriptPath}`)
 
     const sensitive = (await this.deps.sensitiveFiles?.()) ?? []
-    const ex = extractTranscript(transcriptPath, store.sessionLines(sessionId), sensitive)
+    const fromLine = store.sessionLines(sessionId)
+    const ex = extractTranscript(transcriptPath, fromLine, sensitive)
     const source: SourceRef = { type: 'claude-code', ref: sessionId, cwd }
+    // B11: cosa ha fornito Micelio in questa parte e se ne restano tracce (euristica, sempre:
+    // anche le sessioni brevi o che non si distillano). Un errore qui non deve fermare la raccolta.
+    let delivered: { id: string, short: string, title: string }[] = []
+    try { delivered = this.deps.efficacy?.evaluate(transcriptPath, fromLine, sessionId, cwd) ?? [] } catch (err) { log(`efficacia non valutata: ${(err as Error).message}`) }
     // Il progresso va salvato solo quando la sessione è stata davvero gestita: se lanciamo un
     // errore (budget, LLM) la parte nuova verrà rielaborata al prossimo tentativo.
     const done = () => store.setSessionLines(sessionId, ex.lines)
@@ -274,7 +288,10 @@ export class IngestPipeline {
 
     // 3) Distillazione: anche per i casi dubbi, così in inbox l'utente decide su ricordi
     //    concreti e non su un'intera sessione.
-    const memories = await this.distill(filtered.text)
+    const { memories, micelio } = await this.distillSession(filtered.text, delivered)
+    if (micelio.length) {
+      try { this.deps.efficacy?.verdicts(sessionId, cwd, micelio) } catch (err) { log(`giudizio di efficacia non salvato: ${(err as Error).message}`) }
+    }
     if (memories.length === 0) {
       this.logDecision(source, 'discarded', 'nessuna conoscenza riutilizzabile', firstUserLine(ex.text))
       return done()
@@ -576,12 +593,23 @@ export class IngestPipeline {
    * modello (`batch`): servono alle metriche di qualità (src/ingest/quality.ts).
    */
   private async distill (text: string): Promise<(Distilled['memories'][number] & { rank: number, batch: number })[]> {
+    return (await this.distillSession(text, [])).memories
+  }
+
+  /**
+   * Distillazione di una sessione. Se Micelio ha fornito ricordi all'assistente (B11), il loro
+   * elenco va in coda al testo e il modello dà anche il giudizio d'uso (stessa chiamata, nessun
+   * costo in più oltre a pochi token).
+   */
+  private async distillSession (text: string, delivered: { short: string, title: string }[]): Promise<{ memories: (Distilled['memories'][number] & { rank: number, batch: number })[], micelio: Distilled['micelio'] }> {
     const max = (await this.deps.maxMemories?.()) ?? 5
+    const list = delivered.slice(0, 20)
+    const input = list.length ? `${text}\n\n${MICELIO_DELIVERED_HEADER}\n${list.map((d) => `- [${d.short}] ${d.title}`).join('\n')}` : text
     const out = await this.deps.llm!.run({
-      name: 'distill', system: distillSystem(await this.deps.language(), max), input: text, schema: Distilled, model: this.deps.models().distill
+      name: 'distill', system: distillSystem(await this.deps.language(), max) + (list.length ? MICELIO_JUDGE_RULE : ''), input, schema: Distilled, model: this.deps.models().distill
     })
     const batch = out.memories.length
-    return out.memories.slice(0, max).map((m, i) => ({ ...m, rank: i + 1, batch }))
+    return { memories: out.memories.slice(0, max).map((m, i) => ({ ...m, rank: i + 1, batch })), micelio: out.micelio ?? [] }
   }
 }
 

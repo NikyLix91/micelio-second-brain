@@ -101,6 +101,8 @@ export interface RecallHit {
   votes?: number
   /** Usi totali nel team. */
   uses?: number
+  /** Volte in cui è stato utile a un agente, nel team (B11). */
+  useful?: number
   /** Fissato: non decade e non viene archiviato. */
   pinned?: boolean
   /** Ricordo PERSONALE (B4): sta solo su questo PC, il team non lo vede. */

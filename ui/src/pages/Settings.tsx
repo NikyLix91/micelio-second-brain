@@ -107,7 +107,8 @@ const S = defineStrings({
       sessionStart: 'A inizio sessione: Radici e ricordi più utili del progetto della cartella',
       prompt: 'A ogni richiesta: ricordi e Radici pertinenti al testo (solo se lo sono davvero, mai ripetuti)',
       maxChars: 'Caratteri massimi inseriti ogni volta',
-      save: 'Salva'
+      save: 'Salva',
+      notify: 'Notifiche dell\'efficacia: avvisami quando un ricordo è stato utile a un agente o era sbagliato (pagina Efficacia)'
     },
     cc: {
       title: 'Claude Code',
@@ -216,7 +217,8 @@ const S = defineStrings({
       sessionStart: 'At session start: Roots and most useful memories of the folder\'s project',
       prompt: 'At every request: memories and Roots relevant to the text (only if they really are, never repeated)',
       maxChars: 'Maximum characters inserted each time',
-      save: 'Save'
+      save: 'Save',
+      notify: 'Efficacy notifications: tell me when a memory was useful to an agent or was wrong (Efficacy page)'
     },
     cc: {
       title: 'Claude Code',
@@ -557,6 +559,12 @@ function ContextCard () {
       <div className='stack'>
         <label className='row'><input type='checkbox' checked={c.sessionStart} onChange={(e) => save.mutate({ sessionStart: e.target.checked })} /> {t.sessionStart}</label>
         <label className='row'><input type='checkbox' checked={c.prompt} onChange={(e) => save.mutate({ prompt: e.target.checked })} /> {t.prompt}</label>
+        {/* B11: notifiche del desktop per gli esiti dei ricordi forniti agli agenti */}
+        {settings.data?.efficacy && (
+          <label className='row'>
+            <input type='checkbox' checked={settings.data.efficacy.notify} onChange={(e) => { void api.setEfficacyNotify(e.target.checked).then(() => client.invalidateQueries({ queryKey: ['settings'] })) }} /> {t.notify} <HelpButton topic='efficacy#notifications' />
+          </label>
+        )}
         <div className='row'>
           <label style={{ margin: 0 }}>{t.maxChars}</label>
           <input type='number' min={500} max={20000} step={500} style={{ width: 110 }} value={max ?? c.maxChars} onChange={(e) => setMax(e.target.value)} />

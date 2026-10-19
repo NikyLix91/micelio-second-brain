@@ -6,6 +6,8 @@
  * - recency:    decadimento esponenziale dall'ultimo uso (o dalla creazione), con emivita
  *               diversa per tipo di ricordo (una decisione resta valida più a lungo di uno snippet);
  * - uses:       quante volte il team l'ha usato (logaritmico: 100 usi non valgono 100 volte 1);
+ *               un uso UTILE (B11: confermato a fine sessione) vale USEFUL_WEIGHT usi semplici,
+ *               perché "restituito" non vuol dire "servito";
  * - votes:      somma dei voti di utilità;
  * - centrality: quanti collegamenti ha nella costellazione;
  * - pinned:     un ricordo fissato ha sempre attivazione massima;
@@ -33,6 +35,8 @@ export interface ActivationInput {
   lastUsed?: number
   /** Usi totali nel team. */
   uses: number
+  /** Volte in cui è stato utile a un agente, nel team (B11). */
+  useful?: number
   /** Somma dei voti (+1/-1 per nodo). */
   votes: number
   /** Numero di collegamenti nella costellazione. */
@@ -50,13 +54,15 @@ export interface ActivationInput {
 export const ROOT_FLOOR = 0.75
 
 const DAY = 24 * 3600 * 1000
+/** Quanti usi semplici vale un uso utile (B11). */
+export const USEFUL_WEIGHT = 3
 
 /** Attivazione fra 0 e 1 (1 = massima). */
 export function activation (m: ActivationInput, now = Date.now()): number {
   if (m.pinned) return 1
   const since = Math.max(0, now - Math.max(m.createdAt, m.lastUsed ?? 0)) / DAY
   const recency = Math.pow(0.5, since / (HALF_LIFE_DAYS[m.kind] ?? 180))
-  const uses = Math.min(1, Math.log1p(m.uses) / Math.log1p(50)) // 50 usi ≈ saturazione
+  const uses = Math.min(1, Math.log1p(m.uses + USEFUL_WEIGHT * (m.useful ?? 0)) / Math.log1p(50)) // 50 usi ≈ saturazione
   const votes = 0.5 + Math.max(-0.5, Math.min(0.5, m.votes / 10)) // 0 voti = 0.5 (neutro)
   const centrality = Math.min(1, m.degree / 8)
   const a = WEIGHTS.recency * recency + WEIGHTS.uses * uses + WEIGHTS.votes * votes + WEIGHTS.centrality * centrality

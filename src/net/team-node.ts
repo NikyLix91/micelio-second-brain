@@ -574,6 +574,22 @@ export class TeamNode extends EventEmitter {
     return out
   }
 
+  /** Volte in cui ogni ricordo è stato utile a un agente, sommate su tutti i nodi (B11). */
+  async useful (): Promise<Map<string, number>> {
+    const out = new Map<string, number>()
+    for await (const { key, value } of this.base.view.createReadStream(RANGES.useful)) {
+      const id = String(key).split('/')[1]
+      out.set(id, (out.get(id) ?? 0) + (value as { count: number }).count)
+    }
+    return out
+  }
+
+  /** Il voto di QUESTO nodo su un ricordo (-1, 1), o null se non ha votato. */
+  async myVote (id: string): Promise<number | null> {
+    if (!this.localKey) return null
+    return (await this.getRecord<{ delta: number }>(KEYS.vote(id, this.localKey)))?.delta ?? null
+  }
+
   /** Lacune di conoscenza segnalate al team (B4). */
   async gaps (): Promise<GapRecord[]> {
     return this.scan<GapRecord>(RANGES.gaps)

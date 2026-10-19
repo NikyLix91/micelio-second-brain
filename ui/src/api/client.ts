@@ -13,7 +13,7 @@ import type { ExplicitOutcome } from '../../../src/ingest/pipeline'
 import type { DistillQuality } from '../../../src/ingest/quality'
 import type { Graph, GraphLink, GraphNode } from '../../../src/graph/constellation'
 import type { Galaxy } from '../../../src/graph/communities'
-import type { GapView, IngestStatus, NetworkSettings, NodeSettings, RootReviewResult, RootView, SecurityFinding, SecurityRules, SecurityTestResult, StorageReport } from '../../../src/node/micelio-node'
+import type { EfficacyReport, GapView, IngestStatus, NetworkSettings, NodeSettings, RootReviewResult, RootView, SecurityFinding, SecurityRules, SecurityTestResult, StorageReport } from '../../../src/node/micelio-node'
 import type { Digest } from '../../../src/insight/digest'
 import type { BackupManifest } from '../../../src/backup/archive'
 import type { NetworkCheck } from '../../../src/net/diagnose'
@@ -25,7 +25,7 @@ import { currentLang } from '../i18n'
 
 export type { DistillQuality, Galaxy, Graph, GraphLink, GraphNode }
 export type { NetworkCheck, NetworkSettings, RootReviewResult, RootView, SecurityFinding, SecurityLogEntry, SecurityRules, SecurityTestResult, StorageReport }
-export type { BackupManifest, Digest, GapView }
+export type { BackupManifest, Digest, EfficacyReport, GapView }
 /** Esito di un ripristino (B7): ricordi nel backup, aggiunti, già presenti. */
 export interface RestoreReport { team: string, memories: number, added: number, existing: number, events: number, ms: number }
 /** Backup automatici del team (B7): la password non torna mai, solo se è impostata. */
@@ -98,6 +98,9 @@ export const api = {
   restoreAsNewTeam: (data: string, password: string, opts: { teamName?: string, name?: string, network?: 'public' | 'local' } = {}) =>
     call<{ id: string, report: RestoreReport }>('POST', '/api/teams/restore', { data, password, ...opts }),
   backupSettings: () => call<BackupSettings>('GET', '/api/settings/backup'),
+  // ── Efficacia (B11) ──
+  efficacy: (days: number, project?: string) => call<EfficacyReport>('GET', `/api/efficacy?days=${days}${project ? `&project=${enc(project)}` : ''}`),
+  setEfficacyNotify: (notify: boolean) => call<{ notify: boolean }>('PUT', '/api/settings/efficacy', { notify }),
   setBackupSettings: (patch: { enabled?: boolean, folder?: string, keep?: number, password?: string }) => call<BackupSettings>('PUT', '/api/settings/backup', patch),
   setDefaultTeam: (id: string) => call<TeamSummary[]>('POST', `/api/teams/${enc(id)}/default`),
   leaveTeam: (id: string) => call<TeamSummary[]>('DELETE', `/api/teams/${enc(id)}`),

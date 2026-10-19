@@ -165,6 +165,12 @@ export const TeamEvent = z.discriminatedUnion('type', [
    * (è un G-Counter: ogni nodo ha il suo contatore, il totale è la somma).
    */
   z.object({ ...base, type: z.literal('usage.report'), counts: z.record(z.string().regex(/^[0-9a-f]{64}$/), z.object({ count: z.number().int().nonnegative(), last: z.number().int().nonnegative() })) }),
+  /**
+   * Efficacia (B11): quante volte un ricordo è stato UTILE a un agente su questo nodo (confermato
+   * dall'LLM alla distillazione). Stessa forma e stessa logica di usage.report (massimo per
+   * ricordo e nodo). I nodi di versioni precedenti non conoscono l'evento e lo ignorano.
+   */
+  z.object({ ...base, type: z.literal('useful.report'), counts: z.record(z.string().regex(/^[0-9a-f]{64}$/), z.object({ count: z.number().int().nonnegative(), last: z.number().int().nonnegative() })) }),
   // ── Dreaming (Fase 6, DESIGN §10) ─────────────────────────────────────────────────
   /** Più ricordi sostituiti da uno nuovo (fusione di duplicati). I vecchi restano come storico. */
   z.object({ ...base, type: z.literal('memory.supersede'), old: z.array(z.string().regex(/^[0-9a-f]{64}$/)).min(1).max(20), memory: MemoryInput, reason: z.string().max(500) }),
