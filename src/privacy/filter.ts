@@ -124,6 +124,11 @@ export function looksLikeSecret (s: string): boolean {
   if (/^[A-Za-z_-]+$/.test(s) || /^[0-9_-]+$/.test(s)) return false // parole, identificatori, numeri
   if (!/[a-z]/.test(s) || !/[A-Z]/.test(s) || !/[0-9]/.test(s)) return false
   if (s.includes('REDACTED')) return false
+  // Opzioni e identificatori composti, es. `NODE_OPTIONS=--max-old-space-size=6144`: parole intere
+  // (tutte minuscole, tutte maiuscole o tutte cifre) separate da - _ = /. In un token generato
+  // invece i pezzi mescolano maiuscole, minuscole e cifre. Falso positivo visto in un ricordo reale.
+  const parts = s.split(/[-_=/+]+/).filter(Boolean)
+  if (parts.length >= 3 && parts.every((p) => /^([a-z]+|[A-Z]+|[0-9]+|[A-Z][a-z]+)$/.test(p))) return false
   return shannonEntropy(s) >= HIGH_ENTROPY_BITS
 }
 

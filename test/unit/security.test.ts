@@ -44,6 +44,11 @@ describe('riconoscimento dei segreti', () => {
     expect(looksLikeSecret('9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08')).toBe(false) // sha256
     expect(looksLikeSecret('a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0')).toBe(false) // commit git
     expect(looksLikeSecret('getMemoriesByAuthorAndProjectAndKind')).toBe(false) // identificatore
+    // opzioni composte da parole intere: non sono segreti (falso positivo visto in un ricordo reale)
+    expect(looksLikeSecret('NODE_OPTIONS=--max-old-space-size=6144')).toBe(false)
+    expect(looksLikeSecret('spring.datasource-Hikari-maximum-pool-size=20'.replace('.', '-'))).toBe(false)
+    // un token url-safe con trattini resta un segreto: i suoi pezzi mescolano maiuscole e cifre
+    expect(looksLikeSecret('Zk3vQ9pL-2mX8rT5w_Y7aB1cD4-eF6gH0jN')).toBe(true)
     const r = applyFilter('chiave generata: Zk3vQ9pL2mX8rT5wY7aB1cD4eF6gH0jN · commit a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0', rules)
     expect(r.text).toContain('[REDACTED:high-entropy]')
     expect(r.text).toContain('a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0')
