@@ -114,6 +114,10 @@ builder.build({
     deb: {
       afterInstall,
       afterRemove,
+      // Le dipendenze predefinite di electron-builder (app-builder-lib, FpmTarget) più la libreria
+      // audio, che Electron carica all'avvio: su un sistema minimo mancava e l'app non partiva
+      // ("libasound.so.2: cannot open shared object file"). Su Ubuntu 24 si chiama libasound2t64.
+      depends: ['libgtk-3-0', 'libnotify4', 'libnss3', 'libxss1', 'libxtst6', 'xdg-utils', 'libatspi2.0-0', 'libuuid1', 'libsecret-1-0', 'libasound2t64 | libasound2'],
       artifactName: 'micelio_${version}_${arch}.${ext}'
     }
   }

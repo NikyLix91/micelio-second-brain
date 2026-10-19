@@ -3,6 +3,7 @@
   "version": "0.3.3",
   "private": true,
   "description": "App desktop di Micelio (Electron): avvia il daemon, mostra la UI, notifiche e icona nell'area di notifica",
+  "homepage": "https://github.com/salvatorestracquadanio86/micelio-brain",
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
