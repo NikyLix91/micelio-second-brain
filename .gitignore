@@ -159,3 +159,4 @@ shared/
 screenshots/
 # Installer di Windows (npm run package:win): risorse di appoggio e output
 build/win/
+build/linux/

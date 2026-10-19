@@ -254,6 +254,33 @@ Cose da sapere, imparate costruendolo:
 - gli hook di Claude Code usano percorsi assoluti (`process.execPath` del daemon e la CLI dell'installazione), quindi funzionano anche senza PATH;
 - l'installer non è firmato (SmartScreen avvisa). Per una distribuzione vera serve un certificato di firma del codice.
 
+## Pacchetti per Linux
+
+`npm run package:linux` produce in `build/linux/out/` un **AppImage** (`Micelio-<versione>-x86_64.AppImage`) e un **.deb** (`micelio_<versione>_amd64.deb`). Lo script è `scripts/package-linux.js`; le parti comuni con Windows (compilazione, copia delle dipendenze, Node incluso, icona, configurazione di electron-builder) sono in `scripts/package-common.js`.
+
+**Va eseguito su Linux** (va bene anche WSL2 o un container), dopo `npm ci` fatto da Linux: i moduli nativi in `node_modules` sono quelli del sistema su cui npm li ha installati e finiscono nel pacchetto così come sono. L'architettura è quella del Node che esegue lo script (x64 o arm64). Senza una macchina Linux, dalla radice della repo:
+
+```bash
+git archive HEAD | docker run -i --name micelio-linux-build node:24-bookworm bash -c   "mkdir /src && tar -x -C /src && cd /src && npm ci && npm run package:linux"
+docker cp micelio-linux-build:/src/build/linux/out ./build/linux/
+docker rm micelio-linux-build
+```
+
+| Nel pacchetto (`/opt/Micelio` con il .deb) | Da dove |
+|---|---|
+| `micelio-desktop` | l'app desktop (Electron). Non si chiama `micelio`, che è il comando della CLI |
+| `resources/micelio/` | `dist/` + dipendenze di produzione del daemon, copiate da `node_modules` |
+| `resources/node/node` | il Node.js che esegue lo script |
+| `resources/bin/micelio` | il comando `micelio`. Il .deb lo collega in `/usr/bin/micelio` |
+
+Cose da sapere:
+- gli script di installazione del .deb sono quelli **predefiniti** di electron-builder (collegamento in `/usr/bin`, sandbox di Chromium, profilo AppArmor per Ubuntu 24+), con in coda il collegamento di `micelio`. Sostituirli del tutto avrebbe perso quei passi. La rimozione toglie il collegamento solo se è il nostro, e non durante un aggiornamento;
+- fra le dipendenze del .deb c'è anche la libreria audio (`libasound2t64 | libasound2`): Electron la carica all'avvio, e su un sistema minimo l'app non partiva;
+- con l'AppImage il comando `micelio` resta dentro l'immagine: per la CLI va usato il .deb (o i sorgenti);
+- `desktop/package.json` ha `homepage`: il .deb la richiede.
+
+Verificato (2026-10-19, Debian 12 pulito in un container, senza Node di sistema): installazione del .deb con le dipendenze, `micelio` nel PATH, daemon con il Node incluso, team e ricordo, app desktop su uno schermo virtuale (avvia il daemon, interfaccia disegnata), rimozione pulita. Non provati: desktop Linux reale con icona nell'area di notifica, Ubuntu 24 con AppArmor, arm64.
+
 ## Variabili d'ambiente
 
 | Variabile | Uso |

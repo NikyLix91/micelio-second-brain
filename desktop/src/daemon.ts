@@ -26,8 +26,9 @@ export const PACKAGED = !!RESOURCES && fs.existsSync(path.join(RESOURCES, 'micel
  */
 const ROOT = PACKAGED ? path.join(RESOURCES!, 'micelio') : path.join(__dirname, '..', '..')
 const CLI_MAIN = path.join(ROOT, 'dist', 'cli', 'main.js')
-/** Node.js incluso nell'installazione (null da sorgente o se manca). */
-const BUNDLED_NODE = PACKAGED && fs.existsSync(path.join(RESOURCES!, 'node', 'node.exe')) ? path.join(RESOURCES!, 'node', 'node.exe') : null
+/** Node.js incluso nell'installazione: node.exe su Windows, node su Linux (null da sorgente o se manca). */
+const BUNDLED_NODE_PATH = PACKAGED ? path.join(RESOURCES!, 'node', process.platform === 'win32' ? 'node.exe' : 'node') : null
+const BUNDLED_NODE = BUNDLED_NODE_PATH && fs.existsSync(BUNDLED_NODE_PATH) ? BUNDLED_NODE_PATH : null
 
 // Riusiamo i moduli compilati del daemon per leggere percorsi e configurazione: una sola verità.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
