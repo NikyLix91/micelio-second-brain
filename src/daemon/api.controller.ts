@@ -9,6 +9,7 @@
  */
 import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Post, Put, Query, SetMetadata } from '@nestjs/common'
 import { z } from 'zod'
+import { readManifest } from '../backup/archive'
 import { MEMORY_KINDS, ROOT_CATEGORIES } from '../core/events'
 import { IntegrationError, registerProjectMcp, setupClaudeCode } from '../node/integrations'
 import { UserError } from '../node/micelio-node'
@@ -84,6 +85,12 @@ const SecurityRulesBody = z.object({
 /** Banco di prova: un testo (fino a 100 kB) e/o un nome di file. */
 const SecurityTestBody = z.object({ text: z.string().max(100_000).default(''), file: z.string().max(500).optional() })
 const RedactBody = z.object({ reason: z.string().max(500).default('') }).default({ reason: '' })
+/** Backup (B7): file in base64 e password. */
+const BackupCreateBody = z.object({ password: z.string().min(1) })
+const BackupFileBody = z.object({ data: z.string().min(1) })
+const BackupRestoreBody = z.object({ data: z.string().min(1), password: z.string().min(1) })
+const BackupNewTeamBody = BackupRestoreBody.extend({ teamName: z.string().max(100).optional(), name: z.string().max(100).optional(), network: z.enum(['public', 'private', 'local']).optional() })
+const BackupSettingsBody = z.object({ enabled: z.boolean().optional(), folder: z.string().max(1000).optional(), keep: z.number().int().min(1).max(365).optional(), password: z.string().max(200).optional() })
 const VoteBody = z.object({ delta: z.union([z.literal(-1), z.literal(0), z.literal(1)]) })
 const SetupBody = z.object({ hook: z.boolean().default(true), context: z.boolean().default(true) }).default({ hook: true, context: true })
 
@@ -130,6 +137,51 @@ export class ApiController {
     const { team, name, network } = InitBody.parse(body)
     const { id, status } = await this.micelio.host.createTeam(team, name, network)
     return { ...status, teamId: id }
+  }
+
+  // ═══════════════════════════ Backup e ripristino (B7) ═══════════════════════════
+
+  /** Crea il backup del team corrente: il file torna in base64 con nome suggerito e contenuto. */
+  @Post('backup')
+  @HttpCode(200)
+  async createBackup (@Body() body: unknown) {
+    const { file, name, manifest } = await this.node.createBackup(BackupCreateBody.parse(body).password)
+    return { name, manifest, data: file.toString('base64') }
+  }
+
+  /** Cosa contiene un file di backup (parte in chiaro): si mostra prima di chiedere la password. */
+  @Post('backup/manifest')
+  @HttpCode(200)
+  backupManifest (@Body() body: unknown) {
+    return readManifest(Buffer.from(BackupFileBody.parse(body).data, 'base64'))
+  }
+
+  /** Ripristina un backup DENTRO il team corrente (solo admin). */
+  @Post('backup/restore')
+  @HttpCode(200)
+  restoreBackup (@Body() body: unknown) {
+    const { data, password } = BackupRestoreBody.parse(body)
+    return this.node.restoreBackup(Buffer.from(data, 'base64'), password)
+  }
+
+  /** Ripristina un backup in un team NUOVO su questo PC (chi ripristina ne diventa admin). */
+  @Post('teams/restore')
+  @HttpCode(200)
+  restoreAsNewTeam (@Body() body: unknown) {
+    const { data, password, teamName, name, network } = BackupNewTeamBody.parse(body)
+    return this.micelio.host.restoreAsNewTeam(Buffer.from(data, 'base64'), password, { teamName, nodeName: name, network })
+  }
+
+  /** Backup automatici del team corrente (la password non torna mai indietro). */
+  @Get('settings/backup')
+  backupSettings () {
+    return this.node.backupSettings()
+  }
+
+  @Put('settings/backup')
+  async updateBackupSettings (@Body() body: unknown) {
+    await this.node.setBackupSettings(BackupSettingsBody.parse(body))
+    return this.node.backupSettings()
   }
 
   /** Entra in un altro team. Può durare fino a 2 minuti: attende che un membro online accolga la richiesta. */

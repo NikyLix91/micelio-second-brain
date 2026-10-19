@@ -11,7 +11,11 @@ import type { CodeRefs, MemoryKind, RootCategory } from './events'
 export type Role = 'admin' | 'member'
 
 /** Origine di un ricordo (vedi MemoryInput.source in events.ts). */
-export interface MemorySource { type: string, ref?: string, name?: string, size?: number, mime?: string, code?: CodeRefs, rank?: number, batch?: number }
+export interface MemorySource {
+  type: string, ref?: string, name?: string, size?: number, mime?: string, code?: CodeRefs, rank?: number, batch?: number
+  /** Ricordo ripristinato da un backup (B7): autore, chiave, data e team d'origine. */
+  origin?: { author?: string, key?: string, ts?: number, team?: string }
+}
 
 /** Un ricordo del team come appare nella vista. */
 export interface MemoryRecord {

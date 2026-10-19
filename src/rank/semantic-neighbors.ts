@@ -46,16 +46,23 @@ export class SemanticNeighbors {
    * continua a rispondere (con 5 000 ricordi il calcolo dura secondi). Le liste nuove sostituiscono
    * le vecchie solo alla fine.
    */
-  async rebuildAsync (vectors: Map<string, Float32Array>, min: number, model: string, rowsPerSlice = 200): Promise<void> {
+  async rebuildAsync (vectors: Map<string, Float32Array>, min: number, model: string, sliceMs = 10): Promise<void> {
     this.rebuilding = true
     try {
       const fresh = new SemanticNeighbors(this.k)
       const entries = [...vectors]
       // Una lista (anche vuota) per ogni ricordo: quelle salvate coprono così tutti i ricordi
       for (const [id] of entries) fresh.lists.set(id, [])
+      // Blocchi a TEMPO (~10 ms), non a numero di righe: con 5 000 ricordi 200 righe erano ~150 ms, e
+      // ogni lettura della vista (che avanza a piccoli passi asincroni) aspettava un blocco intero a
+      // ogni passo: il ripristino di un backup passava da pochi secondi a 44
+      let sliceStart = Date.now()
       for (let i = 0; i < entries.length; i++) {
         fresh.compareWithFollowing(entries, i, min)
-        if (i % rowsPerSlice === rowsPerSlice - 1) await new Promise((r) => setImmediate(r))
+        if (Date.now() - sliceStart >= sliceMs) {
+          await new Promise((r) => setImmediate(r))
+          sliceStart = Date.now()
+        }
       }
       this.lists = fresh.lists
       this.model = model

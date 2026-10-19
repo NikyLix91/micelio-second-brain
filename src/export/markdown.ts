@@ -91,12 +91,14 @@ export function writeExport (dir: string, memories: MemoryRecord[], members: Mem
 
   const names = new Map(members.map((u) => [u.key, u.name]))
   const wanted = new Set<string>()
+  // Cartelle già create in questo giro: una per tipo, non una chiamata al disco per ogni ricordo
+  const dirs = new Set<string>()
   for (const m of memories) {
     const file = path.join(teamDir, m.kind, `${slugify(m.title)}-${m.id.slice(0, 8)}.md`)
     wanted.add(file)
     const content = renderMemory(m, names.get(m.author) ?? null)
     if (known.get(file) === content) continue
-    fs.mkdirSync(path.dirname(file), { recursive: true })
+    if (!dirs.has(path.dirname(file))) { fs.mkdirSync(path.dirname(file), { recursive: true }); dirs.add(path.dirname(file)) }
     fs.writeFileSync(file, content)
     known.set(file, content)
   }

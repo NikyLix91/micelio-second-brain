@@ -35,6 +35,7 @@ import type { Embedder } from '../embed/embedder'
 import { LlmRunner } from '../llm/runner'
 import type { LlmAdapter } from '../llm/types'
 import { PrivateStore } from '../store/private-store'
+import { decodeBackup } from '../backup/archive'
 import { canonicalPath, dhtBootstrap, isInsideWatched, loadConfig, loadState, type NetworkMode, readConfigFile, updateMachineConfig, writeConfigFile } from './config'
 import { type ChangeTopic, createAdapter, createEmbedder, MicelioNode, UserError } from './micelio-node'
 
@@ -207,6 +208,20 @@ export class MicelioHost extends EventEmitter {
     const status = await node.init(teamName, name)
     this.configuredJoined(id)
     return { id, status }
+  }
+
+  /**
+   * Ripristina un backup (B7) in un team NUOVO su questo PC: chi ripristina ne è fondatore e admin,
+   * i colleghi rientrano con un invito (le chiavi del team d'origine non sono nel backup).
+   * La password si verifica PRIMA di creare il team: una password sbagliata non lascia un team vuoto.
+   * @param teamName nome del team nuovo; assente = quello del team d'origine
+   */
+  async restoreAsNewTeam (file: Buffer, password: string, opts: { teamName?: string, nodeName?: string, network?: NetworkMode } = {}): Promise<{ id: string, report: Awaited<ReturnType<MicelioNode['restoreBackup']>> }> {
+    const { manifest } = decodeBackup(file, password)
+    const { id } = await this.createTeam(opts.teamName?.trim() || manifest.team, opts.nodeName, opts.network)
+    const report = await this.nodes.get(id)!.restoreBackup(file, password, { fresh: true })
+    this.emitChange(null, 'teams')
+    return { id, report }
   }
 
   /** Entra in un altro team con un codice d'invito (si aggiunge a quelli esistenti). */

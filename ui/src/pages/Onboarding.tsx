@@ -4,12 +4,14 @@
  * - "Aggiungi un team" (B3, rotta /team/nuovo): un altro team accanto a quelli che ci sono già,
  *   con sapere separato. Il tuo nome è già noto (identità personale): si può cambiare solo per
  *   il nuovo team.
- * Due strade, come in CLI: creare un team (`micelio init`) o entrarci con un invito (`micelio join`).
+ * Tre strade, come in CLI: creare un team (`micelio init`), entrarci con un invito (`micelio join`)
+ * o ripristinarne uno da un backup (B7, `micelio backup restore --new-team`).
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { api } from '../api/client'
 import { setCurrentTeam } from '../api/team'
+import { RestoreBackup } from '../components/Backup'
 import { Card, ErrorBox, PageHeader } from '../components/ui'
 import { HelpButton } from '../help'
 import { defineStrings, LangSwitch, useStrings } from '../i18n'
@@ -22,6 +24,7 @@ const S = defineStrings({
     addSubtitle: 'Il nuovo team avrà un sapere tutto suo, separato da quello degli altri team di questo PC: chiavi, log, ricerca e cartelle diversi.',
     haveInvite: 'Ho un invito',
     createTeam: 'Crea un nuovo team',
+    fromBackup: 'Ripristina da un backup',
     teamName: 'Nome del team',
     inviteCode: "Codice d'invito",
     invitePlaceholder: 'incolla il codice ricevuto',
@@ -40,6 +43,7 @@ const S = defineStrings({
     addSubtitle: 'The new team will have knowledge of its own, separate from the other teams on this PC: different keys, log, search and folders.',
     haveInvite: 'I have an invite',
     createTeam: 'Create a new team',
+    fromBackup: 'Restore from a backup',
     teamName: 'Team name',
     inviteCode: 'Invite code',
     invitePlaceholder: 'paste the code you received',
@@ -63,7 +67,7 @@ export function Onboarding ({ adding = false, onDone }: { adding?: boolean, onDo
   // Identità personale: dal secondo team il nome è già noto
   const teams = useQuery({ queryKey: ['teams'], queryFn: api.teams })
   const known = teams.data?.identity?.name ?? null
-  const [mode, setMode] = useState<'join' | 'init'>('join')
+  const [mode, setMode] = useState<'join' | 'init' | 'restore'>('join')
   const [team, setTeam] = useState('')
   const [code, setCode] = useState('')
   const [name, setName] = useState('')
@@ -85,16 +89,19 @@ export function Onboarding ({ adding = false, onDone }: { adding?: boolean, onDo
       <div className='row' style={{ marginBottom: 14 }}>
         <button className={`btn ${mode === 'join' ? 'primary' : ''}`} onClick={() => setMode('join')}>{s.haveInvite}</button>
         <button className={`btn ${mode === 'init' ? 'primary' : ''}`} onClick={() => setMode('init')}>{s.createTeam}</button>
+        <button className={`btn ${mode === 'restore' ? 'primary' : ''}`} onClick={() => setMode('restore')}>{s.fromBackup}</button>
       </div>
       <div className='stack'>
-        {mode === 'init'
+        {mode === 'restore'
+          ? null
+          : mode === 'init'
           ? <div><label>{s.teamName}</label><input value={team} onChange={(e) => setTeam(e.target.value)} placeholder='Team Dev' /></div>
           : <div><label>{s.inviteCode}</label><input value={code} onChange={(e) => setCode(e.target.value)} placeholder={s.invitePlaceholder} /></div>}
         <div>
           <label>{known ? s.pcNameKnown(known) : s.pcName}</label>
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder={known ?? 'pc-mario'} />
         </div>
-        {mode === 'init' && (
+        {mode !== 'join' && (
           <div>
             <label className='row' style={{ margin: 0 }}>
               <input type='checkbox' checked={solo} onChange={(e) => setSolo(e.target.checked)} /> {s.solo} <HelpButton topic='solo#local' />
@@ -102,10 +109,16 @@ export function Onboarding ({ adding = false, onDone }: { adding?: boolean, onDo
             <div className='muted small'>{s.soloHint}</div>
           </div>
         )}
+        {/* Ripristino (B7): nome e rete scelti qui sopra; si entra nel team appena è pronto */}
+        {mode === 'restore' && (nameOk
+          ? <RestoreBackup newTeamOnly nodeName={name} network={solo ? 'local' : undefined} onNewTeam={(id) => done({ teamId: id })} />
+          : <div className='muted small'>{known ? s.pcNameKnown(known) : s.pcName}</div>)}
         <ErrorBox error={init.error ?? join.error} />
         {join.isPending && <div className='notice small'>{s.waiting}</div>}
         <div>
-          {mode === 'init'
+          {mode === 'restore'
+            ? null
+            : mode === 'init'
             ? <button className='btn primary' disabled={busy || !team.trim() || !nameOk} onClick={() => init.mutate()}>{s.create}</button>
             : <button className='btn primary' disabled={busy || code.trim().length < 10 || !nameOk} onClick={() => join.mutate()}>{s.join}</button>}
         </div>
