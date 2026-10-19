@@ -26,6 +26,23 @@ declare module 'hyperdht' {
     readonly firewalled: boolean
     readonly ephemeral: boolean
     on (event: 'persistent' | 'ephemeral' | 'close', fn: () => void): this
+    /** Coppia di chiavi Ed25519, deterministica se si passa un seme di 32 byte. */
+    static keyPair (seed?: Buffer): { publicKey: Buffer, secretKey: Buffer }
+    /** Server raggiungibile per chiave pubblica (qui: il relay, vedi relay.ts). */
+    createServer (opts: object, onconnection: (socket: any) => void): { listen (keyPair: { publicKey: Buffer, secretKey: Buffer }): Promise<void>, close (): Promise<void> }
+    /** Stream UDX sullo stesso socket del nodo (li usa il relay per inoltrare). */
+    createRawStream (opts?: object): any
+    /** Gestore delle richieste DHT (avvolto per contare l'attività, vedi dht-server.ts). */
+    onrequest (req: any): boolean
   }
   export = HyperDHT
+}
+
+/** blind-relay (Holepunch): relay "cieco" di stream UDX già cifrati fra due peer. */
+declare module 'blind-relay' {
+  export class Server {
+    constructor (opts: { createStream: (opts: object) => any })
+    accept (socket: any, opts: { id: Buffer }): { on (event: 'error', fn: (err: Error) => void): any }
+    close (): Promise<void>
+  }
 }

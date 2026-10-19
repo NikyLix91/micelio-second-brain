@@ -2,9 +2,12 @@
 // d'incontro creano il team, si invitano e si scambiano un ricordo. Verifica anche la diagnosi
 // di `micelio network check` contro lo stesso server.
 // Tutto su 127.0.0.1: prova il funzionamento della DHT privata, NON l'attraversamento dei NAT reali.
+import { randomBytes } from 'node:crypto'
 import dgram from 'node:dgram'
+import Hyperswarm from 'hyperswarm'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { checkNetwork } from '../../src/net/diagnose'
+import { relayKeyFor } from '../../src/net/relay-key'
 import type { MicelioNode } from '../../src/node/micelio-node'
 import { startServer, type RunningServer } from '../../server/src/dht-server'
 import { eventually, localDht, makeNode } from '../helpers'
@@ -57,6 +60,46 @@ describe('server del team: DHT privata', () => {
     expect(r.reachable).toBe(true)
     expect(r.dht).toBe(`127.0.0.1:${bootstrap[0].port}`)
   })
+
+  it('network check: il server offre il relay (B8)', async () => {
+    const r = await checkNetwork(bootstrap, 10_000)
+    expect(r.relay).toBe(true)
+  })
+
+  it('i nodi trovano il relay del server; il server conta chi lo contatta (B8)', async () => {
+    await eventually(async () => (await alice.status()).relay?.reachable === true, [alice, bruno])
+    expect(server.relayKey).toBe(relayKeyFor('127.0.0.1', bootstrap[0].port).toString('hex'))
+    const a = server.activity()
+    expect(a.clients).toBeGreaterThan(0)
+    expect(a.announces).toBeGreaterThan(0)
+    expect(a.lookups).toBeGreaterThan(0)
+    // i contatori ripartono da zero a ogni lettura (un intervallo del log)
+    expect(server.activity().announces).toBeLessThan(a.announces)
+  })
+
+  it('due PC che non si raggiungono direttamente si collegano tramite il relay (B8)', async () => {
+    const before = server.activity().relay.sessions
+    // relayThrough che restituisce SEMPRE la chiave: simula un hole punching impossibile
+    const key = relayKeyFor('127.0.0.1', bootstrap[0].port)
+    const mk = () => new Hyperswarm({ bootstrap, relayThrough: () => key })
+    const a = mk()
+    const b = mk()
+    try {
+      const topic = randomBytes(32)
+      const got = new Promise<string>((resolve) => {
+        b.on('connection', (conn: any) => { conn.on('error', () => {}); conn.on('data', (d: Buffer) => resolve(d.toString())) })
+      })
+      a.on('connection', (conn: any) => { conn.on('error', () => {}); conn.write('ciao attraverso il relay') })
+      a.join(topic, { server: true, client: false })
+      await a.flush()
+      b.join(topic, { server: false, client: true })
+      expect(await got).toBe('ciao attraverso il relay')
+      expect(server.activity().relay.sessions - before).toBeGreaterThanOrEqual(2)
+    } finally {
+      await a.destroy()
+      await b.destroy()
+    }
+  }, 30_000)
 
   it('network check: server spento → non raggiungibile', async () => {
     const r = await checkNetwork([{ host: '127.0.0.1', port: await freeUdpPort() }], 3_000)

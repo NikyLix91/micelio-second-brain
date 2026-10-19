@@ -43,6 +43,8 @@ const S = defineStrings({
       natUnknown: 'non determinabile',
       natYes: 'SÌ (la connessione diretta può fallire con colleghi nella stessa situazione)',
       natNo: 'no',
+      relayYes: 'Relay del server: sì. Se due PC non riescono a collegarsi direttamente, la connessione passa dal server, sempre cifrata.',
+      relayNo: "Relay del server: no. Il server non offre il piano B per le reti che bloccano l'hole punching: aggiornalo alla versione 0.2.0 (server/README.md).",
       unreachable: "Nessun nodo ha risposto: server spento, porta UDP chiusa sul server, oppure questa rete blocca l'UDP in uscita.",
       checking: 'Verifica in corso…',
       check: 'Verifica',
@@ -150,6 +152,8 @@ const S = defineStrings({
       natUnknown: 'cannot be determined',
       natYes: 'YES (direct connections may fail with colleagues in the same situation)',
       natNo: 'no',
+      relayYes: 'Server relay: yes. If two PCs cannot connect directly, the connection goes through the server, still encrypted.',
+      relayNo: 'Server relay: no. The server does not offer the fallback for networks that block hole punching: update it to version 0.2.0 (server/README.md).',
       unreachable: 'No node answered: server down, UDP port closed on the server, or this network blocks outgoing UDP.',
       checking: 'Checking…',
       check: 'Check',
@@ -324,6 +328,8 @@ export function NetworkCard () {
           {c.reachable
             ? t.reachable(c.nodes, c.ms, c.publicHost ?? t.ipUnknown, c.randomizedPort === null ? t.natUnknown : c.randomizedPort ? t.natYes : t.natNo)
             : t.unreachable}
+          {/* B8: solo con la DHT privata (null con quella pubblica) */}
+          {c.reachable && c.relay !== null && <div className='small' style={{ marginTop: 4 }}>{c.relay ? t.relayYes : t.relayNo}</div>}
         </div>
       )}
       <ErrorBox error={check.error ?? apply.error} />

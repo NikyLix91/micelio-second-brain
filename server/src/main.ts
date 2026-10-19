@@ -60,9 +60,14 @@ async function main (): Promise<void> {
   const server = await startServer({ publicHost: host, port, bindHost, extraNodes, log })
   log(`pronto. Sui PC del team: micelio network set ${server.bootstrap}`)
 
-  // Battito periodico: conferma nel log che il processo è vivo. I PC dei membri (dietro NAT) non
-  // sono contati: sono nodi effimeri della DHT, non entrano nella tabella di instradamento.
-  const timer = setInterval(() => log(`attivo; nodi DHT persistenti noti: ${server.dhtNodes()}`), STATUS_EVERY_MS)
+  // Battito periodico: conferma che il processo è vivo e dice cosa è successo nell'intervallo.
+  // Con 0 PC il problema è prima del server (indirizzo o porta UDP non raggiungibili, PC su
+  // un'altra rete); con PC ma senza presentazioni, i PC non si cercano (team o rete diversi);
+  // con presentazioni ma nessun peer sui PC, l'hole punching fallisce e serve il relay.
+  const timer = setInterval(() => {
+    const a = server.activity()
+    log(`attivo; ultimi 15 min: ${a.clients} PC, ${a.announces} annunci, ${a.lookups} ricerche, ${a.handshakes} presentazioni, ${a.holepunches} hole punching; relay: ${a.relay.active} connessioni aperte (${a.relay.sessions} dall'avvio)`)
+  }, STATUS_EVERY_MS)
 
   // Chiusura ordinata (systemctl stop invia SIGTERM; Ctrl+C invia SIGINT).
   const stop = async (signal: string) => {

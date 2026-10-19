@@ -10,6 +10,7 @@ import { Link } from 'react-router-dom'
 import { api, type StorageReport } from '../api/client'
 import { Card, ErrorBox, Meter, PageHeader } from '../components/ui'
 import { bytes, percent, short } from '../format'
+import { HelpButton } from '../help'
 import { defineStrings, useStrings } from '../i18n'
 import { authorColor, registerAuthors } from './colors'
 
@@ -26,6 +27,8 @@ const S = defineStrings({
     peers: 'peer connessi',
     noPeers: 'Nessun altro membro online: il nodo riprova da solo ogni pochi secondi.',
     syncing: 'Sincronizzazione attiva.',
+    relayUsed: (n: number) => `${n} connessioni passate dal relay del server (l'hole punching diretto non riusciva).`,
+    relayMissing: 'Il server del team non offre il relay: se un collega non si collega mai, aggiorna il server alla 0.2.0.',
     members: (n: number) => `${n} membri attivi →`,
     knowledge: 'Sapere del team',
     memoriesHere: 'ricordi su questo nodo',
@@ -78,6 +81,8 @@ const S = defineStrings({
     peers: 'connected peers',
     noPeers: 'No other member online: the node keeps retrying every few seconds.',
     syncing: 'Synchronising.',
+    relayUsed: (n: number) => `${n} connections went through the server relay (direct hole punching did not work).`,
+    relayMissing: 'The team server does not offer the relay: if a colleague never connects, update the server to 0.2.0.',
     members: (n: number) => `${n} active members →`,
     knowledge: 'Team knowledge',
     memoriesHere: 'memories on this node',
@@ -153,6 +158,9 @@ export function Dashboard () {
               <span className='muted'>{t.peers}</span>
             </div>
             <p className='muted small' style={{ marginBottom: 0 }}>{s.peers === 0 ? t.noPeers : t.syncing}</p>
+            {/* B8: relay del server del team (solo DHT privata) */}
+            {s.relay && s.relay.successes > 0 && <p className='muted small' style={{ marginBottom: 0 }}>{t.relayUsed(s.relay.successes)} <HelpButton topic='p2p#relay' /></p>}
+            {s.relay?.reachable === false && <p className='small warn' style={{ marginBottom: 0 }}>{t.relayMissing} <HelpButton topic='p2p#relay' /></p>}
             <p style={{ marginBottom: 0 }}><Link to='/team'>{t.members(s.members)}</Link></p>
           </Card>
 

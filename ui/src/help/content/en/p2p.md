@@ -29,6 +29,19 @@ Two layers: the connection is encrypted (Noise) and the log blocks are encrypted
 
 **Check** in that card tests the choice without applying it: it tells whether the DHT answers, which public IP you go out with and whether your router has a "symmetric" NAT (the hard case for hole punching).
 
+## The team server relay {#relay}
+
+Between two corporate networks, or with very restrictive routers, hole punching can fail: the two PCs find each other but cannot connect, and stay at 0 peers. With the **private DHT** the team server (from version 0.2.0) acts as a **relay**: in those cases the connection goes through the server.
+
+- The relay is **blind**: it forwards the packets of a connection already encrypted between the two PCs (Noise). The server has no keys and reads nothing.
+- It is used **only when needed**: after a failed hole punch, or if your PC has a symmetric NAT. Otherwise the connection stays direct.
+- **No configuration**: the relay key is derived from the server address, which every PC of the team already knows.
+- The PC tries the relay at startup and every 10 minutes, and uses it only if it answers. With an older server, or one that cannot be reached, only direct connections are used: you cannot end up disconnected because of it.
+
+**Network → Check** tells whether the server offers the relay. The **Status** page tells how many connections went through it.
+
+**How it works behind the scenes.** The relay is a Holepunch `blind-relay` living on the same DHT node as the server, so on the same UDP port (no extra port to open). PCs find it because a DHT node also answers for the services listening on itself. The key is derived with SHA-256 from `micelio-relay/v1` plus the `host:port` address. Whoever knows the address could therefore run a fake relay. The traffic, however, stays encrypted between the PCs: the worst it can do is not forward it. In a private DHT only the team knows the address.
+
 ## Offline {#offline}
 
 Micelio also works alone: search, collection and distillation are local. What you write stays in your feed and reaches colleagues at the next connection; what they write reaches you the same way. An **always-on node** (e.g. on the team server) keeps the knowledge available even when the PCs are off.

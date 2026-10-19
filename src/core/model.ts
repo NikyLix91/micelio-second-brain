@@ -177,6 +177,11 @@ export interface NodeStatus {
   role: Role | null
   /** Connessioni P2P attive in questo momento. */
   peers: number
+  /**
+   * Relay del server del team (B8, solo con la DHT privata): se risponde (null = non ancora
+   * provato) e quante connessioni sono passate da lì perché l'hole punching non riusciva.
+   */
+  relay?: { reachable: boolean | null, attempts: number, successes: number }
   /** Membri attivi (esclusi gli espulsi). */
   members: number
   /** Ricordi presenti nell'indice locale. */
