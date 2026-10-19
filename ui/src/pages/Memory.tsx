@@ -10,6 +10,7 @@
  */
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { api, type ExplicitOutcome, type RecallHit } from '../api/client'
 import { Card, Empty, ErrorBox, PageHeader } from '../components/ui'
 import { MemoryPanel } from '../components/MemoryPanel'
@@ -113,6 +114,13 @@ export function Memory () {
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<RecallHit | null>(null)
   const [composing, setComposing] = useState(false)
+  // `#/memoria?id=<id>` apre direttamente quel ricordo (anche con l'id abbreviato): link da altre
+  // pagine e da fuori. Il dettaglio carica il ricordo completo da solo (MemoryPanel).
+  const [params] = useSearchParams()
+  const linked = params.get('id')
+  useEffect(() => {
+    if (linked) setSelected({ id: linked, title: '', body: '', kind: 'fact', tags: [], author: '', authorName: null, ts: 0, score: 0 } as RecallHit)
+  }, [linked])
   const [filter, setFilter] = useState<'all' | 'personal' | 'stale'>('all')
   const q = useDebounced(query.trim())
 

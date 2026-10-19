@@ -269,16 +269,19 @@ function PersonalBox ({ id, onDone }: { id: string, onDone: () => void }) {
 export function MemoryPanel ({ node, onClose }: { node: GraphNode, onClose: () => void }) {
   const s = useStrings(S)
   const full = useQuery({ queryKey: ['memories', 'one', node.id], queryFn: () => api.memory(node.id) })
+  // I campi si prendono dal ricordo completo appena è caricato: aperto da un link (#/memoria?id=…)
+  // il nodo di partenza ha solo l'id
+  const m = full.data ?? node
   return (
-    <Card title={node.title} actions={<button className='btn small' onClick={onClose} aria-label={s.close}>✕</button>}>
+    <Card title={m.title} actions={<button className='btn small' onClick={onClose} aria-label={s.close}>✕</button>}>
       <div className='row small' style={{ marginBottom: 10 }}>
-        <span className='badge accent'>{KIND_LABEL[node.kind] ?? node.kind}</span>
-        {node.tags.map((t) => <span key={t} className='badge'>#{t}</span>)}
+        <span className='badge accent'>{KIND_LABEL[m.kind] ?? m.kind}</span>
+        {m.tags.map((t) => <span key={t} className='badge'>#{t}</span>)}
       </div>
       {full.data ? <Markdown text={full.data.body} /> : <Empty>{s.loading}</Empty>}
       <dl className='kv small' style={{ marginTop: 12 }}>
-        <dt>{s.author}</dt><dd><span className='dot' style={{ background: authorColor(node.author), marginRight: 6 }} />{node.authorName ?? short(node.author)}</dd>
-        <dt>{s.written}</dt><dd>{dateTime(node.ts)}</dd>
+        <dt>{s.author}</dt><dd><span className='dot' style={{ background: authorColor(m.author), marginRight: 6 }} />{m.authorName ?? short(m.author)}</dd>
+        <dt>{s.written}</dt><dd>{dateTime(m.ts)}</dd>
       </dl>
       {full.data?.stale && (
         <div className='notice warn small' style={{ marginTop: 10 }}>{s.stale(full.data.stale.commits, full.data.stale.missing)} <HelpButton topic='memory#stale' /></div>
