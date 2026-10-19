@@ -317,7 +317,9 @@ Il motivo del limite non è il costo (con la CLI dell'abbonamento le chiamate no
 
 ---
 
-## Backlog (da affrontare, ognuno su un branch dedicato staccato da `main`)
+## Backlog (da affrontare, ognuno su un branch dedicato staccato da `develop`)
+
+**Flusso dei branch (dal 2026-10-19):** `develop` è stato staccato da `main`. Ogni `feature/*` si stacca da `develop` e, finita, si rimergia in `develop`; poi `develop` si mergia in `main`. Fino a B9 i branch partivano direttamente da `main`.
 
 Richieste dell'utente del 2026-10-18 (B1–B3) e brainstorming sui concorrenti dello stesso giorno (B4–B6).
 
