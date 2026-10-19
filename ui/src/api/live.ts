@@ -25,7 +25,7 @@ export const TOPIC_QUERIES: Record<string, string[][]> = {
   inbox: [['inbox'], ['ingest']],
   jobs: [['ingest'], ['documents']],
   decisions: [['decisions']],
-  settings: [['settings'], ['ingest'], ['documents'], ['network']],
+  settings: [['settings'], ['ingest'], ['documents'], ['network'], ['backupSettings']],
   // Elenco dei team del PC (B3): nome, ruolo, team aggiunti o tolti
   teams: [['teams']],
   // Lacune di conoscenza (B4)

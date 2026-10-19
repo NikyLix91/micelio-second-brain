@@ -12,6 +12,7 @@
  * (identità personale, vedi src/core/identity.ts).
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { BackupCard } from '../components/Backup'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, type DistillQuality, type MemberRecord } from '../api/client'
@@ -183,6 +184,7 @@ export function Team () {
           {members.data && <MemberTree members={members.data} parent={null} me={status.data?.nodeKey ?? null} isAdmin={isAdmin} others={others} />}
         </Card>
         {isAdmin && <TeamSettings />}
+        <BackupCard isAdmin={isAdmin} />
         <DistillQualityCard />
       </div>
     </>

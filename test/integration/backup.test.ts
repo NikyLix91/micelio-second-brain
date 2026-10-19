@@ -1,4 +1,6 @@
 // B7: backup e ripristino del sapere di un team, con nodi veri (team in modalità solo locale).
+import fs from 'node:fs'
+import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { memoryId } from '../../src/core/events'
 import { nodePaths } from '../../src/core/paths'
@@ -6,7 +8,7 @@ import { HashEmbedder } from '../../src/embed/embedder'
 import { FakeAdapter } from '../../src/llm/fake'
 import { MicelioHost } from '../../src/node/micelio-host'
 import { type BackupContent, countsOf, encodeBackup } from '../../src/backup/archive'
-import { published, tmpHome } from '../helpers'
+import { eventually, published, tmpHome } from '../helpers'
 
 const PASSWORD = 'una-password-lunga'
 
@@ -65,6 +67,29 @@ describe('backup e ripristino del sapere di un team', () => {
     const report = await dst.restoreBackup(file, PASSWORD)
     expect(report).toMatchObject({ added: 0, existing: 3 })
     expect((await dst.status()).memories).toBe(2)
+  })
+
+  it('backup automatici: il primo subito, si tengono solo gli ultimi N di quel team', async () => {
+    const node = host.node((await host.teams()).find((t) => t.name === 'Ordini')!.id)
+    const dir = path.join(tmpHome('backup-auto'), 'backup')
+    fs.mkdirSync(dir, { recursive: true })
+    // Tre backup vecchi di due giorni, più un file di un altro team che non va toccato
+    const old = Date.now() / 1000 - 2 * 86_400
+    for (const f of ['Ordini-2026-01-01-0000.micelio-backup', 'Ordini-2026-01-02-0000.micelio-backup', 'Ordini-2026-01-03-0000.micelio-backup', 'Altro-2026-01-01-0000.micelio-backup']) {
+      fs.writeFileSync(path.join(dir, f), 'x')
+      fs.utimesSync(path.join(dir, f), old, old)
+    }
+    await expect(node.setBackupSettings({ enabled: true, folder: dir })).rejects.toThrow(/password/)
+    await node.setBackupSettings({ enabled: true, folder: dir, keep: 2, password: PASSWORD })
+    await eventually(() => fs.readdirSync(dir).length === 3)
+    const files = fs.readdirSync(dir).sort()
+    expect(files[0]).toBe('Altro-2026-01-01-0000.micelio-backup')
+    expect(files[1]).toBe('Ordini-2026-01-03-0000.micelio-backup')
+    expect(files[2]).toMatch(/^Ordini-\d{4}-\d{2}-\d{2}-\d{4}\.micelio-backup$/)
+    expect(node.backupSettings()).toMatchObject({ enabled: true, keep: 2, hasPassword: true, last: { file: files[2] } })
+    // la password non torna mai indietro
+    expect(JSON.stringify(node.backupSettings())).not.toContain(PASSWORD)
+    await node.setBackupSettings({ enabled: false })
   })
 
   it('5 000 ricordi si ripristinano in meno di un minuto, e il daemon risponde nel frattempo', async () => {

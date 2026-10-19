@@ -17,6 +17,7 @@ The `micelio` command does everything the app does, and a bit more. `micelio --h
 | `micelio init <team>` | creates a team (added to the ones already there) |
 | `micelio invite` · `micelio join <code>` | invite · join a team |
 | `micelio teams` · `teams default <team>` · `teams leave <team>` | the teams of the PC, the default one, removing a team |
+| `micelio backup create [--out <folder>]` · `backup restore <file> [--new-team [name]]` · `backup auto [on\|off] [--folder <folder>] [--keep <n>]` | backup of the team knowledge, restore, automatic backups (password asked without showing it, or `MICELIO_BACKUP_PASSWORD`) |
 | `micelio --team <team> <command>` | any command on a team other than the default |
 | `micelio members` | members and roles |
 | `micelio team config <key> <value>` | team setting (admin), e.g. `distill.maxMemories 8` |

@@ -126,6 +126,7 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent-soft
 
 .notice { padding: 10px 12px; border-radius: 8px; background: var(--surface-2); }
 .notice.warn { background: var(--warn-soft); color: var(--warn); }
+.small.warn { color: var(--warn); }
 .notice.error { background: var(--danger-soft); color: var(--danger); }
 .notice.ok { background: var(--accent-soft); color: var(--accent); }
 

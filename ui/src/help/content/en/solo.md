@@ -8,7 +8,7 @@ A team in **local-only** mode uses no network: the node joins no DHT, looks for 
 
 To invite someone, first choose a network (public or private): the node reconnects and nothing is lost. In local-only mode invites are refused with this explanation, and the desktop app does not warn about an "isolated node".
 
-Careful: on your own, the data exists only on this PC. Back up the node folder, or invite a second PC of yours: it is also a spare copy.
+Careful: on your own, the data exists only on this PC. Turn on **automatic backups** (Settings → Automatic backups, see "Backup and restore"), or invite a second PC of yours: it is also a spare copy.
 
 ## Personal memories {#personal}
 

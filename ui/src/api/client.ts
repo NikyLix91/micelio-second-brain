@@ -15,6 +15,7 @@ import type { Graph, GraphLink, GraphNode } from '../../../src/graph/constellati
 import type { Galaxy } from '../../../src/graph/communities'
 import type { GapView, IngestStatus, NetworkSettings, NodeSettings, RootReviewResult, RootView, SecurityFinding, SecurityRules, SecurityTestResult, StorageReport } from '../../../src/node/micelio-node'
 import type { Digest } from '../../../src/insight/digest'
+import type { BackupManifest } from '../../../src/backup/archive'
 import type { NetworkCheck } from '../../../src/net/diagnose'
 import type { Decision, InboxItem, SecurityLogEntry } from '../../../src/store/private-store'
 import type { TeamSummary } from '../../../src/node/micelio-host'
@@ -24,7 +25,11 @@ import { currentLang } from '../i18n'
 
 export type { DistillQuality, Galaxy, Graph, GraphLink, GraphNode }
 export type { NetworkCheck, NetworkSettings, RootReviewResult, RootView, SecurityFinding, SecurityLogEntry, SecurityRules, SecurityTestResult, StorageReport }
-export type { Digest, GapView }
+export type { BackupManifest, Digest, GapView }
+/** Esito di un ripristino (B7): ricordi nel backup, aggiunti, già presenti. */
+export interface RestoreReport { team: string, memories: number, added: number, existing: number, events: number, ms: number }
+/** Backup automatici del team (B7): la password non torna mai, solo se è impostata. */
+export interface BackupSettings { enabled: boolean, folder: string, keep: number, hasPassword: boolean, last: { at: number, file?: string, error?: string } | null }
 
 /** Rete di un team: DHT pubblica, privata, o nessuna rete (solo locale, B4). */
 export type NetworkMode = NetworkSettings['mode']
@@ -86,6 +91,14 @@ export const api = {
 
   // Più team sullo stesso PC (B3)
   teams: () => call<TeamsInfo>('GET', '/api/teams'),
+  // ── Backup e ripristino (B7): i file viaggiano in base64 ──
+  createBackup: (password: string) => call<{ name: string, manifest: BackupManifest, data: string }>('POST', '/api/backup', { password }),
+  backupManifest: (data: string) => call<BackupManifest>('POST', '/api/backup/manifest', { data }),
+  restoreBackup: (data: string, password: string) => call<RestoreReport>('POST', '/api/backup/restore', { data, password }),
+  restoreAsNewTeam: (data: string, password: string, opts: { teamName?: string, name?: string, network?: 'public' | 'local' } = {}) =>
+    call<{ id: string, report: RestoreReport }>('POST', '/api/teams/restore', { data, password, ...opts }),
+  backupSettings: () => call<BackupSettings>('GET', '/api/settings/backup'),
+  setBackupSettings: (patch: { enabled?: boolean, folder?: string, keep?: number, password?: string }) => call<BackupSettings>('PUT', '/api/settings/backup', patch),
   setDefaultTeam: (id: string) => call<TeamSummary[]>('POST', `/api/teams/${enc(id)}/default`),
   leaveTeam: (id: string) => call<TeamSummary[]>('DELETE', `/api/teams/${enc(id)}`),
   /** Membri di un team qualsiasi del PC (per riconoscere la stessa persona in più team). */

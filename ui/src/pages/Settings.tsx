@@ -4,6 +4,7 @@
  * nodo (config.json), non del team.
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { AutoBackupCard } from '../components/Backup'
 import { useState } from 'react'
 import { api, type NetworkMode } from '../api/client'
 import { Card, ConfirmButton, Empty, ErrorBox, PageHeader } from '../components/ui'
@@ -238,6 +239,7 @@ export function Settings () {
         <DocumentsCard />
         <LlmCard />
         <ContextCard />
+        <AutoBackupCard />
         <ClaudeCodeCard />
       </div>
     </>
