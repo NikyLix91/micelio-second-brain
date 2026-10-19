@@ -334,7 +334,7 @@ Richieste dell'utente del 2026-10-18 (B1–B3) e brainstorming sui concorrenti d
 | B8 | **Server privato che funziona davvero** | `feature/server-privato` | ✅ Fatto (codice). Relay `blind-relay` sul nodo del server, stessa porta UDP, chiave ricavata dall'indirizzo (nessuna configurazione sui PC); i PC lo usano solo dopo un hole punching fallito o con NAT simmetrico, e solo se risponde. Log del server con l'attività ogni 15 minuti. `network check`, Impostazioni → Rete e Stato dicono se c'è il relay e quanto è usato. Server 0.2.0. Resta: immagine Docker da pubblicare e prova reale fra due reti diverse. Vedi «B8 in dettaglio» |
 | B9 | **Pacchetto Linux** (AppImage e .deb) | `feature/package-linux` | ✅ Fatto. `npm run package:linux` (anche in un container), parti comuni con Windows in `scripts/package-common.js`. Provato in Debian 12 pulito: .deb con dipendenze, `micelio` nel PATH, daemon con il Node incluso, app desktop su schermo virtuale, rimozione. Corretta la dipendenza mancante dalla libreria audio. Da provare su un desktop Linux reale |
 | B10 | **Chatbot per interrogare la memoria con l'AI** | da definire | Richiesta del 2026-10-19, da fare dopo B7–B9. Domande in linguaggio naturale sulla memoria del team, con risposte basate sui ricordi e sulle Radici. Dettagli da decidere insieme all'utente prima di pianificare |
-| B11 | **Misurazione dell'efficienza del sistema** | da definire | Richiesta del 2026-10-19, da fare dopo B7–B9. L'utente spiegherà cosa intende: dettagli da definire insieme prima di pianificare |
+| B11 | **Misurazione dell'efficienza del sistema** | `feature/efficacia` | Piano proposto il 2026-10-19, in attesa di approvazione. Vedi «B11 in dettaglio» |
 
 ### B7 in dettaglio: backup e ripristino del sapere di un team
 
@@ -376,6 +376,34 @@ Richieste dell'utente del 2026-10-18 (B1–B3) e brainstorming sui concorrenti d
 4. **Immagine Docker nuova** (0.2.0), da pubblicare nel registry, con il comando per aggiornare.
 5. **Test:** relay forzato fra due nodi con una DHT di test. Prova reale con te e il collega su reti diverse.
 6. **Guida** (Rete, P2P) e `server/README.md`.
+
+### B11 in dettaglio: efficacia di Micelio per gli agenti
+
+**Richiesta (2026-10-19).** Vedere nella UI ogni volta che Claude Code interroga Micelio e se riceve dati utili. I ricordi con un uso positivo certo ricevono in automatico un pollice in su.
+
+**Decisioni dell'utente:**
+- **Notifiche:** la pagina «Efficacia» con il flusso in tempo reale; le notifiche del desktop solo per gli esiti «utile» e «sbagliato», disattivabili.
+- **Giudizio:** euristica sempre (gratis), più l'LLM quando la sessione si distilla. Il pollice in su scatta solo con la conferma dell'LLM.
+- **Condivisione:** si condivide con il team anche quante volte un ricordo è stato utile.
+
+**Piano:**
+1. **Registro delle consultazioni** (`private.db`, solo su questo PC). Ogni richiesta di un agente: tool MCP (`recall`, `architecture`, `get`, `fetch_source`) e contesto automatico (inizio sessione, richiesta). Si registrano ora, progetto, sessione, domanda e ricordi restituiti. La UI riceve ogni consultazione subito (evento `efficacy`). Conservazione: 90 giorni.
+2. **Esito per ogni ricordo restituito**, quando la sessione è finita (lo stesso momento in cui oggi si raccoglie). Dalla trascrizione si ricavano i ricordi che Micelio ha davvero fornito (risultati dei tool e contesto inserito, che portano l'id) e cosa ha fatto Claude dopo.
+   - **Euristica, per tutte le sessioni:** nei messaggi e nei comandi successivi compaiono elementi distintivi del ricordo (file, comandi, simboli, configurazioni, URL). Esito «probabilmente utile», con la prova (es. «ha eseguito `npm cache clean` dal ricordo X»).
+   - **LLM, per le sessioni che si distillano:** nella chiamata di distillazione già prevista, una domanda in più: per ogni ricordo fornito, «usato», «ignorato» o «sbagliato o superato», con il motivo.
+   - **Pollice in su automatico** (voto +1 del tuo nodo) solo con l'LLM che conferma «usato». Mai sopra un voto dato a mano.
+   - **«Sbagliato»:** notifica e azione proposta nella pagina (rivedi, vota giù, archivia; per una Radice, «segnala da rivedere»). Niente di automatico.
+3. **Utilità condivisa con il team.** Nuovo evento `useful.report`: contatori cumulativi per ricordo e per nodo, come `usage.report`; i nodi di versioni precedenti lo ignorano. Il dettaglio di un ricordo mostra «utile N volte nel team». L'attivazione (priorità) dà più peso all'uso UTILE che al semplice «restituito»: oggi un ricordo conta come usato appena viene restituito.
+4. **Pagina «Efficacia»:**
+   - flusso delle consultazioni con gli esiti che arrivano dopo;
+   - metriche: consultazioni al giorno, percentuale con risultati, percentuale utile;
+   - ricordi che aiutano di più;
+   - ricordi restituiti spesso ma mai usati (rumore);
+   - ricordi segnalati come sbagliati;
+   - domande senza risposta (collegate alle lacune).
+   Filtri per progetto e periodo. Impostazioni: notifiche on/off.
+5. **Prestazioni:** registrare una consultazione non deve rallentare la risposta all'agente (scrittura in sottofondo, indici). Euristica lineare nella lunghezza della sessione. Prova con migliaia di consultazioni.
+6. **Guida** «Efficacia» IT/EN con il funzionamento interno; test unitari (euristica, piano dei voti) e d'integrazione (consultazione → esito → voto → contatore di team).
 
 ---
 
