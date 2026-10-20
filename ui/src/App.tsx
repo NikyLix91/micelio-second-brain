@@ -34,20 +34,21 @@ import { Team } from './pages/Team'
 import { Dreams } from './pages/Dreams'
 import { Digest } from './pages/Digest'
 import { Efficacy } from './pages/Efficacy'
+import { Ask } from './pages/Ask'
 
 /** Testi dell'ossatura (menu, stati di connessione) nelle due lingue. */
 const S = defineStrings({
   it: {
     connecting: 'Connessione al nodo…',
     nucleusLoading: 'Accensione del nucleo…',
-    nav: { nucleus: 'Nucleo', map: 'Mappa 2D', memory: 'Memoria', roots: 'Radici', inbox: 'Inbox', team: 'Team', digest: 'Riepilogo', efficacy: 'Efficacia', dreams: 'Sogni', status: 'Stato', private: 'Registro privato', security: 'Sicurezza', settings: 'Impostazioni', guide: 'Guida' },
+    nav: { nucleus: 'Nucleo', map: 'Mappa 2D', ask: 'Chiedi', memory: 'Memoria', roots: 'Radici', inbox: 'Inbox', team: 'Team', digest: 'Riepilogo', efficacy: 'Efficacia', dreams: 'Sogni', status: 'Stato', private: 'Registro privato', security: 'Sicurezza', settings: 'Impostazioni', guide: 'Guida' },
     live: 'Aggiornamenti in tempo reale',
     reconnecting: 'Riconnessione…'
   },
   en: {
     connecting: 'Connecting to the node…',
     nucleusLoading: 'Powering up the nucleus…',
-    nav: { nucleus: 'Nucleus', map: '2D map', memory: 'Memory', roots: 'Roots', inbox: 'Inbox', team: 'Team', digest: 'Digest', efficacy: 'Efficacy', dreams: 'Dreams', status: 'Status', private: 'Private log', security: 'Security', settings: 'Settings', guide: 'Guide' },
+    nav: { nucleus: 'Nucleus', map: '2D map', ask: 'Ask', memory: 'Memory', roots: 'Roots', inbox: 'Inbox', team: 'Team', digest: 'Digest', efficacy: 'Efficacy', dreams: 'Dreams', status: 'Status', private: 'Private log', security: 'Security', settings: 'Settings', guide: 'Guide' },
     live: 'Live updates',
     reconnecting: 'Reconnecting…'
   }
@@ -82,6 +83,7 @@ export function App () {
             <Route path='/sogni' element={<Dreams />} />
             <Route path='/riepilogo' element={<Digest />} />
             <Route path='/efficacia' element={<Efficacy />} />
+            <Route path='/chiedi' element={<Ask />} />
             <Route path='/privato' element={<Private />} />
             <Route path='/sicurezza' element={<Security />} />
             <Route path='/impostazioni' element={<Settings />} />
@@ -97,7 +99,7 @@ export function App () {
 export const PAGE_TOPIC: Record<string, string> = {
   '/': 'views#nucleus', '/mappa': 'views#map', '/memoria': 'memory', '/radici': 'roots', '/inbox': 'inbox',
   '/team': 'team', '/sogni': 'dreams', '/stato': 'status', '/privato': 'private', '/sicurezza': 'security',
-  '/impostazioni': 'settings', '/guida': 'overview', '/team/nuovo': 'teams', '/riepilogo': 'digest', '/efficacia': 'efficacy'
+  '/impostazioni': 'settings', '/guida': 'overview', '/team/nuovo': 'teams', '/riepilogo': 'digest', '/efficacia': 'efficacy', '/chiedi': 'ask'
 }
 
 /** Pagina "Aggiungi un team": a ingresso riuscito si torna alla home, già sul nuovo team. */
@@ -148,6 +150,7 @@ function Sidebar ({ live, team, node }: { live: boolean, team: string, node: str
       <TeamSwitch />
       <NavLink to='/' end className={link}>{n.nucleus}</NavLink>
       <NavLink to='/mappa' className={link}>{n.map}</NavLink>
+      <NavLink to='/chiedi' className={link}>{n.ask}</NavLink>
       <NavLink to='/memoria' className={link}>{n.memory}</NavLink>
       <NavLink to='/radici' className={link}>{n.roots}</NavLink>
       <NavLink to='/inbox' className={link}>{n.inbox} {inbox > 0 && <span className='count'>{inbox}</span>}</NavLink>

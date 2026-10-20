@@ -91,6 +91,8 @@ const BackupFileBody = z.object({ data: z.string().min(1) })
 const BackupRestoreBody = z.object({ data: z.string().min(1), password: z.string().min(1) })
 const BackupNewTeamBody = BackupRestoreBody.extend({ teamName: z.string().max(100).optional(), name: z.string().max(100).optional(), network: z.enum(['public', 'private', 'local']).optional() })
 const BackupSettingsBody = z.object({ enabled: z.boolean().optional(), folder: z.string().max(1000).optional(), keep: z.number().int().min(1).max(365).optional(), password: z.string().max(200).optional() })
+/** Chat (B10): domanda e conversazione (assente = nuova). */
+const ChatBody = z.object({ question: z.string().trim().min(3).max(2000), chatId: z.number().int().positive().optional() })
 const VoteBody = z.object({ delta: z.union([z.literal(-1), z.literal(0), z.literal(1)]) })
 const SetupBody = z.object({ hook: z.boolean().default(true), context: z.boolean().default(true) }).default({ hook: true, context: true })
 
@@ -170,6 +172,59 @@ export class ApiController {
   restoreAsNewTeam (@Body() body: unknown) {
     const { data, password, teamName, name, network } = BackupNewTeamBody.parse(body)
     return this.micelio.host.restoreAsNewTeam(Buffer.from(data, 'base64'), password, { teamName, nodeName: name, network })
+  }
+
+  // ═══════════════════════════ Chat sulla memoria (B10) ═══════════════════════════
+
+  /** Mappa mentale di una domanda, senza LLM (subito). */
+  @Post('chat/map')
+  @HttpCode(200)
+  async chatMap (@Body() body: unknown) {
+    const { question } = ChatBody.parse(body)
+    return (await this.node.chatContext(question)).map
+  }
+
+  /** Domanda alla chat: risposta dell'LLM sui ricordi del team, con la mappa. */
+  @Post('chat/ask')
+  @HttpCode(200)
+  chatAsk (@Body() body: unknown) {
+    const { question, chatId } = ChatBody.parse(body)
+    return this.node.askChat(question, chatId)
+  }
+
+  /** "Espandi" un ricordo nella mappa: i suoi vicini nella costellazione. */
+  @Get('chat/expand/:id')
+  chatExpand (@Param('id') id: string) {
+    return this.node.chatExpand(id)
+  }
+
+  /** "Salva come ricordo" una risposta. */
+  @Post('chat/messages/:id/save')
+  @HttpCode(200)
+  saveChatAnswer (@Param('id') id: string) {
+    return this.node.saveChatAnswer(Number(id))
+  }
+
+  @Get('chats')
+  chats () {
+    return this.node.chats()
+  }
+
+  @Get('chats/:id')
+  chatMessages (@Param('id') id: string) {
+    return this.node.chatMessages(Number(id))
+  }
+
+  @Put('chats/:id')
+  renameChat (@Param('id') id: string, @Body() body: unknown) {
+    this.node.renameChat(Number(id), z.object({ title: z.string().max(120) }).parse(body).title)
+    return { ok: true }
+  }
+
+  @Delete('chats/:id')
+  deleteChat (@Param('id') id: string) {
+    this.node.deleteChat(Number(id))
+    return { ok: true }
   }
 
   // ═══════════════════════════ Efficacia (B11) ═══════════════════════════

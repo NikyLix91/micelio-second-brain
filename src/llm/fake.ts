@@ -69,6 +69,13 @@ export class FakeAdapter implements LlmAdapter {
       }))
       return task.schema.parse({ memories, micelio })
     }
+    if (task.name === 'chat') {
+      // B10: cita il primo ricordo e dà a ogni tema il nome "Tema <id>"; "[ignoto]" nella domanda → non lo so
+      const first = task.input.match(/^\[1\] (.+?)  \(/m)?.[1] ?? ''
+      const themes = [...task.input.matchAll(/^tema (-?\d+):/gm)].map((m) => ({ id: Number(m[1]), title: `Tema ${m[1]}` }))
+      const unknown = /DOMANDA ===\n.*\[ignoto\]/s.test(task.input)
+      return task.schema.parse({ answer: unknown ? 'La memoria del team non lo dice.' : `Secondo la memoria del team: ${first} [1].`, cited: unknown ? [] : [1], themes, unknown })
+    }
     if (task.name === 'root-review') {
       // Ricordi recenti nel formato "[<id>] titolo\ncorpo": contraddice quello che contiene il marcatore
       const blocks = task.input.split(/\n(?=\[[0-9a-f]{64}\] )/).filter((b) => /^\[[0-9a-f]{64}\] /.test(b))

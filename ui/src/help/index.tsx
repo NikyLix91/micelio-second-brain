@@ -26,7 +26,7 @@ import { defineStrings, type Lang, useLang, useStrings } from '../i18n'
 /** Ordine degli argomenti nell'indice della guida. */
 export const TOPIC_ORDER = [
   'overview', 'data', 'p2p', 'ingestion', 'privacy', 'memory', 'priority', 'roots', 'inbox',
-  'dreams', 'team', 'teams', 'backup', 'context', 'digest', 'efficacy', 'solo', 'quality', 'status', 'private', 'security', 'settings', 'documents',
+  'ask', 'dreams', 'team', 'teams', 'backup', 'context', 'digest', 'efficacy', 'solo', 'quality', 'status', 'private', 'security', 'settings', 'documents',
   'views', 'agents', 'cli', 'language'
 ] as const
 export type TopicId = typeof TOPIC_ORDER[number]
