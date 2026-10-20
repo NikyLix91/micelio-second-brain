@@ -1,6 +1,6 @@
 {
   "name": "micelio",
-  "version": "0.1.0",
+  "version": "0.4.0",
   "description": "Secondo cervello distribuito peer-to-peer per gli strumenti AI di un team di sviluppo",
   "private": true,
   "type": "commonjs",
