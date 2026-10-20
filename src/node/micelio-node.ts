@@ -38,6 +38,8 @@ import os from 'node:os'
 import { BACKUP_EXT, type BackupContent, type BackupManifest, backupFileName, countsOf, decodeBackup, encodeBackup } from '../backup/archive'
 import { planRestore } from '../backup/restore-plan'
 import { actionsAfter, findDeliveries, judgeUse, parseLines } from '../insight/efficacy'
+import { buildMindMap, CHAT_SEARCH_HITS, ChatAnswer, chatInput, type ChatMemory, chatSystem, expandWithNeighbors, lineOf, type MapLink, type MindMap } from '../insight/chat'
+import type { ChatMessage, ChatSummary } from '../store/private-store'
 import type { Consultation, Outcome, OutcomeVerdict } from '../store/private-store'
 import type { Distilled } from '../ingest/prompts'
 import { type ExplicitOutcome, filterMemory, IngestPipeline, InboxNotFoundError } from '../ingest/pipeline'
@@ -109,6 +111,19 @@ export interface MicelioNodeOptions {
 
 /** Errore causato dall'utente o dallo stato del nodo: messaggio pensato per essere mostrato. */
 export class UserError extends LocalizedError {}
+
+/** Risposta della chat (B10): testo, ricordi citati, numeri dei riferimenti, mappa mentale. */
+export interface ChatReply {
+  chatId: number
+  messageId: number
+  answer: string
+  /** true = la memoria del team non basta a rispondere (proposta: segnalare la lacuna). */
+  unknown: boolean
+  cited: string[]
+  /** Numero del riferimento [n] → ricordo. */
+  refs: { n: number, id: string, title: string }[]
+  map: MindMap
+}
 
 /** Un ricordo nel resoconto di efficacia (B11). */
 export interface EfficacyMemory { id: string, title: string, root: boolean, teamUseful: number }
@@ -432,6 +447,8 @@ export class MicelioNode extends EventEmitter {
   private personalIds = new Set<string>()
   /** Volte in cui ogni ricordo è stato utile a un agente, nel team (B11, da useful.report). */
   private usefulCounts = new Map<string, number>()
+  /** Collegamenti per la chat (B10), validi per la costellazione indicata. */
+  private chatLinksCache: { graph: Graph, links: MapLink[] } | null = null
   /** Nome del team letto all'ultima materializzazione (vedi teamName). */
   private teamNameCache: string | null = null
   private readonly index: MemoryIndex
@@ -1043,6 +1060,124 @@ export class MicelioNode extends EventEmitter {
     }
     this.changed('settings')
   }
+
+  // ═══════════════════════════ Chat sulla memoria (B10) ═══════════════════════════
+
+  /**
+   * Collegamenti della costellazione per la chat, con il tipo del dreaming dove c'è (approfondisce,
+   * dipende da, contraddice). La costellazione è già in cache (graph()): nessun ricalcolo.
+   */
+  private chatLinks (): MapLink[] {
+    // Ricalcolati solo quando la costellazione cambia: con 5 000 ricordi sono decine di migliaia
+    const g = this.graph()
+    if (this.chatLinksCache?.graph === g) return this.chatLinksCache.links
+    const rel = new Map(this.dreamLinks.map((l) => [`${l.from}|${l.to}`, l.rel]))
+    const links = g.links.map((l) => {
+      const r = rel.get(`${l.source}|${l.target}`) ?? rel.get(`${l.target}|${l.source}`)
+      return { source: l.source, target: l.target, kind: l.kind, weight: l.weight, ...(l.kind === 'dream' && r ? { rel: r } : {}) }
+    })
+    this.chatLinksCache = { graph: g, links }
+    return links
+  }
+
+  /**
+   * Ricordi per una domanda e la loro mappa mentale, SENZA LLM (subito): ricerca ibrida, Radici
+   * pertinenti, poi i vicini nella costellazione.
+   */
+  async chatContext (question: string): Promise<{ map: MindMap, memories: ChatMemory[] }> {
+    this.requireTeam()
+    const q = question.trim()
+    // track = false: è la chat, non una ricerca d'uso; finisce comunque fra le consultazioni (askChat)
+    const hits = await this.recallHybrid(q, CHAT_SEARCH_HITS, false)
+    const roots = await this.relatedRoots(q, hits.map((h) => h.id))
+    const found = [...hits, ...roots]
+    const links = this.chatLinks()
+    const ids = expandWithNeighbors(found.map((h) => h.id), links)
+    const score = new Map(found.map((h, i) => [h.id, found.length - i]))
+    const byId = new Map(this.enrich(this.index.getMany(ids)).map((h) => [h.id, h]))
+    const memories: ChatMemory[] = ids.flatMap((id) => {
+      const h = byId.get(id)
+      return h ? [{ id, title: h.title, body: h.body, kind: h.kind, tags: h.tags, score: score.get(id) ?? 0, activation: h.activation ?? 0, authorName: h.authorName, ...(h.root ? { root: { category: h.root.category } } : {}) }] : []
+    })
+    return { map: buildMindMap(q, memories, links, new Set(found.map((h) => h.id))), memories }
+  }
+
+  /**
+   * Domanda alla chat: mappa (come chatContext) e risposta dell'LLM scritta SOLO sui ricordi
+   * trovati, con i riferimenti. Domanda e risposta finiscono nella cronologia (solo su questo PC).
+   * Senza ricordi pertinenti non si chiama l'LLM: la risposta è "non lo so" (budget risparmiato).
+   * @param chatId conversazione esistente; assente = nuova
+   */
+  async askChat (question: string, chatId?: number): Promise<ChatReply> {
+    const t0 = Date.now()
+    const q = question.trim()
+    if (q.length < 3) throw new UserError('Scrivi una domanda', 'Write a question')
+    const { map, memories } = await this.chatContext(q)
+    const id = chatId ?? this.privateStore.createChat(q)
+    // Conversazione precedente: coppie domanda → risposta, per le domande che ne seguono un'altra
+    const prev = this.privateStore.chatMessages(id)
+    const history: { question: string, answer: string }[] = []
+    for (let i = 0; i + 1 < prev.length; i++) if (prev[i].role === 'user' && prev[i + 1].role === 'assistant') history.push({ question: prev[i].text, answer: prev[i + 1].text })
+    this.privateStore.addChatMessage(id, 'user', q)
+
+    let answer: ChatAnswer
+    let numbers = new Map<number, string>()
+    if (!memories.length) {
+      answer = { answer: 'La memoria del team non ha ricordi su questo argomento.', cited: [], themes: [], unknown: true }
+    } else if (!this.llm) {
+      answer = { answer: 'Nessun LLM configurato (Impostazioni → LLM): ecco i ricordi più pertinenti nella mappa.', cited: [], themes: [], unknown: false }
+    } else {
+      const language = (await this.team?.config<string>('memory.language')) ?? 'it'
+      const built = chatInput(q, memories, map, history)
+      numbers = built.numbers
+      answer = await this.llm.run({ name: 'chat', system: chatSystem(language), input: built.input, schema: ChatAnswer, model: this.config.llm.distillModel })
+    }
+    // Nomi leggibili dei temi dati dall'LLM (se mancano restano i tag caratteristici)
+    const titles = new Map(answer.themes.map((t) => [t.id, t.title.trim()]))
+    for (const t of map.themes) if (titles.get(t.id)) t.label = titles.get(t.id)!
+    const cited = [...new Set(answer.cited)].flatMap((n) => (numbers.has(n) ? [numbers.get(n)!] : []))
+    const refs = [...numbers].map(([n, mid]) => ({ n, id: mid, title: memories.find((m) => m.id === mid)?.title ?? '' }))
+    const messageId = this.privateStore.addChatMessage(id, 'assistant', answer.answer, { cited, refs, map, unknown: answer.unknown })
+    this.consulted('chat', q, memories.filter((m) => map.memories.find((x) => x.id === m.id)?.found).map((m) => m.id), Date.now() - t0)
+    return { chatId: id, messageId, answer: answer.answer, unknown: answer.unknown, cited, refs, map }
+  }
+
+  /** I vicini di un ricordo nella costellazione, per "espandi" nella mappa (senza LLM). */
+  chatExpand (id: string, max = 8): { memories: MindMap['memories'], links: MapLink[] } {
+    const rec = this.index.get(id)
+    if (!rec) throw new UserError(`Nessun ricordo con id ${id}`, `No memory with id ${id}`)
+    const links = this.chatLinks().filter((l) => l.source === rec.id || l.target === rec.id).sort((a, b) => b.weight - a.weight).slice(0, max)
+    const ids = links.map((l) => (l.source === rec.id ? l.target : l.source))
+    const memories = this.index.getMany(ids).map((h) => ({ id: h.id, title: h.title, line: lineOf(h.body), kind: h.kind, root: this.rootsById.has(h.id), found: false }))
+    return { memories, links }
+  }
+
+  /**
+   * "Salva come ricordo": la risposta diventa un ricordo del team, con le fonti. Passa dalla stessa
+   * strada di un salvataggio esplicito (filtro privacy, eventuale Inbox).
+   */
+  async saveChatAnswer (messageId: number): Promise<ExplicitOutcome> {
+    const msg = this.privateStore.chatMessage(messageId)
+    if (!msg || msg.role !== 'assistant') throw new UserError('Risposta non trovata', 'Answer not found')
+    const msgs = this.privateStore.chatMessages(msg.chat)
+    const question = [...msgs].reverse().find((m) => m.role === 'user' && m.id < msg.id)?.text ?? 'Risposta della chat'
+    const sources = this.index.getMany(msg.data?.cited ?? [])
+    const tags = [...new Set(sources.flatMap((s) => s.tags))].slice(0, 5)
+    // Il testo cita i ricordi con [n]: in fondo l'elenco, perché nel ricordo il numero da solo non dice nulla
+    const refs: { n: number, id: string, title: string }[] = msg.data?.refs ?? []
+    const used = refs.filter((r) => (msg.data?.cited ?? []).includes(r.id))
+    const body = `${msg.text}${used.length ? `\n\nFonti:\n${used.map((r) => `- [${r.n}] ${r.title} (id:${r.id.slice(0, 12)})`).join('\n')}` : ''}`
+    const title = question.length > 200 ? question.slice(0, 197) + '…' : question.length < 3 ? `Domanda: ${question}` : question
+    const out = await this.remember({ kind: 'reference', title, body: body.slice(0, 20_000), tags, source: { type: 'chat' } })
+    this.privateStore.setChatMessageData(messageId, { ...msg.data, saved: out.outcome === 'team' ? { outcome: 'team', id: out.id } : { outcome: out.outcome } })
+    return out
+  }
+
+  /** Conversazioni della chat (solo su questo PC). */
+  chats (): ChatSummary[] { return this.privateStore.chats() }
+  chatMessages (chatId: number): ChatMessage[] { return this.privateStore.chatMessages(chatId) }
+  renameChat (chatId: number, title: string): void { this.privateStore.renameChat(chatId, title.trim() || 'Conversazione') }
+  deleteChat (chatId: number): void { this.privateStore.deleteChat(chatId) }
 
   /** Metriche sintetiche del nodo (per monitoraggio esterno o diagnostica). */
   async metrics (): Promise<Record<string, unknown>> {

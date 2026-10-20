@@ -13,9 +13,11 @@ import type { ExplicitOutcome } from '../../../src/ingest/pipeline'
 import type { DistillQuality } from '../../../src/ingest/quality'
 import type { Graph, GraphLink, GraphNode } from '../../../src/graph/constellation'
 import type { Galaxy } from '../../../src/graph/communities'
-import type { EfficacyReport, GapView, IngestStatus, NetworkSettings, NodeSettings, RootReviewResult, RootView, SecurityFinding, SecurityRules, SecurityTestResult, StorageReport } from '../../../src/node/micelio-node'
+import type { ChatReply, EfficacyReport, GapView, IngestStatus, NetworkSettings, NodeSettings, RootReviewResult, RootView, SecurityFinding, SecurityRules, SecurityTestResult, StorageReport } from '../../../src/node/micelio-node'
 import type { Digest } from '../../../src/insight/digest'
 import type { BackupManifest } from '../../../src/backup/archive'
+import type { MapLink, MindMap } from '../../../src/insight/chat'
+import type { ChatMessage, ChatSummary } from '../../../src/store/private-store'
 import type { NetworkCheck } from '../../../src/net/diagnose'
 import type { Decision, InboxItem, SecurityLogEntry } from '../../../src/store/private-store'
 import type { TeamSummary } from '../../../src/node/micelio-host'
@@ -25,7 +27,11 @@ import { currentLang } from '../i18n'
 
 export type { DistillQuality, Galaxy, Graph, GraphLink, GraphNode }
 export type { NetworkCheck, NetworkSettings, RootReviewResult, RootView, SecurityFinding, SecurityLogEntry, SecurityRules, SecurityTestResult, StorageReport }
-export type { BackupManifest, Digest, EfficacyReport, GapView }
+export type { BackupManifest, ChatMessage, ChatReply, ChatSummary, Digest, EfficacyReport, GapView }
+/** Mappa mentale della chat (B10). */
+export type ChatMap = MindMap
+export type ChatMapMemory = MindMap['memories'][number]
+export type ChatMapLink = MapLink
 /** Esito di un ripristino (B7): ricordi nel backup, aggiunti, già presenti. */
 export interface RestoreReport { team: string, memories: number, added: number, existing: number, events: number, ms: number }
 /** Backup automatici del team (B7): la password non torna mai, solo se è impostata. */
@@ -98,6 +104,15 @@ export const api = {
   restoreAsNewTeam: (data: string, password: string, opts: { teamName?: string, name?: string, network?: 'public' | 'local' } = {}) =>
     call<{ id: string, report: RestoreReport }>('POST', '/api/teams/restore', { data, password, ...opts }),
   backupSettings: () => call<BackupSettings>('GET', '/api/settings/backup'),
+  // ── Chat sulla memoria (B10) ──
+  chatMap: (question: string) => call<ChatMap>('POST', '/api/chat/map', { question }),
+  chatAsk: (question: string, chatId?: number) => call<ChatReply>('POST', '/api/chat/ask', { question, chatId }),
+  chatExpand: (id: string) => call<{ memories: ChatMapMemory[], links: ChatMapLink[] }>('GET', `/api/chat/expand/${enc(id)}`),
+  chatSave: (messageId: number) => call<ExplicitOutcome>('POST', `/api/chat/messages/${messageId}/save`),
+  chats: () => call<ChatSummary[]>('GET', '/api/chats'),
+  chatMessages: (id: number) => call<ChatMessage[]>('GET', `/api/chats/${id}`),
+  renameChat: (id: number, title: string) => call<{ ok: true }>('PUT', `/api/chats/${id}`, { title }),
+  deleteChat: (id: number) => call<{ ok: true }>('DELETE', `/api/chats/${id}`),
   // ── Efficacia (B11) ──
   efficacy: (days: number, project?: string) => call<EfficacyReport>('GET', `/api/efficacy?days=${days}${project ? `&project=${enc(project)}` : ''}`),
   setEfficacyNotify: (notify: boolean) => call<{ notify: boolean }>('PUT', '/api/settings/efficacy', { notify }),

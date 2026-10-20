@@ -82,6 +82,11 @@ CREATE TABLE IF NOT EXISTS outcomes (session TEXT NOT NULL, memory TEXT NOT NULL
 CREATE INDEX IF NOT EXISTS outcomes_ts ON outcomes(ts);
 -- B11: volte in cui un ricordo è stato UTILE (confermato dall'LLM), contatori cumulativi pubblicati al team.
 CREATE TABLE IF NOT EXISTS useful_local (id TEXT PRIMARY KEY, count INTEGER NOT NULL, last INTEGER NOT NULL, reported INTEGER NOT NULL DEFAULT 0);
+-- B10: chat sulla memoria. Conversazioni e messaggi restano su questo PC (decisione dell'utente).
+-- data (JSON): per le risposte, ricordi citati, mappa, "non lo so"; per le domande nulla.
+CREATE TABLE IF NOT EXISTS chats (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, created INTEGER NOT NULL, updated INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS chat_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, chat INTEGER NOT NULL, role TEXT NOT NULL, text TEXT NOT NULL, data TEXT, ts INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS chat_messages_chat ON chat_messages(chat, id);
 `
 
 /** Dopo quanto un elemento non deciso esce dall'inbox (D9). */
@@ -123,6 +128,11 @@ export interface Consultation {
 /** Esito di un ricordo fornito: vedi la tabella `outcomes`. */
 export type OutcomeVerdict = 'likely' | 'none' | 'used' | 'ignored' | 'wrong'
 export interface Outcome { session: string, memory: string, verdict: OutcomeVerdict, judge: 'heuristic' | 'llm', evidence: string | null, project: string | null, ts: number, voted: boolean }
+
+/** Una conversazione della chat (B10). */
+export interface ChatSummary { id: number, title: string, created: number, updated: number, questions: number }
+/** Un messaggio della chat: domanda dell'utente o risposta (con i dati della risposta). */
+export interface ChatMessage { id: number, chat: number, role: 'user' | 'assistant', text: string, data: any, ts: number }
 
 /** Voce del registro di sicurezza (vedi addSecurityLog). */
 export interface SecurityLogEntry {
@@ -465,6 +475,51 @@ export class PrivateStore {
   pruneEfficacy (before: number): void {
     this.db.prepare('DELETE FROM consultations WHERE ts < ?').run(before)
     this.db.prepare('DELETE FROM outcomes WHERE ts < ?').run(before)
+  }
+
+  // ---------- Chat sulla memoria (B10) ----------
+
+  /** Nuova conversazione; il titolo iniziale è la prima domanda. */
+  createChat (title: string, now = Date.now()): number {
+    return Number(this.db.prepare('INSERT INTO chats (title, created, updated) VALUES (?, ?, ?)').run(title.slice(0, 120), now, now).lastInsertRowid)
+  }
+
+  /** Conversazioni dalla più recente. */
+  chats (): ChatSummary[] {
+    return (this.db.prepare(`SELECT c.*, (SELECT COUNT(*) FROM chat_messages m WHERE m.chat = c.id AND m.role = 'user') AS questions
+      FROM chats c ORDER BY updated DESC`).all() as any[]).map((r) => ({ id: r.id, title: r.title, created: r.created, updated: r.updated, questions: r.questions }))
+  }
+
+  /** Messaggi di una conversazione, in ordine. */
+  chatMessages (chat: number): ChatMessage[] {
+    return (this.db.prepare('SELECT * FROM chat_messages WHERE chat = ? ORDER BY id').all(chat) as any[])
+      .map((r) => ({ id: r.id, chat: r.chat, role: r.role, text: r.text, data: r.data ? JSON.parse(r.data) : null, ts: r.ts }))
+  }
+
+  chatMessage (id: number): ChatMessage | null {
+    const r = this.db.prepare('SELECT * FROM chat_messages WHERE id = ?').get(id) as any
+    return r ? { id: r.id, chat: r.chat, role: r.role, text: r.text, data: r.data ? JSON.parse(r.data) : null, ts: r.ts } : null
+  }
+
+  /** Aggiunge un messaggio e aggiorna la data della conversazione. @returns id del messaggio */
+  addChatMessage (chat: number, role: 'user' | 'assistant', text: string, data: unknown = null, now = Date.now()): number {
+    const id = Number(this.db.prepare('INSERT INTO chat_messages (chat, role, text, data, ts) VALUES (?, ?, ?, ?, ?)').run(chat, role, text, data === null ? null : JSON.stringify(data), now).lastInsertRowid)
+    this.db.prepare('UPDATE chats SET updated = ? WHERE id = ?').run(now, chat)
+    return id
+  }
+
+  /** Aggiorna i dati di un messaggio (es. ricordo salvato dalla risposta). */
+  setChatMessageData (id: number, data: unknown): void {
+    this.db.prepare('UPDATE chat_messages SET data = ? WHERE id = ?').run(JSON.stringify(data), id)
+  }
+
+  renameChat (id: number, title: string): void {
+    this.db.prepare('UPDATE chats SET title = ? WHERE id = ?').run(title.slice(0, 120), id)
+  }
+
+  deleteChat (id: number): void {
+    this.db.prepare('DELETE FROM chat_messages WHERE chat = ?').run(id)
+    this.db.prepare('DELETE FROM chats WHERE id = ?').run(id)
   }
 
   // ---------- Avanzamento sessioni ----------
