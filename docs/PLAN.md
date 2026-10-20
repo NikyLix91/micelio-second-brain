@@ -335,7 +335,7 @@ Richieste dell'utente del 2026-10-18 (B1–B3) e brainstorming sui concorrenti d
 | B7 | **Backup e ripristino del sapere di un team** | `feature/backup-team` | ✅ Fatto. File `.micelio-backup` cifrato (scrypt + AES-256-GCM) con tutto il sapere del team; ripristino in un team nuovo (anche dal benvenuto) o in uno esistente (solo admin), senza duplicati, con autore e data d'origine; backup automatici giornalieri per team. Pagina Team, Impostazioni, CLI `micelio backup`, guida «Backup e ripristino». 5 000 ricordi ripristinati in ~10 s. Vedi «B7 in dettaglio» sotto |
 | B8 | **Server privato che funziona davvero** | `feature/server-privato` | ✅ Fatto (codice). Relay `blind-relay` sul nodo del server, stessa porta UDP, chiave ricavata dall'indirizzo (nessuna configurazione sui PC); i PC lo usano solo dopo un hole punching fallito o con NAT simmetrico, e solo se risponde. Log del server con l'attività ogni 15 minuti. `network check`, Impostazioni → Rete e Stato dicono se c'è il relay e quanto è usato. Server 0.2.0. Resta: immagine Docker da pubblicare e prova reale fra due reti diverse. Vedi «B8 in dettaglio» |
 | B9 | **Pacchetto Linux** (AppImage e .deb) | `feature/package-linux` | ✅ Fatto. `npm run package:linux` (anche in un container), parti comuni con Windows in `scripts/package-common.js`. Provato in Debian 12 pulito: .deb con dipendenze, `micelio` nel PATH, daemon con il Node incluso, app desktop su schermo virtuale, rimozione. Corretta la dipendenza mancante dalla libreria audio. Da provare su un desktop Linux reale |
-| B10 | **Chatbot per interrogare la memoria con l'AI** | da definire | Richiesta del 2026-10-19, da fare dopo B7–B9. Domande in linguaggio naturale sulla memoria del team, con risposte basate sui ricordi e sulle Radici. Dettagli da decidere insieme all'utente prima di pianificare |
+| B10 | **Chat AI sulla memoria, con mappa mentale del sapere** | `feature/chat-memoria` | ✅ Fatto. Pagina «Chiedi»: risposta dell'LLM scritta solo sui ricordi del team con riferimenti [n] cliccabili, «non lo so» senza chiamare l'LLM e segnalazione della lacuna, mappa mentale istantanea (temi come comunità dei collegamenti, ricordi con prima riga, collegamenti del dreaming, espandi), domande che seguono, «Salva come ricordo», cronologia solo locale. Mappa su 5 000 ricordi in ~0,1 s. Vedi «B10 in dettaglio» |
 | B11 | **Misurazione dell'efficienza del sistema** | `feature/efficacia` | ✅ Fatto. Pagina «Efficacia»: consultazioni degli agenti in tempo reale (tool MCP e contesto automatico, con il tempo di risposta), esiti per ricordo a sessione finita (euristica sempre, LLM nella stessa chiamata della distillazione), pollice in su automatico sui ricordi confermati utili (mai sopra un voto a mano), utilità condivisa con il team (`useful.report`, peso 3 nell'attivazione), rumore, sbagliati, domande senza risposta, notifiche del desktop solo per utile/sbagliato. Vedi «B11 in dettaglio» |
 
 ### B7 in dettaglio: backup e ripristino del sapere di un team
@@ -407,6 +407,39 @@ Richieste dell'utente del 2026-10-18 (B1–B3) e brainstorming sui concorrenti d
 5. **Prestazioni:** registrare una consultazione non deve rallentare la risposta all'agente (scrittura in sottofondo, indici). Euristica lineare nella lunghezza della sessione. Prova con migliaia di consultazioni.
 6. **Guida** «Efficacia» IT/EN con il funzionamento interno; test unitari (euristica, piano dei voti) e d'integrazione (consultazione → esito → voto → contatore di team).
 
+### B10 in dettaglio: chat AI sulla memoria, con mappa mentale del sapere
+
+**Richiesta (2026-10-20).** Una chat AI per interrogare la memoria e ricostruire un albero navigabile di collegamenti e know-how, leggibile da una persona.
+
+**Decisioni dell'utente:**
+- l'albero è una **mappa mentale**;
+- le risposte buone si salvano come ricordo con un pulsante;
+- la cronologia resta solo su questo PC.
+
+**Come funziona per chi la usa.** Pagina «Chiedi»: a sinistra la conversazione, a destra la mappa mentale. Si fa una domanda in linguaggio normale e si ricevono due cose:
+1. **una risposta scritta solo sui ricordi e sulle Radici del team**, con i riferimenti numerati ai ricordi d'origine. Se la memoria non lo sa, lo dice e propone di segnalare la lacuna al team;
+2. **la mappa mentale dell'argomento**: la domanda al centro, i temi intorno, poi i ricordi. Le linee mostrano i collegamenti (approfondisce, dipende da, contraddice, simile). Un clic su un ricordo lo apre; «espandi» aggiunge i suoi vicini.
+
+Le domande successive tengono conto della conversazione. Sotto ogni risposta c'è «Salva come ricordo».
+
+**Piano:**
+1. **Ricerca, senza LLM e subito:**
+   - ricerca ibrida (parole chiave + significato) e Radici pertinenti;
+   - allargamento di un passo sui collegamenti della costellazione (tag in comune, significato, dreaming);
+   - al massimo ~30 ricordi, ordinati per pertinenza e attivazione.
+2. **Mappa, subito:** i ricordi trovati si raggruppano in temi con lo stesso metodo delle galassie (comunità sui collegamenti) e ogni tema prende il nome dai tag caratteristici. Ogni ricordo mostra titolo e prima riga. La mappa compare prima della risposta.
+3. **Risposta, LLM:**
+   - una chiamata con i ricordi trovati come unico materiale. Regola: niente fuori da lì, ogni affermazione con il suo riferimento, «non lo so» se manca;
+   - nella stessa chiamata l'LLM dà ai temi della mappa un nome leggibile;
+   - modello e budget giornaliero sono quelli già configurati (Impostazioni → LLM);
+   - le domande successive portano con sé le ultime 3 domande e risposte.
+4. **Espandi un ricordo:** i suoi vicini nella costellazione si aggiungono alla mappa, senza LLM.
+5. **Salva come ricordo:** la risposta diventa un ricordo del team, con l'elenco dei ricordi d'origine. Passa dalla stessa strada di un salvataggio esplicito (filtro privacy, eventuale Inbox).
+6. **Cronologia** in `private.db`: conversazioni e messaggi, da riaprire, rinominare o cancellare. Solo su questo PC.
+7. **Efficacia:** le domande della chat compaiono fra le consultazioni (canale «chat»).
+8. **Prestazioni:** ricerca e mappa in meno di 100 ms anche con 5 000 ricordi; nessuna attesa dell'LLM per vedere la mappa. Prova a scala.
+9. **Guida** «Chiedi» IT/EN con il funzionamento interno; test unitari (ricerca allargata, temi della mappa) e d'integrazione (domanda, risposta, salvataggio, cronologia) con l'LLM finto.
+
 ---
 
 ## Registro
@@ -439,6 +472,7 @@ Richieste dell'utente del 2026-10-18 (B1–B3) e brainstorming sui concorrenti d
 | 2026-10-18 | Correzioni dalla prova reale (versione 0.3.2): Nucleo ancora bianco con i filtri per autore/tipo e nel tour (le Radici accese tornavano a piena luce; oltre 20 Radici ora stanno nel guscio, quelle spente senza anello, tour con distanza in base all'ampiezza della tappa); Mappa 2D con il dettaglio fuori schermo (ora sopra la mappa); contesto per richiesta ancora fuori tema (ora passa solo ciò che si distacca dagli altri: media + 2 deviazioni standard), callout di Obsidian nella prima riga |
 | 2026-10-18 | Correzioni dalla prova reale (versione 0.3.1): Nucleo inusabile con 63 Radici da un vault (nucleo che si allarga con il numero di Radici, Radici e anelli attenuati quando sono tante); import che lasciava l'intestazione YAML di Obsidian nel testo e collegava tutto con il tag `import` (ora titolo e tag dall'intestazione, e reimportare aggiorna i file cambiati); contesto per richiesta con Radici fuori tema (soglia più alta e uguale per ricordi e Radici) |
 | 2026-10-18 | Installer di Windows (7.7) sul branch `feature/installer-windows`, su richiesta dell'utente per provare una versione reale. Trovati e risolti: electron-builder esclude `node_modules` dalle risorse extra (copia in `afterPack`), metteva il `node_modules` della radice in `app.asar`, Windows Defender blocca a tratti `Micelio.exe` (nuovi tentativi) |
+| 2026-10-20 | B10 chat sulla memoria (branch `feature/chat-memoria`). Con le misure delle galassie (gruppi fino a 150 ricordi) la mappa di una domanda finiva in un tema solo: aggiunte misure per la chat (temi da al massimo un terzo dei ricordi). Mappa resa leggibile dopo la prima cattura: temi raccolti a 3 ricordi, collegamenti non del dreaming solo al passaggio del mouse, colonne più strette |
 | 2026-10-19 | B11 efficacia. Misurando il contesto automatico sul PC dell'utente: ogni messaggio a Claude Code aspettava ~2,3 s per un timer di sicurezza che teneva vivo l'hook (ora ~0,4 s; con il daemon occupato l'hook arrivava al limite di 10 s e veniva annullato, 6 volte su 14 in una giornata). Prova di carico: senza WAL ogni scrittura su SQLite costava ~12 ms (attesa del disco), ora 0,14 ms; il resoconto leggeva al massimo 5 000 consultazioni (totali sbagliati oltre), corretto |
 | 2026-10-19 | B9 pacchetti Linux, costruiti in un container `node:24-bookworm`. Trovati e corretti: il .deb richiede `homepage`; su un sistema minimo l'app non partiva per la libreria audio mancante (aggiunta alle dipendenze). Riverificato anche l'installer di Windows con le parti comuni |
 | 2026-10-19 | B8 server privato: con due nodi sullo stesso PC il server privato funziona (invito in 1 s); il caso reale (due reti diverse, 0 peer) non si riproduce da un PC solo. Aggiunti relay sul server e log dell'attività. Prototipo verificato prima: un nodo DHT risponde anche per i servizi in ascolto su sé stesso, quindi il relay non richiede un'altra porta. Il relay si usa solo se risponde, altrimenti con un server vecchio due PC resterebbero scollegati per sempre |

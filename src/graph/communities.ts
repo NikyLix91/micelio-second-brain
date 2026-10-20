@@ -64,7 +64,11 @@ function hash (s: string): number {
  * Raggruppa i ricordi in galassie.
  * @param minSize comunità più piccole confluiscono nella vicina (default: 3, o 1/200 dei ricordi)
  */
-export function detectCommunities (nodes: GraphNode[], links: GraphLink[], minSize = Math.max(3, Math.round(nodes.length / 200))): Communities {
+/**
+ * @param sizing dimensioni desiderate, per usi diversi dalla vista d'insieme (es. i temi della chat,
+ *               B10: pochi ricordi, gruppi piccoli): galassia più grande e quante almeno
+ */
+export function detectCommunities (nodes: GraphNode[], links: GraphLink[], minSize = Math.max(3, Math.round(nodes.length / 200)), sizing: { maxSize?: number, minCount?: number } = {}): Communities {
   // Adiacenza pesata, in entrambe le direzioni
   const adj = new Map<string, Map<string, number>>()
   for (const n of nodes) adj.set(n.id, new Map())
@@ -77,8 +81,8 @@ export function detectCommunities (nodes: GraphNode[], links: GraphLink[], minSi
 
   // 1. Louvain con la risoluzione più bassa che dà abbastanza galassie, nessuna gigante
   const order = nodes.map((n) => n.id).sort((a, b) => hash(a) - hash(b))
-  const maxSize = Math.max(150, Math.ceil(nodes.length * MAX_GALAXY_SHARE))
-  const minCount = Math.min(MIN_GALAXIES, Math.floor(nodes.length / 50))
+  const maxSize = sizing.maxSize ?? Math.max(150, Math.ceil(nodes.length * MAX_GALAXY_SHARE))
+  const minCount = sizing.minCount ?? Math.min(MIN_GALAXIES, Math.floor(nodes.length / 50))
   let label = new Map<string, number>()
   let bestLargest = Infinity
   for (const r of RESOLUTIONS) {
