@@ -37,7 +37,9 @@ import { DaemonClient, DaemonError } from './client'
 const program = new Command()
   .name('micelio')
   .description('Secondo cervello distribuito peer-to-peer per il team di sviluppo')
-  .version('0.2.0')
+  // La versione è quella del package.json accanto a dist/ (nell'installazione: la versione dell'app,
+  // scritta da scripts/package-common.js); prima era scritta a mano ed era rimasta a 0.2.0
+  .version((require('../../package.json') as { version: string }).version)
   .option('--home <dir>', 'cartella dati del nodo (default ~/.micelio o $MICELIO_HOME)')
   .option('--team <team>', 'team su cui lavorare, per id o nome (default: il team predefinito, vedi `micelio teams`)')
 
