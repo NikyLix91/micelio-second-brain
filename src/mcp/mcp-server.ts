@@ -1,12 +1,21 @@
 /**
  * @file Server MCP di Micelio (DESIGN §11): ciò che gli agenti AI vedono della memoria del team.
  *
+ * EN: Micelio MCP server (DESIGN §11): what AI agents see of the team memory.
+ *
  * Indipendente dal trasporto: il daemon lo collega a Streamable HTTP (src/daemon/mcp.controller.ts),
  * ma lo stesso server funzionerebbe su stdio. Viene creato a ogni richiesta (modalità stateless),
  * quindi non deve tenere stato proprio: tutto lo stato sta nel MicelioNode.
  *
+ * EN: Transport-agnostic: the daemon wires it to Streamable HTTP (src/daemon/mcp.controller.ts),
+ * but the same server would work over stdio. It is created on every request (stateless mode),
+ * so it must not hold state of its own: all state lives in the MicelioNode.
+ *
  * Le DESCRIZIONI dei tool e le ISTRUZIONI del server sono a tutti gli effetti dei prompt: è ciò che
  * guida l'agente su quando cercare, quando salvare e cosa non salvare mai. Vanno curate come codice.
+ *
+ * EN: The tool DESCRIPTIONS and the server INSTRUCTIONS are prompts in every respect: they guide
+ * the agent on when to search, when to save and what never to save. Treat them like code.
  */
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
@@ -17,7 +26,7 @@ import type { MicelioNode, RootView } from '../node/micelio-node'
 
 const VERSION = '0.2.0'
 
-/** Istruzioni inviate all'agente alla connessione. */
+/** Istruzioni inviate all'agente alla connessione. / EN: Instructions sent to the agent on connection. */
 const INSTRUCTIONS = `Micelio è la memoria condivisa del team di sviluppo: ogni ricordo salvato qui arriva a TUTTI i colleghi.
 - All'inizio di un task non banale usa "recall" per cercare soluzioni, decisioni e gotcha già noti al team.
 - Usa "remember" solo quando l'utente lo chiede o lo conferma, e solo per conoscenza tecnica riutilizzabile
@@ -40,46 +49,52 @@ const INSTRUCTIONS = `Micelio è la memoria condivisa del team di sviluppo: ogni
 
 /**
  * Formatta un ricordo come Markdown (titolo, metadati, riferimenti, corpo).
+ *
+ * EN: Formats a memory as Markdown (title, metadata, references, body).
+ *
  * @param full true per `get` (tutti i riferimenti al codice), false per `recall` (forma compatta)
+ *             EN: true for `get` (all code references), false for `recall` (compact form)
  */
 function formatHit (h: RecallHit, full = false): string {
   const who = h.authorName ?? h.author.slice(0, 8)
   const tags = h.tags.length ? `  #${h.tags.join(' #')}` : ''
   // Ricordi distillati da un documento: l'agente sa che può chiedere l'originale con fetch_source.
+  // EN: Memories distilled from a document: the agent knows it can ask for the original with fetch_source.
   const doc = h.source?.type === 'document' ? `\nFonte: documento «${h.source.name ?? '?'}» (originale disponibile con fetch_source)` : ''
   // Ricordi distillati da una sessione di codice: dove guardare per approfondire.
+  // EN: Memories distilled from a coding session: where to look to dig deeper.
   const code = formatCodeRefs(h.source?.code, full).map((l) => '\n' + l).join('')
   return `### ${h.title}\n[${h.kind}] id:${h.id.slice(0, 12)} · ${who} · ${new Date(h.ts).toISOString().slice(0, 10)}${tags}${rootLine(h)}${personalLine(h)}${staleLine(h)}${doc}${code}\n\n${h.body}`
 }
 
-/** Ricordo personale (B4): solo sul PC dell'utente. */
+/** Ricordo personale (B4): solo sul PC dell'utente. / EN: Personal memory (B4): only on the user's PC. */
 function personalLine (h: RecallHit): string {
   return h.personal ? '\nPERSONALE · solo sul PC dell\'utente, il team non lo vede' : ''
 }
 
-/** Il codice citato è cambiato dopo il ricordo (B4): l'agente deve verificare. */
+/** Il codice citato è cambiato dopo il ricordo (B4): l'agente deve verificare. / EN: The cited code changed after the memory (B4): the agent must verify. */
 function staleLine (h: RecallHit): string {
   if (!h.stale || (!h.stale.commits && !h.stale.missing)) return ''
   const parts = [h.stale.commits ? `${h.stale.commits} commit sui file citati` : '', h.stale.missing ? `${h.stale.missing} file citati non più presenti` : ''].filter(Boolean)
   return `\n⚠ CODICE CAMBIATO dopo questo ricordo (${parts.join(', ')}): verifica sul codice attuale`
 }
 
-/** Lunghezza massima della risposta di `architecture` (le Radici sono testi lunghi). */
+/** Lunghezza massima della risposta di `architecture` (le Radici sono testi lunghi). / EN: Maximum length of the `architecture` response (Roots are long texts). */
 const ARCHITECTURE_MAX_CHARS = 30_000
 
-/** Etichette italiane delle categorie delle Radici. */
+/** Etichette italiane delle categorie delle Radici. / EN: Italian labels of the Root categories. */
 const ROOT_LABEL: Record<string, string> = {
   architecture: 'Architettura', network: 'Rete e infrastruttura', interface: 'Interfacce e contratti',
   domain: 'Dominio', practice: 'Best practice', policy: 'Policy', other: 'Altro'
 }
 
-/** Riga di stato di una Radice, aggiunta all'intestazione del ricordo. */
+/** Riga di stato di una Radice, aggiunta all'intestazione del ricordo. / EN: Status line of a Root, added to the memory header. */
 function rootLine (h: RecallHit): string {
   if (!h.root) return ''
   return `\nRADICE · ${ROOT_LABEL[h.root.category] ?? h.root.category}${h.root.status === 'review' ? ' · ⚠ DA RIVEDERE: potrebbe non essere aggiornata' : ''}`
 }
 
-/** Una Radice completa (tool `architecture`), con le eventuali segnalazioni di revisione. */
+/** Una Radice completa (tool `architecture`), con le eventuali segnalazioni di revisione. / EN: A full Root (`architecture` tool), with any review flags. */
 function formatRoot (r: RootView): string {
   const flags = r.status === 'review' && r.flags.length
     ? `\nSegnalazioni: ${r.flags.map((f) => f.reason + (f.refs.length ? ` (${f.refs.slice(0, 5).join(', ')})` : '')).join(' · ')}`
@@ -87,14 +102,18 @@ function formatRoot (r: RootView): string {
   return formatHit(r.memory, true) + flags
 }
 
-/** Risposta testuale di un tool. */
+/** Risposta testuale di un tool. / EN: Text response of a tool. */
 const text = (t: string) => ({ content: [{ type: 'text' as const, text: t }] })
-/** Risposta d'errore: l'agente la vede come fallimento del tool e può correggersi. */
+/** Risposta d'errore: l'agente la vede come fallimento del tool e può correggersi. / EN: Error response: the agent sees it as a tool failure and can correct itself. */
 const error = (t: string) => ({ content: [{ type: 'text' as const, text: t }], isError: true })
 
 /**
  * Crea un server MCP collegato a un nodo.
+ *
+ * EN: Creates an MCP server bound to a node.
+ *
  * @param node il nodo locale: tutte le operazioni passano dai suoi metodi pubblici
+ *             EN: the local node: every operation goes through its public methods
  */
 export function createMcpServer (node: MicelioNode): McpServer {
   const server = new McpServer({ name: 'micelio', version: VERSION }, { instructions: INSTRUCTIONS })
@@ -113,8 +132,11 @@ export function createMcpServer (node: MicelioNode): McpServer {
     const hits = await node.recallHybrid(query, limit ?? 5)
     // Radici pertinenti non già fra i risultati: il sapere fondante arriva anche se la ricerca
     // non lo mette in cima (è il motivo per cui le Radici esistono).
+    // EN: Relevant Roots not already among the results: foundational knowledge comes through even
+    //     if the search doesn't rank it at the top (that's why Roots exist).
     const roots = await node.relatedRoots(query, hits.map((h) => h.id))
     // B11: ogni richiesta di un agente finisce nel registro dell'efficacia (anche senza risultati)
+    // EN: B11: every agent request goes into the effectiveness log (even with no results)
     node.consulted('recall', query, [...hits, ...roots].map((h) => h.id), Date.now() - t0)
     if (hits.length === 0 && roots.length === 0) return text(`Nessun ricordo del team trovato per "${query}".`)
     const main = hits.length ? hits.map((h) => formatHit(h)).join('\n\n---\n\n') : `Nessun ricordo specifico trovato per "${query}".`
@@ -124,6 +146,7 @@ export function createMcpServer (node: MicelioNode): McpServer {
 
   // ── architecture ────────────────────────────────────────────────────────────────────
   // Le Radici di un progetto: da leggere prima di toccare l'architettura (Fase 8).
+  // EN: A project's Roots: to be read before touching the architecture (Phase 8).
   server.registerTool('architecture', {
     title: 'Radici del team (architettura e regole fondanti)',
     description: 'Restituisce le RADICI: il sapere fondante del team (paradigmi architetturali, mappe di rete, interfacce e contratti, ' +
@@ -142,15 +165,19 @@ export function createMcpServer (node: MicelioNode): McpServer {
     let roots = await node.roots({ project, category, files, query })
     // Un progetto senza Radici proprie: valgono comunque quelle generali del team (best practice,
     // policy…), cioè quelle che non appartengono a nessun progetto.
+    // EN: A project without its own Roots: the team's general ones still apply (best practices,
+    //     policies…), i.e. those that belong to no project.
     let note = ''
     if (project && roots.length === 0) {
       roots = (await node.roots({ category, query })).filter((r) => !r.memory.source?.code?.project)
       note = `Nessuna Radice specifica per il progetto "${project}": ecco quelle generali del team.\n\n`
     }
     // B11: registro dell'efficacia (la "domanda" è il filtro usato)
+    // EN: B11: effectiveness log (the "question" is the filter used)
     node.consulted('architecture', [project, category, query, ...(files ?? [])].filter(Boolean).join(' · ') || null, roots.map((r) => r.memory.id), Date.now() - t0, { project: project ?? null })
     if (roots.length === 0) return text('Il team non ha ancora Radici' + (category ? ` di categoria ${category}` : '') + '.')
     // Raggruppate per categoria; limite di lunghezza per non saturare il contesto dell'agente
+    // EN: Grouped by category; length limit so the agent's context isn't flooded
     const out: string[] = []
     let size = 0
     for (const r of roots) {
@@ -165,6 +192,8 @@ export function createMcpServer (node: MicelioNode): McpServer {
   // ── mark_root ───────────────────────────────────────────────────────────────────────
   // Qualunque membro può promuovere una Radice (decisione dell'utente); l'agente lo fa solo su
   // richiesta esplicita, perché una Radice vale per tutto il team e non viene mai dimenticata.
+  // EN: Any member can promote a Root (user decision); the agent does it only on explicit
+  //     request, because a Root applies to the whole team and is never forgotten.
   server.registerTool('mark_root', {
     title: 'Rendi un ricordo una Radice',
     description: 'Promuove un ricordo del team a RADICE (sapere fondante che non viene mai dimenticato: architettura, rete, interfacce, ' +
@@ -185,6 +214,8 @@ export function createMcpServer (node: MicelioNode): McpServer {
   // ── remember ────────────────────────────────────────────────────────────────────────
   // Passa da filtro e classificazione (D6). La risposta riporta SEMPRE il testo salvato,
   // così l'utente vede cosa è stato scritto a suo nome (problema emerso in Fase 1).
+  // EN: Goes through filter and classification (D6). The response ALWAYS includes the saved text,
+  //     so the user sees what was written on their behalf (issue found in Phase 1).
   server.registerTool('remember', {
     title: 'Salva nella memoria del team',
     description: 'Propone un ricordo atomico per la memoria condivisa del team. Prima di arrivare ai colleghi passa da un filtro privacy: ' +
@@ -208,6 +239,7 @@ export function createMcpServer (node: MicelioNode): McpServer {
       switch (r.outcome) {
         case 'team': {
           // B4: il nuovo ricordo ha aggiornato uno esistente: si mostra la versione salvata davvero
+          // EN: B4: the new memory updated an existing one: show the version actually saved
           if (r.updated) {
             const saved = node.detail(r.id)
             return text(`Aggiornato un ricordo esistente del team (id:${r.updated.slice(0, 12)} → id:${r.id.slice(0, 12)}): invece di un doppione c'è ora una versione unica. Testo salvato:\n\n### ${saved?.title ?? r.memory.title}\n${saved?.body ?? r.memory.body}`)
@@ -226,6 +258,7 @@ export function createMcpServer (node: MicelioNode): McpServer {
 
   // ── vote ────────────────────────────────────────────────────────────────────────────
   // Segnale di utilità (Fase 5): i ricordi votati utili salgono nelle ricerche di tutti.
+  // EN: Usefulness signal (Phase 5): memories voted useful rank higher in everyone's searches.
   server.registerTool('vote', {
     title: 'Vota un ricordo',
     description: 'Segnala se un ricordo del team è stato utile (useful: true) o fuorviante/obsoleto (useful: false). ' +
@@ -257,6 +290,9 @@ export function createMcpServer (node: MicelioNode): McpServer {
   // Documento originale su richiesta (§12-bis): il file arriva dal nodo del collega che lo
   // possiede (che deve essere online) e viene salvato in locale. Restituiamo il percorso (Claude
   // Code può aprirlo direttamente) e il testo estratto, per gli agenti che non leggono file.
+  // EN: Original document on demand (§12-bis): the file comes from the node of the colleague who
+  //     owns it (who must be online) and is saved locally. We return the path (Claude Code can
+  //     open it directly) and the extracted text, for agents that don't read files.
   server.registerTool('fetch_source', {
     title: 'Scarica il documento originale',
     description: 'Per un ricordo distillato da un documento, scarica il documento ORIGINALE completo dal collega che lo possiede ' +
@@ -279,6 +315,7 @@ export function createMcpServer (node: MicelioNode): McpServer {
 
   // ── inbox_review ────────────────────────────────────────────────────────────────────
   // L'inbox contiene SOLO i casi dubbi (D9). È locale: nessun collega la vede.
+  // EN: The Inbox holds ONLY the doubtful cases (D9). It is local: no colleague sees it.
   server.registerTool('inbox_review', {
     title: 'Ricordi in attesa di verifica',
     description: 'Elenca i ricordi trattenuti nell\'inbox locale dell\'utente perché il filtro privacy non ha potuto decidere da solo. Mostrali all\'utente e chiedi cosa farne.',
@@ -294,6 +331,7 @@ export function createMcpServer (node: MicelioNode): McpServer {
 
   // ── inbox_decide ────────────────────────────────────────────────────────────────────
   // Va usato SOLO dopo una decisione esplicita dell'utente: approvare significa pubblicare a tutti.
+  // EN: To be used ONLY after an explicit user decision: approving means publishing to everyone.
   server.registerTool('inbox_decide', {
     title: 'Decidi su un ricordo in attesa',
     description: 'Approva (pubblica nel team) o rifiuta un elemento dell\'inbox. Usalo SOLO dopo che l\'utente ha deciso esplicitamente. ' +

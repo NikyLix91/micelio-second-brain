@@ -1,5 +1,7 @@
 // B10: chat sulla memoria con un nodo vero (LLM finto): risposta con riferimenti, mappa, domande che
 // seguono, "non lo so" senza consumare il budget, salvataggio come ricordo, espandi, cronologia, scala.
+// EN: B10: chat over the memory with a real node (fake LLM): answer with references, map, follow-up
+//     questions, "I don't know" without using the budget, save as memory, expand, history, scale.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { memoryId } from '../../src/core/events'
 import { nodePaths } from '../../src/core/paths'
@@ -37,6 +39,7 @@ describe('chat sulla memoria', () => {
     expect(r.answer).toMatch(/\[1\]/)
     expect(r.cited).toEqual([r.refs[0].id])
     // i temi prendono il nome dato dall'LLM
+    // EN: themes take the name given by the LLM
     expect(r.map.themes.every((t) => t.label.startsWith('Tema '))).toBe(true)
 
     const r2 = await node.askChat('e dopo quanti tentativi si scarta?', r.chatId)
@@ -45,6 +48,7 @@ describe('chat sulla memoria', () => {
     expect(node.chats()[0]).toMatchObject({ id: r.chatId, title: 'come gestiamo i retry su kafka?', questions: 2 })
     expect(node.chatMessages(r.chatId).map((m) => m.role)).toEqual(['user', 'assistant', 'user', 'assistant'])
     // la chat finisce fra le consultazioni (pagina Efficacia)
+    // EN: the chat ends up among the agent queries (Effectiveness page)
     expect(node.efficacyReport(1).summary.byChannel.chat).toBe(2)
   })
 
@@ -94,7 +98,7 @@ describe('chat sulla memoria', () => {
     const file = encodeBackup(content, { team: 'Grande', createdAt: Date.now(), createdBy: 'test', counts: countsOf(content) }, 'una-password-lunga')
     const { id } = await host.restoreAsNewTeam(file, 'una-password-lunga', { network: 'local' })
     const big = host.node(id)
-    big.graph() // la costellazione si calcola una volta (in uso reale è già pronta, in sottofondo)
+    big.graph() // la costellazione si calcola una volta (in uso reale è già pronta, in sottofondo) / EN: the constellation is computed once (in real use it is already ready, in the background)
     let t0 = performance.now()
     await big.chatContext('retry e timeout su kafka')
     const first = performance.now() - t0

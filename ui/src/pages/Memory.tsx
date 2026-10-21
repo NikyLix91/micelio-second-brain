@@ -1,12 +1,21 @@
 /**
  * @file Memoria: ricerca nel sapere del team e dettaglio dei ricordi (attività 3.5).
  *
+ * EN: Memory: search in the team's knowledge and memory detail (task 3.5).
+ *
  * Senza ricerca mostra gli ultimi ricordi arrivati. La ricerca parte mentre si scrive, con un
  * piccolo ritardo (debounce) per non interrogare il daemon a ogni tasto.
  * C'è anche un modulo per proporre un nuovo ricordo: passa dal filtro privacy come da CLI/MCP.
  *
+ * EN: Without a search it shows the latest memories. The search starts while typing, with a
+ * small delay (debounce) so the daemon is not queried on every keystroke.
+ * There is also a form to propose a new memory: it goes through the privacy filter as from CLI/MCP.
+ *
  * B4: filtri «Personali» (ricordi che restano su questo PC) e «Codice cambiato» (il codice citato è
  * cambiato dopo il ricordo); il modulo può salvare un ricordo solo per sé.
+ *
+ * EN: B4: «Personal» filters (memories that stay on this PC) and «Code changed» (the cited code
+ * changed after the memory); the form can save a memory just for yourself.
  */
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
@@ -99,7 +108,7 @@ const S = defineStrings({
   }
 })
 
-/** Restituisce `value` solo dopo che è rimasto fermo per `ms` millisecondi. */
+/** Restituisce `value` solo dopo che è rimasto fermo per `ms` millisecondi. / EN: Returns `value` only after it has stayed unchanged for `ms` milliseconds. */
 function useDebounced<T> (value: T, ms = 250): T {
   const [v, setV] = useState(value)
   useEffect(() => {
@@ -116,6 +125,8 @@ export function Memory () {
   const [composing, setComposing] = useState(false)
   // `#/memoria?id=<id>` apre direttamente quel ricordo (anche con l'id abbreviato): link da altre
   // pagine e da fuori. Il dettaglio carica il ricordo completo da solo (MemoryPanel).
+  // EN: `#/memoria?id=<id>` opens that memory directly (even with the short id): links from other
+  //     pages and from outside. The detail loads the full memory on its own (MemoryPanel).
   const [params] = useSearchParams()
   const linked = params.get('id')
   useEffect(() => {
@@ -125,6 +136,7 @@ export function Memory () {
   const q = useDebounced(query.trim())
 
   // Una sola query con chiave ['memories', …]: gli eventi "memories" invalidano tutte le varianti.
+  // EN: A single query with key ['memories', …]: "memories" events invalidate all variants.
   const list = useQuery({
     queryKey: ['memories', filter, q],
     queryFn: async () => {
@@ -184,7 +196,7 @@ export function Memory () {
   )
 }
 
-/** Modulo per proporre un ricordo. Mostra l'esito: pubblicato, in inbox o privato (D6). */
+/** Modulo per proporre un ricordo. Mostra l'esito: pubblicato, in inbox o privato (D6). / EN: Form to propose a memory. Shows the outcome: published, in the Inbox or private (D6). */
 function Compose ({ onDone }: { onDone: () => void }) {
   const s = useStrings(S)
   const c = s.compose

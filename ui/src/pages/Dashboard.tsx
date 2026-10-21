@@ -3,6 +3,10 @@
  * Nodo e team, rete, sapere, LLM e budget, coda di ingestione, inbox, cartelle abilitate,
  * spazio occupato (totale e quota di ciascun membro).
  * Tutti i dati si aggiornano da soli grazie agli eventi SSE (api/live.ts).
+ *
+ * EN: Node status: everything at a glance (task 3.4). Node and team, network, knowledge, LLM and budget,
+ * ingestion queue, Inbox, enabled folders, disk space (total and each member's share). All the data
+ * updates by itself thanks to the SSE events (api/live.ts).
  */
 import { useQuery } from '@tanstack/react-query'
 import { Fragment, useMemo } from 'react'
@@ -158,7 +162,7 @@ export function Dashboard () {
               <span className='muted'>{t.peers}</span>
             </div>
             <p className='muted small' style={{ marginBottom: 0 }}>{s.peers === 0 ? t.noPeers : t.syncing}</p>
-            {/* B8: relay del server del team (solo DHT privata) */}
+            {/* B8: relay del server del team (solo DHT privata) / EN: B8: relay of the team server (private DHT only) */}
             {s.relay && s.relay.successes > 0 && <p className='muted small' style={{ marginBottom: 0 }}>{t.relayUsed(s.relay.successes)} <HelpButton topic='p2p#relay' /></p>}
             {s.relay?.reachable === false && <p className='small warn' style={{ marginBottom: 0 }}>{t.relayMissing} <HelpButton topic='p2p#relay' /></p>}
             <p style={{ marginBottom: 0 }}><Link to='/team'>{t.members(s.members)}</Link></p>
@@ -206,7 +210,7 @@ export function Dashboard () {
             {(i?.inbox ?? 0) > 0 && <p style={{ marginBottom: 0 }}><Link to='/inbox'>{t.decide}</Link></p>}
           </Card>
 
-          {/* Occupa tutta la riga: la ripartizione per membro ha bisogno di spazio */}
+          {/* Occupa tutta la riga: la ripartizione per membro ha bisogno di spazio / EN: Takes the whole row: the per-member breakdown needs room */}
           <div style={{ gridColumn: '1 / -1' }}><StorageCard /></div>
         </div>
       )}
@@ -214,19 +218,24 @@ export function Dashboard () {
   )
 }
 
-/** Componenti su disco, nell'ordine in cui si mostrano (le etichette sono in S.parts). */
+/** Componenti su disco, nell'ordine in cui si mostrano (le etichette sono in S.parts). / EN: Disk components, in display order (the labels are in S.parts). */
 const DISK_PARTS: (keyof StorageReport['disk'])[] = ['log', 'index', 'private', 'cache', 'export']
 
 /**
  * Spazio occupato dal sapere: totale su questo disco, ripartizione per componente e, soprattutto,
  * quanto del log del team viene da ciascun membro. Ogni nodo replica tutto, quindi la
  * ripartizione per membro è la stessa su ogni PC del team.
+ *
+ * EN: Space taken by the knowledge: total on this disk, breakdown by component and, above all, how much of
+ * the team log comes from each member. Every node replicates everything, so the per-member breakdown is
+ * the same on every PC of the team.
  */
 export function StorageCard () {
   const t = useStrings(S)
   const storage = useQuery({ queryKey: ['storage'], queryFn: api.storage })
   const r = storage.data
   // Stessi colori di Nucleo e Mappa: lì il registro contiene gli autori di almeno un ricordo.
+  // EN: Same colors as Nucleus and Map: there the registry holds the authors of at least one memory.
   useMemo(() => { if (r) registerAuthors(r.members.filter((m) => m.memories > 0).map((m) => m.key)) }, [r])
   if (!r) return <Card help='status#storage' title={t.storage}><ErrorBox error={storage.error} /></Card>
   const shown = r.members.filter((m) => m.bytes > 0)
@@ -243,7 +252,7 @@ export function StorageCard () {
         ? <p className='muted small'>{t.noData}</p>
         : (
           <>
-            {/* Barra a segmenti: larghezza = quota del log del team */}
+            {/* Barra a segmenti: larghezza = quota del log del team / EN: Segmented bar: width = share of the team log */}
             <div className='storage-bar' role='img' aria-label={t.barLabel}>
               {shown.map((m) => (
                 <div key={m.key} title={`${m.name}: ${percent(m.share)}`} style={{ width: `${m.share * 100}%`, background: authorColor(m.key) }} />

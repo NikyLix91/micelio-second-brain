@@ -1,4 +1,4 @@
-/** Dreaming (Fase 6): selezione dei duplicati, decadimento, turnazione, regole in apply. */
+/** Dreaming (Fase 6): selezione dei duplicati, decadimento, turnazione, regole in apply. / EN: Dreaming (Phase 6): duplicate selection, decay, rotation, rules in apply. */
 import { describe, expect, it } from 'vitest'
 import { envelope, type EventPayload } from '../../src/core/events'
 import type { RecallHit } from '../../src/core/model'
@@ -15,7 +15,7 @@ describe('selezione', () => {
     const vectors = new Map([['a', vec(1, 0, 0)], ['b', vec(0.99, 0.1, 0)], ['c', vec(0.97, 0.2, 0)], ['d', vec(0, 1, 0)], ['p', vec(1, 0, 0)]])
     const groups = duplicateGroups([hit('a'), hit('b'), hit('c'), hit('d'), hit('p', { pinned: true })], vectors, 0.98)
     expect(groups).toHaveLength(1)
-    expect(groups[0].sort()).toEqual(['a', 'b', 'c']) // a~b, b~c → stesso gruppo; d diverso; p fissato
+    expect(groups[0].sort()).toEqual(['a', 'b', 'c']) // a~b, b~c → stesso gruppo; d diverso; p fissato / EN: a~b, b~c → same group; d different; p pinned
   })
 
   it('decadono solo i ricordi vecchi, poco attivi e non fissati', () => {
@@ -33,7 +33,7 @@ describe('selezione', () => {
     const m = ['a'.repeat(64), 'b'.repeat(64), 'c'.repeat(64)]
     expect(dreamOrder('2026-10-17', m)).toEqual(dreamOrder('2026-10-17', [...m].reverse()))
     const days = new Set(['2026-10-17', '2026-10-18', '2026-10-19', '2026-10-20'].map((d) => dreamOrder(d, m)[0]))
-    expect(days.size).toBeGreaterThan(1) // non sogna sempre lo stesso nodo
+    expect(days.size).toBeGreaterThan(1) // non sogna sempre lo stesso nodo / EN: not always the same node dreams
   })
 })
 
@@ -70,7 +70,7 @@ describe('apply: eventi del dreaming', () => {
       node(B, { type: 'memory.supersede', old: [M2, M3], memory: { title: 'Altra', body: 'altro' } as any, reason: 'concorrente' })
     ], view, host)
     expect(view.data.get(KEYS.memory(M1))).toMatchObject({ status: 'superseded', statusReason: 'duplicati' })
-    expect(view.data.get(KEYS.memory(M3)).status).toBe('active') // la seconda fusione non è passata
+    expect(view.data.get(KEYS.memory(M3)).status).toBe('active') // la seconda fusione non è passata / EN: the second merge did not go through
     expect([...view.data.values()].filter((v) => v?.title === 'Altra')).toHaveLength(0)
   })
 
@@ -91,7 +91,7 @@ describe('apply: eventi del dreaming', () => {
   it('redazione: solo un admin; il contenuto sparisce e non si ripristina', async () => {
     const view = await setup()
     await applyNodes([node(B, { type: 'memory.redact', id: M1, reason: 'tentativo da membro' })], view, host)
-    expect(view.data.get(KEYS.memory(M1)).status).toBe('active') // B non è admin
+    expect(view.data.get(KEYS.memory(M1)).status).toBe('active') // B non è admin / EN: B is not an admin
     await applyNodes([node(A, { type: 'memory.redact', id: M1, reason: 'dato sensibile' })], view, host)
     expect(view.data.get(KEYS.memory(M1))).toMatchObject({ status: 'redacted', title: '[contenuto rimosso]', body: '' })
     await applyNodes([node(A, { type: 'memory.restore', id: M1 })], view, host)

@@ -1,4 +1,5 @@
 // Adapter per Claude Code CLI in modalità headless (verificato nello spike B, DESIGN §7).
+// EN: Adapter for the Claude Code CLI in headless mode (verified in spike B, DESIGN §7).
 import { spawn } from 'node:child_process'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -9,6 +10,7 @@ import { type LlmAdapter, type LlmTask, LlmUnavailableError } from './types'
 export class ClaudeCliAdapter implements LlmAdapter {
   readonly name = 'claude'
   // Cartella vuota e isolata: l'agente non deve vedere né toccare nessun progetto.
+  // EN: Empty, isolated folder: the agent must not see or touch any project.
   private readonly sandbox = mkdtempSync(path.join(tmpdir(), 'micelio-llm-'))
   private availability: Promise<boolean> | null = null
 
@@ -29,16 +31,18 @@ export class ClaudeCliAdapter implements LlmAdapter {
       '-p',
       '--output-format', 'json',
       // Il validatore del CLI non conosce il draft 2020-12 (default di zod 4): draft-07.
+      // EN: The CLI validator doesn't know draft 2020-12 (zod 4's default): use draft-07.
       '--json-schema', JSON.stringify(z.toJSONSchema(task.schema, { target: 'draft-7' })),
       '--model', task.model,
       '--system-prompt', task.system,
-      '--tools', '', // nessuno strumento: deve solo rispondere
-      '--strict-mcp-config', // nessun server MCP, incluso Micelio stesso
-      '--setting-sources', '', // niente hook/impostazioni utente (anti-loop)
-      '--no-session-persistence' // nessuna trascrizione: non verrà a sua volta distillata
+      '--tools', '', // nessuno strumento: deve solo rispondere / EN: no tools: it only has to answer
+      '--strict-mcp-config', // nessun server MCP, incluso Micelio stesso / EN: no MCP servers, Micelio itself included
+      '--setting-sources', '', // niente hook/impostazioni utente (anti-loop) / EN: no user hooks/settings (anti-loop)
+      '--no-session-persistence' // nessuna trascrizione: non verrà a sua volta distillata / EN: no transcript, so it won't be distilled in turn
     ]
     const stdout = await new Promise<string>((resolve, reject) => {
       // Niente shell: su Windows shell:true concatena gli argomenti senza escape (spike B).
+      // EN: No shell: on Windows shell:true joins the arguments without escaping (spike B).
       const child = spawn(this.command, args, {
         cwd: this.sandbox,
         env: { ...process.env, MICELIO_INTERNAL: '1' },

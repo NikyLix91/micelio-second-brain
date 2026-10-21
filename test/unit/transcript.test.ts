@@ -1,4 +1,4 @@
-/** Lettura delle trascrizioni di Claude Code (src/ingest/transcript.ts). */
+/** Lettura delle trascrizioni di Claude Code (src/ingest/transcript.ts). / EN: Reading Claude Code transcripts (src/ingest/transcript.ts). */
 import { describe, expect, it } from 'vitest'
 import { extractTranscript } from '../../src/ingest/transcript'
 import { writeTranscript } from '../fixtures/transcript'

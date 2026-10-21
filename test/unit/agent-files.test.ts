@@ -4,6 +4,12 @@
  *   date (si riscrive solo se cambia), le Radici sono raggruppate e compatte;
  * - l'import legge ADR (una decisione per file), CLAUDE.md a sezioni (saltando il blocco di
  *   Micelio) e note Markdown.
+ *
+ * EN: Agent files from the Roots and import of already written knowledge (B4):
+ * - the Micelio block is inserted between the markers without touching the rest of the file, it
+ *   has no dates (rewritten only when it changes), the Roots are grouped and compact;
+ * - the import reads ADRs (one decision per file), CLAUDE.md by sections (skipping the Micelio
+ *   block) and Markdown notes.
  */
 import fs from 'node:fs'
 import path from 'node:path'

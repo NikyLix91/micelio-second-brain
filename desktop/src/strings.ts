@@ -2,16 +2,23 @@
  * @file Testi dell'app desktop (processo principale): menu dell'area di notifica, notifiche,
  * finestre di dialogo. Nelle due lingue dell'interfaccia (italiano, inglese).
  *
+ * EN: Texts for the desktop app (main process): tray menu, notifications,
+ * dialogs. In both interface languages (Italian, English).
+ *
  * LINGUA. All'avvio si usa quella del sistema (`app.getLocale()`); poi la decide l'utente nella UI:
  * l'interfaccia la comunica al processo principale tramite il preload (`window.micelio.setLang`)
  * quando parte e a ogni cambio, e menu e notifiche si aggiornano subito.
+ *
+ * EN: LANGUAGE. At startup we use the system one (`app.getLocale()`); then the user picks it in the UI:
+ * the interface passes it to the main process through the preload (`window.micelio.setLang`)
+ * when it starts and on every change, and the menu and notifications update right away.
  */
 export type Lang = 'it' | 'en'
 
 let current: Lang = 'it'
 export const desktopLang = (): Lang => current
 export function setDesktopLang (l: Lang): void { current = l }
-/** Lingua iniziale dal locale del sistema (es. "it-IT" → it). */
+/** Lingua iniziale dal locale del sistema (es. "it-IT" → it). / EN: Initial language from the system locale (e.g. "it-IT" → it). */
 export const langFromLocale = (locale: string): Lang => (locale.toLowerCase().startsWith('it') ? 'it' : 'en')
 
 const STRINGS = {
@@ -55,5 +62,5 @@ const STRINGS = {
   }
 }
 
-/** I testi nella lingua corrente. */
+/** I testi nella lingua corrente. / EN: The texts in the current language. */
 export const t = (): typeof STRINGS.it => STRINGS[current]

@@ -1,11 +1,19 @@
 /**
  * @file Nucleo: la home di Micelio. Il sapere del team come un ologramma 3D navigabile.
  *
+ * EN: Nucleus: the Micelio home. The team's knowledge as a navigable 3D hologram.
+ *
  * Cosa si vede:
  * - una sfera di ricordi luminosi (ambra/oro), uniti da "sinapsi" (i collegamenti fra ricordi
  *   correlati) percorse da impulsi di luce;
  * - anelli orbitali, meridiani e pulviscolo olografico che ruotano lentamente;
  * - un bagliore diffuso (UnrealBloomPass) che dà l'effetto ologramma.
+ *
+ * EN: What you see:
+ * - a sphere of glowing memories (amber/gold), joined by "synapses" (the links between related
+ *   memories) travelled by pulses of light;
+ * - orbital rings, meridians and holographic dust slowly rotating;
+ * - a diffuse glow (UnrealBloomPass) that gives the hologram effect.
  *
  * Come si naviga:
  * - LIBERO: trascina per ruotare, rotella per lo zoom, clic su un ricordo per volarci e leggerlo.
@@ -14,20 +22,42 @@
  *   una didascalia; si può andare avanti, indietro o fermarsi;
  * - RICERCA: accende i ricordi pertinenti, spegne gli altri e vola sul loro baricentro.
  *
+ * EN: How to navigate:
+ * - FREE: drag to rotate, wheel to zoom, click a memory to fly to it and read it.
+ *   If nobody touches anything for 20 seconds the sphere starts rotating on its own again;
+ * - GUIDED: "Avvia esplorazione" flies the camera from one topic to the next (tour.ts), with
+ *   a caption; you can go forward, back or stop;
+ * - SEARCH: lights up the relevant memories, dims the others and flies to their centroid.
+ *
  * Colori: "olografico" (ambra, intensità per attivazione), per autore o per tipo. Nelle modalità
  * a colori la LEGENDA è cliccabile: un clic isola un autore (o un tipo), un secondo clic mostra di
  * nuovo tutti. Il filtro si combina con la ricerca. `#/?colori=autore|tipo` apre già in quella modalità.
  *
+ * EN: Colors: "holographic" (amber, intensity by activation), by author or by kind. In the color
+ * modes the LEGEND is clickable: one click isolates an author (or a kind), a second click shows
+ * everyone again. The filter combines with search. `#/?colori=autore|tipo` opens directly in that mode.
+ *
  * RADICI (Fase 8): stanno al centro della sfera, con un anello luminoso attorno alla stella (rosso
  * se "da rivedere"); in modalità olografica la stella è ciano. "◆ Radici" isola solo le Radici.
+ *
+ * EN: ROOTS (Phase 8): they sit at the center of the sphere, with a glowing ring around the star
+ * (red if "to review"); in holographic mode the star is cyan. "◆ Radici" isolates only the Roots.
  *
  * GALASSIE (team grandi, oltre GALAXY_THRESHOLD ricordi; vedi ../galaxies.ts): si parte dalla vista
  * d'insieme, un ammasso luminoso per galassia con nome e numero di ricordi; un clic ci entra, "◀
  * tutte le galassie" torna indietro. Il tour vola fra le galassie; ricerca e filtri con pochi
  * risultati mostrano solo quelli, con tanti accendono le galassie che li contengono.
  *
+ * EN: GALAXIES (large teams, over GALAXY_THRESHOLD memories; see ../galaxies.ts): you start from
+ * the overview, one glowing cluster per galaxy with its name and number of memories; a click
+ * enters it, "◀ tutte le galassie" goes back. The tour flies between galaxies; search and filters
+ * with few results show only those, with many they light up the galaxies that contain them.
+ *
  * Questa pagina è caricata in modo pigro (React.lazy in App.tsx): three.js pesa, e le altre
  * schermate non devono pagarne il costo.
+ *
+ * EN: This page is lazy-loaded (React.lazy in App.tsx): three.js is heavy, and the other
+ * screens must not pay its cost.
  */
 import { useQuery } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -109,11 +139,11 @@ const S = defineStrings({
   }
 })
 
-/** Distanza della camera dal centro durante il tour e dopo una ricerca. */
+/** Distanza della camera dal centro durante il tour e dopo una ricerca. / EN: Camera distance from the center during the tour and after a search. */
 const TOUR_DISTANCE = SPHERE_RADIUS * 2.1
-/** Durata di ogni tappa del tour automatico. */
+/** Durata di ogni tappa del tour automatico. / EN: Duration of each stop of the automatic tour. */
 const STOP_MS = 7000
-/** Dopo quanto tempo di inattività la sfera ricomincia a ruotare da sola. */
+/** Dopo quanto tempo di inattività la sfera ricomincia a ruotare da sola. / EN: Idle time after which the sphere starts rotating on its own again. */
 const IDLE_MS = 20_000
 
 export default function Nucleus () {
@@ -127,31 +157,36 @@ export default function Nucleus () {
   const [params] = useSearchParams()
   const initialMode: ColorMode = params.get('colori') === 'autore' ? 'author' : params.get('colori') === 'tipo' ? 'kind' : 'holo'
   const [mode, setMode] = useState<ColorMode>(initialMode)
-  /** Voce della legenda isolata (chiave dell'autore o tipo), null = nessun filtro. */
+  /** Voce della legenda isolata (chiave dell'autore o tipo), null = nessun filtro. / EN: Isolated legend entry (author or kind key), null = no filter. */
   const [focus, setFocus] = useState<string | null>(null)
-  /** Riferimento al bloom, per renderlo più tenue nelle modalità a colori. */
+  /** Riferimento al bloom, per renderlo più tenue nelle modalità a colori. / EN: Bloom reference, to make it softer in the color modes. */
   const bloomRef = useRef<UnrealBloomPass | null>(null)
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<GraphNode | null>(null)
   const [tourIndex, setTourIndex] = useState<number | null>(null)
   const [paused, setPaused] = useState(false)
-  /** "◆ Radici": mostra accese solo le Radici. */
+  /** "◆ Radici": mostra accese solo le Radici. / EN: "◆ Radici": only the Roots are lit. */
   const [rootsOnly, setRootsOnly] = useState(false)
   /**
    * Galassia in cui si è entrati, ricordata tramite un suo ricordo ("ancora"): gli id delle galassie
    * cambiano quando il daemon le ricalcola dopo una scrittura, il ricordo no.
+   *
+   * EN: The galaxy we entered, remembered through one of its memories (the "anchor"): galaxy ids
+   * change when the daemon recomputes them after a write, the memory does not.
    */
   const [anchor, setAnchor] = useState<string | null>(null)
   const big = usesGalaxies(graph.data)
   const galaxy = useMemo(() => (big && anchor ? graph.data!.nodes.find((n) => n.id === anchor)?.galaxy ?? null : null), [big, anchor, graph.data])
 
   // Tappe del tour: nella vista d'insieme le galassie; dentro una galassia i suoi argomenti
+  // EN: Tour stops: in the overview the galaxies; inside a galaxy its topics
   const stops = useMemo<(TourStop & { galaxy?: number })[]>(() => {
     const nodes = graph.data?.nodes ?? []
     if (big && galaxy === null) return galaxyStops(graph.data!)
     return computeTourStops(galaxy !== null ? nodes.filter((n) => n.galaxy === galaxy) : nodes)
   }, [graph.data, big, galaxy])
   // `#/?tour=1` avvia subito l'esplorazione guidata (usato anche per catturare le schermate).
+  // EN: `#/?tour=1` starts the guided exploration right away (also used to capture screenshots).
   useEffect(() => {
     if (params.get('tour') !== '1' || stops.length === 0) return
     const t = setTimeout(() => setTourIndex((i) => i ?? 0), 2500)
@@ -163,15 +198,20 @@ export default function Nucleus () {
   const search = useQuery({ queryKey: ['memories', 'nucleus-search', q], queryFn: () => api.search(q, 200), enabled: q.length >= 2 })
 
   // Colori degli autori: palette distinta, assegnata in ordine stabile a chi compare nel grafo.
+  // EN: Author colors: a distinct palette, assigned in stable order to whoever appears in the graph.
   useMemo(() => registerAuthors((graph.data?.nodes ?? []).map((n) => n.author)), [graph.data])
 
   /**
    * Ricordi "accesi": quelli della tappa del tour o della ricerca, intersecati con la voce della
    * legenda isolata (autore o tipo). null = tutti accesi.
+   *
+   * EN: "Lit" memories: those of the tour stop or of the search, intersected with the isolated
+   * legend entry (author or kind). null = all lit.
    */
   const lit = useMemo<Set<string> | null>(() => {
     let set: Set<string> | null = null
     // La tappa di una galassia accende la galassia (vedi buildView), non i singoli ricordi
+    // EN: A galaxy stop lights up the galaxy (see buildView), not the single memories
     if (stop && stop.galaxy === undefined) set = new Set(stop.ids)
     else if (q.length >= 2 && search.data) set = new Set(search.data.map((h) => h.id))
     if (focus && mode !== 'holo') {
@@ -186,19 +226,22 @@ export default function Nucleus () {
   }, [stop, q, search.data, focus, mode, graph.data, rootsOnly])
 
   // ── Cosa disegnare: tutto, galassie, una galassia o solo i risultati (../galaxies.ts) ──
+  // EN: What to draw: everything, galaxies, one galaxy or only the results (../galaxies.ts)
   const view = useMemo(() => buildView(graph.data, galaxy, lit, stop?.galaxy ?? null), [graph.data, galaxy, lit, stop])
-  /** Nodi accesi DELLA VISTA (ricordi o galassie); null = tutti. */
+  /** Nodi accesi DELLA VISTA (ricordi o galassie); null = tutti. / EN: Lit nodes OF THE VIEW (memories or galaxies); null = all. */
   const vlit = view.lit
 
   // Oggetto stabile: la libreria aggiunge x/y/z/vx… ai nodi, va ricreato solo quando cambia la
   // STRUTTURA della vista (view.key) o arrivano dati nuovi, non a ogni accensione.
+  // EN: Stable object: the library adds x/y/z/vx… to the nodes, so it must be recreated only when
+  //     the view STRUCTURE changes (view.key) or new data arrives, not on every highlight.
   const data = useMemo(() => ({
     nodes: view.nodes.map((n) => ({ ...n })),
     links: view.links.map((l) => ({ ...l }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [graph.data, view.key])
 
-  /** Numero di collegamenti per nodo: i ricordi più "connessi" brillano di più. */
+  /** Numero di collegamenti per nodo: i ricordi più "connessi" brillano di più. / EN: Number of links per node: the most "connected" memories shine brighter. */
   const degree = useMemo(() => {
     const d = new Map<string, number>()
     for (const l of data.links) {
@@ -212,6 +255,11 @@ export default function Nucleus () {
    * Con molte Radici ognuna è un po' meno luminosa: insieme non devono accecare (vedi rootCrowding).
    * Conta le Radici ACCESE (tutte se nulla è filtrato): con filtri per autore o tipo, ricerca o tour
    * le Radici accese possono essere decine, e a piena luce tornerebbero una palla bianca.
+   *
+   * EN: With many Roots each one is a bit dimmer: together they must not be blinding (see
+   * rootCrowding). It counts the LIT Roots (all of them if nothing is filtered): with author or
+   * kind filters, search or tour there can be dozens of lit Roots, and at full brightness they
+   * would turn back into a white ball.
    */
   const crowd = useMemo(() => {
     const roots = view.nodes.filter((n) => n.root && (!vlit || vlit.has(n.id)))
@@ -219,6 +267,7 @@ export default function Nucleus () {
   }, [view.nodes, vlit])
 
   // Vista d'insieme: pochi ammassi grandi, vanno tenuti più distanti fra loro
+  // EN: Overview: few large clusters, they must be kept farther apart
   useEffect(() => {
     const fg = fgRef.current
     if (!fg) return
@@ -229,17 +278,21 @@ export default function Nucleus () {
   }, [view.level])
 
   // Cambio di livello (entrata o uscita da una galassia, risultati filtrati): camera al punto di partenza
+  // EN: Level change (entering or leaving a galaxy, filtered results): camera back to the starting point
   useEffect(() => {
     fgRef.current?.cameraPosition({ x: 0, y: 20, z: SPHERE_RADIUS * 2.6 }, { x: 0, y: 0, z: 0 }, 1200)
   }, [view.level, galaxy])
 
   // Nelle modalità a colori il bagliore pieno satura tutto in bianco e la tinta non si vede:
   // lo attenuiamo; in "olografico" torna pieno.
+  // EN: In the color modes the full glow washes everything out to white and the hue is lost:
+  //     we soften it; in "holographic" it goes back to full.
   useEffect(() => {
     if (bloomRef.current) bloomRef.current.strength = mode === 'holo' ? 1.35 : 0.45
   }, [mode])
 
   // ── Dimensioni ──────────────────────────────────────────────────────────────────────
+  // EN: Size
   useEffect(() => {
     if (!boxRef.current) return
     const ro = new ResizeObserver(([e]) => setSize({ width: e.contentRect.width, height: e.contentRect.height }))
@@ -248,6 +301,7 @@ export default function Nucleus () {
   }, [])
 
   // ── Scena: bloom, ologramma, forze, rotazione automatica ───────────────────────────
+  // EN: Scene: bloom, hologram, forces, auto-rotation
   useEffect(() => {
     const fg = fgRef.current
     if (!fg) return
@@ -255,6 +309,10 @@ export default function Nucleus () {
     // tenui (pulviscolo, linee sottili): con una soglia più bassa si sommano in un velo grigio
     // che schiarisce lo sfondo. Brillano solo i ricordi e gli impulsi.
     // Parametri regolabili da URL per prove visive: #/?bs=forza&br=raggio&bt=soglia
+    // EN: Glow: strength 1.35, radius 0.4, threshold 0.22. The threshold keeps faint elements
+    //     (dust, thin lines) out of the glow: with a lower threshold they add up into a gray veil
+    //     that lightens the background. Only memories and pulses shine.
+    //     Parameters can be tuned from the URL for visual tests: #/?bs=forza&br=raggio&bt=soglia
     const hp = new URLSearchParams(window.location.hash.split('?')[1] ?? '')
     const num = (k: string, d: number) => (hp.get(k) !== null ? Number(hp.get(k)) : d)
     const bloom = new UnrealBloomPass(new THREE.Vector2(size.width, size.height), num('bs', initialMode === 'holo' ? 1.35 : 0.45), num('br', 0.4), num('bt', 0.22))
@@ -262,9 +320,13 @@ export default function Nucleus () {
     // Il bloom va inserito PRIMA del passaggio finale di conversione colore (OutputPass).
     // Aggiunto in coda, la conversione sRGB veniva applicata due volte: sfondo grigio-blu
     // invece che nero e colori slavati.
+    // EN: The bloom must be inserted BEFORE the final color conversion pass (OutputPass).
+    //     Appended at the end, the sRGB conversion was applied twice: gray-blue background
+    //     instead of black and washed-out colors.
     const composer = fg.postProcessingComposer()
     const outIdx = composer.passes.findIndex((p: any) => p.isOutputPass)
     // `#/?bloom=0` disattiva il bagliore (diagnostica, o PC con grafica debole).
+    // EN: `#/?bloom=0` turns the glow off (diagnostics, or PCs with weak graphics).
     const bloomOn = new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('bloom') !== '0'
     if (bloomOn) {
       if (outIdx >= 0) composer.insertPass(bloom, outIdx)
@@ -275,11 +337,13 @@ export default function Nucleus () {
     fg.scene().add(holo)
 
     // Disposizione sferica e repulsione ridotta (altrimenti i nodi esplodono fuori dalla sfera).
+    // EN: Spherical layout and reduced repulsion (otherwise the nodes blow out of the sphere).
     fg.d3Force('sphere', sphericalForce())
     fg.d3Force('charge')?.strength(-18)
     fg.d3Force('link')?.distance(30)
 
     // Camera iniziale: un po' lontana, poi un lento avvicinamento d'effetto.
+    // EN: Initial camera: a bit far away, then a slow, dramatic approach.
     fg.cameraPosition({ x: 0, y: 40, z: SPHERE_RADIUS * 4 })
     setTimeout(() => fg.cameraPosition({ x: 0, y: 20, z: SPHERE_RADIUS * 2.6 }, { x: 0, y: 0, z: 0 }, 2500), 300)
 
@@ -288,6 +352,7 @@ export default function Nucleus () {
     controls.autoRotateSpeed = 0.35
     let idleTimer: ReturnType<typeof setTimeout> | null = null
     // Quando l'utente interagisce la rotazione si ferma, e riparte dopo un po' di inattività.
+    // EN: When the user interacts the rotation stops, and it resumes after some idle time.
     const onStart = () => {
       controls.autoRotate = false
       if (idleTimer) clearTimeout(idleTimer)
@@ -311,10 +376,11 @@ export default function Nucleus () {
       if (bloomOn) fg.postProcessingComposer().removePass(bloom)
     }
     // Volutamente solo all'avvio: le dimensioni del bloom si aggiornano con il renderer.
+    // EN: On purpose only at startup: the bloom size follows the renderer.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  /** Vola sul baricentro di un insieme di ricordi, guardandolo da fuori la sfera. */
+  /** Vola sul baricentro di un insieme di ricordi, guardandolo da fuori la sfera. / EN: Flies to the centroid of a set of memories, looking at it from outside the sphere. */
   const flyTo = useCallback((ids: Set<string>, ms = 2200) => {
     const fg = fgRef.current
     if (!fg || ids.size === 0) return
@@ -323,16 +389,20 @@ export default function Nucleus () {
     fg.controls().autoRotate = false
     // Distanza dal centro: almeno TOUR_DISTANCE, e comunque tale che il gruppo entri tutto
     // nell'inquadratura con margine (gruppi ampi o fitti di Radici, vedi rootCrowding)
+    // EN: Distance from the center: at least TOUR_DISTANCE, and anyway enough for the whole group
+    //     to fit in the frame with some margin (wide groups or groups dense with Roots, see rootCrowding)
     const spread = pts.reduce((m, p) => Math.max(m, Math.hypot(p.x - c.x, p.y - c.y, p.z - c.z)), 0)
     fg.cameraPosition(cameraFor(c, Math.max(TOUR_DISTANCE, Math.hypot(c.x, c.y, c.z) + 3 * spread + 60)), c, ms)
   }, [data])
 
   // ── Tour guidato ────────────────────────────────────────────────────────────────────
+  // EN: Guided tour
   useEffect(() => {
     if (!stop) return
     flyTo(new Set(stop.ids))
     if (paused) return
     // Avanza alla tappa successiva; alla fine ricomincia dalla prima.
+    // EN: Move to the next stop; at the end start again from the first one.
     const t = setTimeout(() => setTourIndex((i) => (i === null ? null : (i + 1) % stops.length)), STOP_MS)
     return () => clearTimeout(t)
   }, [stop, paused, stops.length, flyTo])
@@ -345,25 +415,31 @@ export default function Nucleus () {
   }
 
   // Ricerca: quando arrivano i risultati voliamo sui ricordi pertinenti.
+  // EN: Search: when the results arrive we fly to the relevant memories.
   useEffect(() => {
     if (tourIndex === null && vlit && vlit.size > 0) flyTo(vlit, 1600)
   }, [vlit, tourIndex, flyTo])
 
   // ── Aspetto dei ricordi ─────────────────────────────────────────────────────────────
+  // EN: Memory appearance
   const colorOf = useCallback((n: GraphNode): string => {
     if (mode === 'author') return authorColor(n.author)
     if (mode === 'kind') return KIND_COLOR[n.kind] ?? HOLO.amber
     // Olografico: i ricordi più "vivi" (attivazione alta, Fase 5) tendono al bianco-oro,
     // quelli poco usati e vecchi all'ambra profonda.
+    // EN: Holographic: the most "alive" memories (high activation, Phase 5) lean towards
+    //     white-gold, the old and rarely used ones towards deep amber.
     const a = n.activation ?? 0.5
     return a >= 0.6 ? HOLO.gold : a >= 0.35 ? HOLO.amber : HOLO.deep
   }, [mode, degree])
 
   // Ricreato quando cambiano colori, accensioni o selezione: la libreria rigenera gli sprite.
+  // EN: Recreated when colors, highlights or selection change: the library regenerates the sprites.
   const nodeObject = useCallback((n: any) => {
     const on = !vlit || vlit.has(n.id)
     if (isGalaxyNode(n)) {
       // Galassia: ammasso grande quanto la radice quadrata dei ricordi, con nome e numero
+      // EN: Galaxy: a cluster sized by the square root of its memories, with name and count
       const g = n.galaxyInfo
       const name = g.id < 0 ? s.other : g.label || g.tags[0] || '·'
       const count = g.matches !== null ? s.matches(g.matches) : s.count(g.size)
@@ -371,21 +447,31 @@ export default function Nucleus () {
     }
     // Stelle piccole: il fascino è nei dettagli fini, il bloom fa il resto.
     // Dimensione: collegamenti e attivazione (un ricordo vivo e centrale è una stella più grande).
+    // EN: Small stars: the charm is in the fine details, the bloom does the rest.
+    //     Size: links and activation (an alive, central memory is a bigger star).
     const base = 3.2 + Math.min(5, (degree.get(n.id) ?? 0) * 0.6) + (n.activation ?? 0.5) * 3
     const size = n.id === selected?.id ? base * 2.2 : on && vlit ? base * 1.5 : base
     // I ricordi esclusi da tour/ricerca restano visibili ma tenui: danno il contesto.
     // Nelle modalità a colori stelle un po' più piccole e non sature: la tinta resta leggibile.
+    // EN: Memories left out of tour/search stay visible but faint: they give context.
+    //     In the color modes stars are a bit smaller and not saturated: the hue stays readable.
     const colored = mode !== 'holo'
     if (n.root) {
       // Radice: stella ciano in olografico (colore di modalità altrimenti) + anello luminoso
+      // EN: Root: cyan star in holographic mode (the mode color otherwise) + glowing ring
       const star = on ? (colored ? colorOf(n) : ROOT_STAR) : '#5a6a6a'
       // Radice spenta (fuori da filtro, ricerca o tappa): puntino tenue SENZA anello. Gli anelli
       // sono la parte più grande e luminosa: decine di anelli spenti sommati coprono quelli accesi.
+      // EN: Dimmed Root (outside filter, search or stop): a faint dot WITHOUT a ring. Rings are
+      //     the biggest and brightest part: dozens of dimmed rings together would cover the lit ones.
       if (!on) return starSprite('#5a6a6a', size * 0.6, 0.25)
       // Solo la Radice selezionata resta piena; le altre più piccole e tenui se quelle accese sono tante
+      // EN: Only the selected Root stays full; the others get smaller and fainter when many are lit
       const c = n.id === selected?.id ? 1 : crowd
       // Niente ingrandimento delle Radici accese (×1,5 per gli altri ricordi): si riconoscono già da
       // colore e anello, e ingrandite si fondono fra loro
+      // EN: No enlargement for lit Roots (×1.5 for other memories): color and ring already make
+      //     them recognizable, and enlarged they merge into each other
       const rs = n.id === selected?.id ? size : base
       return rootMarker(star, rootRing(n.root.status), (colored ? rs * 0.85 : rs) * 1.15 * (0.5 + 0.5 * c), c, c)
     }
@@ -401,7 +487,7 @@ export default function Nucleus () {
     : view.level === 'galaxy'
       ? s.insideStats(view.nodes.length + view.hidden, data.links.length)
       : s.stats(data.nodes.length, data.nodes.filter((n) => n.root).length, new Set(data.nodes.map((n) => n.author)).size, data.links.length)
-  /** Nome della galassia in cui si è entrati, per il percorso nell'HUD. */
+  /** Nome della galassia in cui si è entrati, per il percorso nell'HUD. / EN: Name of the galaxy we entered, for the HUD breadcrumb. */
   const galaxyName = view.galaxy ? (view.galaxy.id < 0 ? s.other : view.galaxy.label || view.galaxy.tags[0]) : null
 
   return (
@@ -417,10 +503,12 @@ export default function Nucleus () {
         nodeThreeObject={nodeObject}
         nodeLabel={(n: any) => `<div class="hud-tip">${escapeHtml(n.title)}</div>`}
         // Sinapsi: ambra per i legami da tag/significato, oro pieno per quelli creati dal dreaming.
+        // EN: Synapses: amber for tag/meaning links, full gold for those created by dreaming.
         linkColor={(l: any) => (!linkOn(l) ? '#3a2c18' : l.kind === 'dream' ? HOLO.gold : HOLO.amber)}
         linkOpacity={0.22}
         linkWidth={0}
         // Impulsi di luce che percorrono le sinapsi più forti: il "pensiero" che scorre.
+        // EN: Light pulses running along the strongest synapses: the "thought" flowing.
         linkDirectionalParticles={(l: any) => (linkOn(l) && l.weight > 0.35 ? 2 : 0)}
         linkDirectionalParticleWidth={1.4}
         linkDirectionalParticleSpeed={(l: any) => 0.002 + l.weight * 0.006}
@@ -430,6 +518,7 @@ export default function Nucleus () {
         onNodeClick={(n: any) => {
           setTourIndex(null)
           // Galassia: ci si entra (ancorandola al suo ricordo più vivo, vedi `anchor`)
+          // EN: Galaxy: enter it (anchoring it to its most alive memory, see `anchor`)
           if (isGalaxyNode(n)) {
             setSelected(null)
             setAnchor(n.galaxyInfo.top[0] ?? null)
@@ -437,6 +526,7 @@ export default function Nucleus () {
           }
           setSelected(n)
           // Vola sul ricordo, guardandolo da fuori la sfera.
+          // EN: Fly to the memory, looking at it from outside the sphere.
           const dist = Math.hypot(n.x, n.y, n.z) + 70
           fgRef.current?.controls() && (fgRef.current.controls().autoRotate = false)
           fgRef.current?.cameraPosition(cameraFor(n, dist), n, 1500)
@@ -444,7 +534,7 @@ export default function Nucleus () {
         onBackgroundClick={() => setSelected(null)}
       />
 
-      {/* ── HUD: titolo e statistiche ─────────────────────────────────────── */}
+      {/* ── HUD: titolo e statistiche / EN: title and stats ─────────────────── */}
       <div className='hud hud-top-left'>
         <div className='hud-title'>{s.title}{status.data?.team ? ` · ${status.data.team.name.toUpperCase()}` : ''} <HelpButton topic='views#nucleus' /></div>
         <div className='hud-sub'>{stats}</div>
@@ -457,7 +547,7 @@ export default function Nucleus () {
         {view.hidden > 0 && <div className='hud-sub' style={{ marginTop: 6 }}>{s.hidden(view.hidden)}</div>}
       </div>
 
-      {/* ── HUD: comandi ──────────────────────────────────────────────────── */}
+      {/* ── HUD: comandi / EN: controls ──────────────────────────────────────── */}
       <div className='hud hud-top-right'>
         <input className='hud-input' placeholder={s.highlight} value={query} onChange={(e) => { setTourIndex(null); setQuery(e.target.value) }} />
         <div className='row'>
@@ -483,7 +573,7 @@ export default function Nucleus () {
         {mode !== 'holo' && <Legend nodes={graph.data?.nodes ?? []} mode={mode} focus={focus} onFocus={(k) => { setTourIndex(null); setFocus(focus === k ? null : k) }} />}
       </div>
 
-      {/* ── HUD: didascalia della tappa del tour ─────────────────────────── */}
+      {/* ── HUD: didascalia della tappa del tour / EN: tour stop caption ────── */}
       {stop && (
         <div className='hud hud-caption'>
           <div className='hud-sub'>{s.stopLabel((tourIndex ?? 0) + 1, stops.length)}</div>
@@ -522,6 +612,9 @@ export default function Nucleus () {
 /**
  * Legenda cliccabile delle modalità a colori: un clic isola quella voce (autore o tipo), un
  * secondo clic sulla stessa voce rimuove il filtro. Mostra anche quanti ricordi ha ogni voce.
+ *
+ * EN: Clickable legend of the color modes: one click isolates that entry (author or kind), a
+ * second click on the same entry removes the filter. It also shows how many memories each entry has.
  */
 function Legend ({ nodes, mode, focus, onFocus }: { nodes: GraphNode[], mode: ColorMode, focus: string | null, onFocus: (key: string) => void }) {
   const s = useStrings(S)
@@ -541,7 +634,7 @@ function Legend ({ nodes, mode, focus, onFocus }: { nodes: GraphNode[], mode: Co
   )
 }
 
-/** I titoli dei ricordi arrivano da altri nodi: nel tooltip HTML vanno sempre "neutralizzati". */
+/** I titoli dei ricordi arrivano da altri nodi: nel tooltip HTML vanno sempre "neutralizzati". / EN: Memory titles come from other nodes: in the HTML tooltip they must always be escaped. */
 function escapeHtml (s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!))
 }

@@ -9,6 +9,17 @@
  *   (scegliendo la categoria) o si ignorano. Sono suggerimenti di QUESTO PC.
  * Clic su una Radice: il dettaglio del ricordo nel pannello a destra (stesso pannello di Memoria),
  * dove si conferma, si cambia categoria o si toglie.
+ *
+ * EN: Roots (Phase 8): the team's foundational knowledge, which is never forgotten.
+ *
+ * - List by category (architecture, network, interfaces, domain, best practices, policies…),
+ *   with a project filter and search; Roots "to review" are highlighted with their reasons.
+ * - "Review the Roots" starts the manual review (source code or document changed, recent
+ *   memories that contradict them) and shows the report.
+ * - Suggested by Micelio: memories the distiller considers foundational; promote them with one
+ *   click (choosing the category) or dismiss them. These are suggestions of THIS PC.
+ * Click on a Root: the memory detail in the right panel (same panel as Memory), where you
+ * confirm it, change its category or remove it.
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
@@ -89,6 +100,7 @@ export function Roots () {
 
   const all = roots.data ?? []
   // Progetti presenti fra le Radici (da source.code.project)
+  // EN: Projects present among the Roots (from source.code.project)
   const projects = useMemo(() => [...new Set(all.map((r) => r.memory.source?.code?.project).filter((p): p is string => !!p))].sort(), [all])
   const q = query.trim().toLowerCase()
   const shown = all.filter((r) =>
@@ -144,13 +156,13 @@ export function Roots () {
             : <Empty>{s.selectOne}</Empty>}
         </div>
       </div>
-      {/* B4: Radici nei file per gli agenti e import di sapere già scritto */}
+      {/* B4: Radici nei file per gli agenti e import di sapere già scritto / EN: B4: Roots in the agents' files and import of already written knowledge */}
       <RootsTools />
     </>
   )
 }
 
-/** Una Radice nell'elenco: titolo, progetto, stato di revisione e motivi delle segnalazioni. */
+/** Una Radice nell'elenco: titolo, progetto, stato di revisione e motivi delle segnalazioni. / EN: A Root in the list: title, project, review status and flag reasons. */
 function RootItem ({ root, selected, onSelect }: { root: RootView, selected: boolean, onSelect: () => void }) {
   const s = useStrings(S)
   const code = root.memory.source?.code
@@ -175,7 +187,7 @@ function RootItem ({ root, selected, onSelect }: { root: RootView, selected: boo
   )
 }
 
-/** Resoconto dell'ultima revisione manuale. */
+/** Resoconto dell'ultima revisione manuale. / EN: Report of the last manual review. */
 function ReviewReport ({ result, onClose }: { result: RootReviewResult, onClose: () => void }) {
   const s = useStrings(S)
   return (
@@ -196,7 +208,7 @@ function ReviewReport ({ result, onClose }: { result: RootReviewResult, onClose:
   )
 }
 
-/** Radici suggerite dal distillatore su questo PC: promuovi (con categoria) o ignora. */
+/** Radici suggerite dal distillatore su questo PC: promuovi (con categoria) o ignora. / EN: Roots suggested by the distiller on this PC: promote (with category) or dismiss. */
 function Suggestions () {
   const s = useStrings(S)
   const client = useQueryClient()

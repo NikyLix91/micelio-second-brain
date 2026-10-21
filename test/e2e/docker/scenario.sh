@@ -2,6 +2,9 @@
 # Scenario end-to-end di Micelio su 4 container (DHT pubblica). Uso: npm run e2e:docker
 # I container usano il LLM finto (compose.yaml): i ricordi di prova devono avere un contenuto
 # di almeno ~30 caratteri, altrimenti il finto classificatore li considera banali (→ inbox).
+# EN: Micelio end-to-end scenario on 4 containers (public DHT). Usage: npm run e2e:docker
+#     The containers use the fake LLM (compose.yaml): test memories must have content of at
+#     least ~30 characters, otherwise the fake classifier deems them trivial (→ inbox).
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -13,6 +16,7 @@ ok() { echo "  ✔ $1"; pass=$((pass + 1)); }
 ko() { echo "  ✘ $1"; fail=$((fail + 1)); }
 
 # Attende che tutti i nodi indicati abbiano N ricordi
+# EN: Waits until all the given nodes have N memories
 converge() {
   local want=$1; shift; local t0=$SECONDS
   while (( SECONDS - t0 < 90 )); do
@@ -74,6 +78,7 @@ m node3 members | sed 's/^/    /'
 
 dc down -v >/dev/null 2>&1
 # Ogni rebuild lascia l'immagine precedente orfana (~480 MB): la eliminiamo per non saturare il disco.
+# EN: Every rebuild leaves the previous image dangling (~480 MB): we delete it so the disk doesn't fill up.
 docker image prune -f --filter label=org.micelio.image=node >/dev/null
 echo
 echo "Risultato: $pass ok, $fail falliti"

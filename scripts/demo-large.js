@@ -4,10 +4,19 @@
  * galassie (Nucleo e Mappa 2D) e misurare le prestazioni a scala. I ricordi sono INVENTATI e
  * generati in modo deterministico (stesso numero → stessi ricordi).
  *
+ * EN: LARGE demo team: a node with thousands of memories on 25 topics, to see the galaxies
+ * (Nucleus and 2D Map) and measure performance at scale. The memories are MADE UP and
+ * generated deterministically (same number → same memories).
+ *
  * Uso:   npm run build && npm run demo:grande [-- <quanti>]      (default 3000)
  * Poi:   MICELIO_HOME=.demo/grande npm run desktop
  *        (oppure `node dist/cli/main.js --home .demo/grande ui` per il browser)
  * Per fermarlo:  node dist/cli/main.js --home .demo/grande stop
+ *
+ * EN: Usage: npm run build && npm run demo:grande [-- <count>]      (default 3000)
+ * Then:  MICELIO_HOME=.demo/grande npm run desktop
+ *        (or `node dist/cli/main.js --home .demo/grande ui` for the browser)
+ * To stop it:  node dist/cli/main.js --home .demo/grande stop
  *
  * Come funziona:
  * - home separata in .demo/grande, porta 7410: il proprio nodo reale non viene toccato;
@@ -16,6 +25,14 @@
  * - team in modalità solo locale (nessuna rete); "aggiornare invece di aggiungere" spento, così
  *   ogni ricordo inviato diventa un ricordo;
  * - un secondo avvio riparte dai dati esistenti e aggiunge solo i ricordi mancanti.
+ *
+ * EN: How it works:
+ * - separate home in .demo/grande, port 7410: your real node is not touched;
+ * - fake LLM and "hash" embeddings (no calls to Claude, no model to download): the environment variables
+ *   apply to the daemon started from here, which stays running in the background;
+ * - team in local-only mode (no network); "update instead of add" turned off, so every memory sent
+ *   becomes a memory;
+ * - a second run resumes from the existing data and only adds the missing memories.
  */
 const { execFileSync } = require('node:child_process')
 const fs = require('node:fs')
@@ -26,10 +43,11 @@ const CLI = path.join(ROOT, 'dist', 'cli', 'main.js')
 const HOME = path.join(ROOT, '.demo', 'grande')
 const PORT = 7410
 const TARGET = Number(process.argv[2] ?? 3000)
-/** Richieste in parallelo durante il caricamento. */
+/** Richieste in parallelo durante il caricamento. / EN: Parallel requests during loading. */
 const CONCURRENCY = 4
 
 // Daemon con LLM finto ed embedding senza modello (ereditati dal processo avviato da `start`)
+// EN: Daemon with fake LLM and model-free embeddings (inherited by the process started by `start`)
 const env = { ...process.env, MICELIO_LLM_ADAPTER: 'fake', MICELIO_EMBEDDER: 'hash' }
 const cli = (...args) => execFileSync(process.execPath, [CLI, '--home', HOME, ...args], { env, encoding: 'utf8' }).trim()
 
@@ -38,7 +56,7 @@ const topics = ['kafka', 'postgres', 'angular', 'react', 'docker', 'kubernetes',
 const verbs = ['Retry', 'Timeout', 'Configurazione', 'Migrazione', 'Errore', 'Prestazioni', 'Sicurezza', 'Deploy', 'Monitoraggio', 'Rollback', 'Indice', 'Limite']
 const kinds = ['fact', 'howto', 'decision', 'gotcha', 'snippet', 'reference']
 
-/** Ricordo numero i: deterministico, un argomento principale e a volte un secondo (ponti fra galassie). */
+/** Ricordo numero i: deterministico, un argomento principale e a volte un secondo (ponti fra galassie). / EN: Memory number i: deterministic, one main topic and sometimes a second one (bridges between galaxies). */
 function memory (i) {
   let seed = 42 + i * 7919
   const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff }
@@ -60,6 +78,7 @@ function memory (i) {
   const cfgPath = path.join(HOME, 'config.json')
   if (!fs.existsSync(cfgPath)) {
     // Budget giornaliero dell'LLM alto: con quello normale (300) le scritture in più andrebbero in Inbox
+    // EN: High daily LLM budget: with the normal one (300) the extra writes would go to the Inbox
     fs.writeFileSync(cfgPath, JSON.stringify({ port: PORT, llm: { dailyBudget: 1_000_000 } }, null, 2))
   }
   console.log(cli('start').split('\n').pop())
@@ -73,6 +92,7 @@ function memory (i) {
   const headers = { authorization: `Bearer ${token}`, 'content-type': 'application/json' }
 
   // Riparte da dove era arrivato (file accanto alla home)
+  // EN: Resumes from where it got to (file next to the home)
   const markPath = path.join(HOME, 'demo-seeded.txt')
   let from = fs.existsSync(markPath) ? Number(fs.readFileSync(markPath, 'utf8')) : 0
   if (from >= TARGET) console.log(`già ${from} ricordi`)

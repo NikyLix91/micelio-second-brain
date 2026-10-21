@@ -7,6 +7,15 @@
  * - "cliente", "credenziali", "valutazione"… → privato;  testo < 30 caratteri → scartato;
  * - "[incerto]" nel testo → confidenza 0.5 (caso dubbio);
  * - la distillazione produce un ricordo per ogni riga "LEZIONE: titolo | corpo".
+ *
+ * EN: Ingestion pipeline (src/ingest/pipeline.ts) with a fake LLM and a fake "team":
+ * here we check the decision LOGIC, not the model quality (for that there is the evaluation
+ * set, `npm run eval:ingest`).
+ *
+ * FakeAdapter conventions (src/llm/fake.ts):
+ * - "cliente", "credenziali", "valutazione"… → private;  text < 30 characters → discarded;
+ * - "[incerto]" in the text → confidence 0.5 (doubtful case);
+ * - distillation produces one memory for each "LEZIONE: titolo | corpo" line.
  */
 import path from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
@@ -32,7 +41,7 @@ describe('route(): instradamento della classificazione', () => {
   })
   it('privato solo se chiaramente personale e senza nulla di riutilizzabile', () => {
     expect(route(cls({ destination: 'private', reusable: false }))).toBe('private')
-    expect(route(cls({ destination: 'private', reusable: true }))).toBe('inbox') // misto → decide l'utente
+    expect(route(cls({ destination: 'private', reusable: true }))).toBe('inbox') // misto → decide l'utente / EN: mixed → the user decides
     expect(route(cls({ destination: 'private', reusable: false, confidence: 0.5 }))).toBe('inbox')
   })
   it('scartato solo se sicuro', () => {
@@ -47,7 +56,7 @@ describe('IngestPipeline', () => {
   let fake: FakeAdapter
   const dir = tmpHome('pipeline')
 
-  /** Crea una pipeline con budget configurabile; `llm: false` simula adapter "none". */
+  /** Crea una pipeline con budget configurabile; `llm: false` simula adapter "none". / EN: Creates a pipeline with a configurable budget; `llm: false` simulates the "none" adapter. */
   const make = (opts: { budget?: number, llm?: boolean } = {}) => {
     fake = new FakeAdapter()
     const runner = opts.llm === false ? null : new LlmRunner(fake, store, { dailyBudget: () => opts.budget ?? 100 })
@@ -69,18 +78,19 @@ describe('IngestPipeline', () => {
   })
 
   // ── Salvataggi espliciti (D6) ─────────────────────────────────────────────────────
+  // EN: Explicit saves (D6)
   describe('salvataggio esplicito', () => {
     it('contenuto tecnico pulito → pubblicato', async () => {
       const r = await make().ingestExplicit({ title: 'Drizzle per i nuovi servizi', body: 'Niente motore binario, meglio con Alpine.' })
       expect(r.outcome).toBe('team')
       expect(published).toHaveLength(1)
-      expect(fake.calls.map((c) => `${c.name}:${c.model}`)).toEqual(['classify:haiku']) // niente distillazione
+      expect(fake.calls.map((c) => `${c.name}:${c.model}`)).toEqual(['classify:haiku']) // niente distillazione / EN: no distillation
     })
 
     it('argomento HR → privato SENZA chiamare il LLM', async () => {
       const r = await make().ingestExplicit({ title: 'Nota per la valutazione di fine anno', body: 'Proporre un aumento di stipendio.' })
       expect(r.outcome).toBe('private')
-      expect(fake.calls).toHaveLength(0) // il contenuto non è mai uscito dalla macchina
+      expect(fake.calls).toHaveLength(0) // il contenuto non è mai uscito dalla macchina / EN: the content never left the machine
       expect(store.listDecisions()[0].outcome).toBe('blocked')
     })
 
@@ -109,6 +119,7 @@ describe('IngestPipeline', () => {
   })
 
   // ── Inbox (D9) ─────────────────────────────────────────────────────────────────────
+  // EN: Inbox (D9)
   describe('inbox', () => {
     it('approva con correzioni → pubblicato; rifiuta → registrato e rimosso', async () => {
       const p = make()
@@ -133,8 +144,9 @@ describe('IngestPipeline', () => {
   })
 
   // ── Sessioni di Claude Code (D7, D8) ───────────────────────────────────────────────
+  // EN: Claude Code sessions (D7, D8)
   describe('sessioni', () => {
-    /** Accoda una sessione ed esegue subito il lavoro. */
+    /** Accoda una sessione ed esegue subito il lavoro. / EN: Enqueues a session and runs the job right away. */
     const runSession = async (p: IngestPipeline, id: string, turns: Parameters<typeof writeTranscript>[2]) => {
       const transcriptPath = writeTranscript(dir, id, turns)
       p.enqueueSession({ sessionId: id, transcriptPath, cwd: dir })
@@ -150,6 +162,7 @@ describe('IngestPipeline', () => {
       ])
       expect(published.map((m) => m.title)).toEqual(['Build Angular OOM su Azure DevOps'])
       // Fuori da un repository git il riferimento al codice è solo il nome della cartella di lavoro
+      // EN: Outside a git repository the code reference is just the working folder name
       expect(published[0].source).toEqual({ type: 'claude-code', ref: 'tech', code: { project: path.basename(dir), files: [], symbols: [], commits: [] }, rank: 1, batch: 1 })
       expect(store.jobStats()).toEqual({ done: 1 })
     })
@@ -192,13 +205,13 @@ describe('IngestPipeline', () => {
     })
 
     it('budget insufficiente → la sessione resta in coda (rinviata), senza perdere tentativi', async () => {
-      const p = make({ budget: 1 }) // ne servono 2
+      const p = make({ budget: 1 }) // ne servono 2 / EN: 2 are needed
       await runSession(p, 'budget', [{ user: longTech }, { assistant: 'LEZIONE: a | b' }])
       expect(published).toHaveLength(0)
       const job = store.recentJobs(1)[0]
       expect(job.status).toBe('pending')
       expect(job.attempts).toBe(0)
-      expect(store.nextJob()).toBeNull() // rinviata a domani: ora non è eseguibile
+      expect(store.nextJob()).toBeNull() // rinviata a domani: ora non è eseguibile / EN: postponed to tomorrow: not runnable now
     })
   })
 })

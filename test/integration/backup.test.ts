@@ -1,4 +1,5 @@
 // B7: backup e ripristino del sapere di un team, con nodi veri (team in modalità solo locale).
+// EN: B7: backup and restore of a team's knowledge, with real nodes (team in local-only mode).
 import fs from 'node:fs'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -39,6 +40,7 @@ describe('backup e ripristino del sapere di un team', () => {
     expect(manifest.counts).toMatchObject({ memories: 3, active: 2, roots: 1, gaps: 1 })
 
     // Password sbagliata: errore, e nessun team vuoto creato
+    // EN: Wrong password: error, and no empty team created
     const before = (await host.teams()).length
     await expect(host.restoreAsNewTeam(file, 'password-sbagliata')).rejects.toThrow(/Password sbagliata/)
     expect(await host.teams()).toHaveLength(before)
@@ -50,10 +52,12 @@ describe('backup e ripristino del sapere di un team', () => {
     expect((await dst.status()).role).toBe('admin')
     expect(dst.recall('kafka retry').map((h) => h.id)).toEqual([kafka.id])
     // storico, Radice, ricordo fissato, lacuna
+    // EN: history, Root, pinned memory, knowledge gap
     expect(dst.archived().map((m) => [m.id, m.statusReason])).toEqual([[old.id, 'server dismesso']])
     expect((await dst.roots()).map((r) => [r.id, r.category])).toEqual([[kafka.id, 'practice']])
     expect((await dst.teamGaps()).map((g) => g.question)).toEqual(['Come si ruota il certificato del gateway?'])
     // autore e data d'origine: chi ripristina firma, ma il ricordo resta "di ada" e non diventa nuovo
+    // EN: original author and date: whoever restores signs, but the memory stays "ada's" and does not become new
     const rec = dst.detail(gw.id)!
     expect(rec.source!.origin).toMatchObject({ author: 'ada', team: 'Ordini' })
     expect(rec.ts).toBe(rec.source!.origin!.ts)
@@ -74,6 +78,7 @@ describe('backup e ripristino del sapere di un team', () => {
     const dir = path.join(tmpHome('backup-auto'), 'backup')
     fs.mkdirSync(dir, { recursive: true })
     // Tre backup vecchi di due giorni, più un file di un altro team che non va toccato
+    // EN: Three two-day-old backups, plus a file from another team that must not be touched
     const old = Date.now() / 1000 - 2 * 86_400
     for (const f of ['Ordini-2026-01-01-0000.micelio-backup', 'Ordini-2026-01-02-0000.micelio-backup', 'Ordini-2026-01-03-0000.micelio-backup', 'Altro-2026-01-01-0000.micelio-backup']) {
       fs.writeFileSync(path.join(dir, f), 'x')
@@ -88,6 +93,7 @@ describe('backup e ripristino del sapere di un team', () => {
     expect(files[2]).toMatch(/^Ordini-\d{4}-\d{2}-\d{2}-\d{4}\.micelio-backup$/)
     expect(node.backupSettings()).toMatchObject({ enabled: true, keep: 2, hasPassword: true, last: { file: files[2] } })
     // la password non torna mai indietro
+    // EN: the password is never sent back
     expect(JSON.stringify(node.backupSettings())).not.toContain(PASSWORD)
     await node.setBackupSettings({ enabled: false })
   })
@@ -100,6 +106,7 @@ describe('backup e ripristino del sapere di un team', () => {
     const content: BackupContent = { memories, roots: [], links: [], votes: {}, pins: [], usage: {}, gaps: [], config: {} }
     const file = encodeBackup(content, { team: 'Grande', createdAt: Date.now(), createdBy: 'test', counts: countsOf(content) }, PASSWORD)
     // Mentre ripristina, il ciclo degli eventi resta libero: misuriamo il ritardo peggiore
+    // EN: While restoring, the event loop stays free: we measure the worst delay
     let worst = 0
     let last = Date.now()
     const probe = setInterval(() => { const now = Date.now(); worst = Math.max(worst, now - last - 50); last = now }, 50)

@@ -1,4 +1,5 @@
 // B4: uso da soli (team in modalità solo locale) e ricordi personali che non lasciano il PC.
+// EN: B4: solo use (team in local-only mode) and personal memories that never leave the PC.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { nodePaths } from '../../src/core/paths'
 import { HashEmbedder } from '../../src/embed/embedder'
@@ -14,6 +15,8 @@ describe('da soli: modalità solo locale e ricordi personali', () => {
     dht = await localDht()
     // Senza bootstrap fissato dall'host: la rete del team viene dalle sue impostazioni.
     // La variabile tiene la DHT di test quando il team esce dalla modalità solo locale.
+    // EN: No bootstrap fixed by the host: the team network comes from its settings.
+    //     The variable holds the test DHT for when the team leaves local-only mode.
     process.env.MICELIO_DHT_BOOTSTRAP = dht.bootstrap.map((b) => `${b.host}:${b.port}`).join(',')
     host = new MicelioHost(nodePaths(tmpHome('solo')), { materializeDelayMs: 50, llm: new FakeAdapter(), embedder: new HashEmbedder() })
     await host.start()
@@ -36,6 +39,7 @@ describe('da soli: modalità solo locale e ricordi personali', () => {
     await expect(node.invite()).rejects.toThrow(/solo locale/)
     await expect(node.checkNetwork()).rejects.toThrow(/solo locale/)
     // Scelta una rete il nodo si ricollega e l'invito funziona, senza perdere nulla
+    // EN: Once a network is chosen the node reconnects and the invite works, without losing anything
     await node.setNetwork('public')
     expect(node.localOnly).toBe(false)
     const inv = await node.invite()
@@ -50,12 +54,15 @@ describe('da soli: modalità solo locale e ricordi personali', () => {
     const [hit] = await node.recallHybrid('alias log gateway', 5)
     expect(hit).toMatchObject({ id: p.id, personal: true })
     // il segreto è comunque redatto: agli agenti arriva il testo
+    // EN: the secret is redacted anyway: the text reaches the agents
     expect(hit.body).not.toContain('ghp_')
     // fuori dal team: niente nel log, nell'elenco, nella costellazione, nel conteggio
+    // EN: outside the team: nothing in the log, the list, the constellation, the count
     expect((await node.status()).memories).toBe(1)
     expect(node.graph().nodes.map((n) => n.id)).not.toContain(p.id)
     expect(node.personal().map((h) => h.id)).toEqual([p.id])
     // le operazioni di team non valgono per un ricordo personale
+    // EN: team operations do not apply to a personal memory
     await expect(node.vote(p.id, 1)).rejects.toThrow(/personale/)
     await expect(node.rootSet(p.id, 'practice')).rejects.toThrow(/personale/)
   })

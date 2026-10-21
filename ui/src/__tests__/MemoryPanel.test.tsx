@@ -2,6 +2,10 @@
  * Pannello del ricordo: i riferimenti al codice (source.code) si vedono e i commit diventano link
  * alla pagina del commit quando il repository è su un server web.
  * fetch è finto: restituisce il ricordo completo che il pannello carica all'apertura.
+ *
+ * EN: Memory panel: code references (source.code) are shown and commits become links
+ * to the commit page when the repository is on a web server.
+ * fetch is fake: it returns the full memory the panel loads when it opens.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, screen } from '@testing-library/react'
