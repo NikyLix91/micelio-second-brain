@@ -337,6 +337,7 @@ Richieste dell'utente del 2026-10-18 (B1–B3) e brainstorming sui concorrenti d
 | B9 | **Pacchetto Linux** (AppImage e .deb) | `feature/package-linux` | ✅ Fatto. `npm run package:linux` (anche in un container), parti comuni con Windows in `scripts/package-common.js`. Provato in Debian 12 pulito: .deb con dipendenze, `micelio` nel PATH, daemon con il Node incluso, app desktop su schermo virtuale, rimozione. Corretta la dipendenza mancante dalla libreria audio. Da provare su un desktop Linux reale |
 | B10 | **Chat AI sulla memoria, con mappa mentale del sapere** | `feature/chat-memoria` | ✅ Fatto. Pagina «Chiedi»: risposta dell'LLM scritta solo sui ricordi del team con riferimenti [n] cliccabili, «non lo so» senza chiamare l'LLM e segnalazione della lacuna, mappa mentale istantanea (temi come comunità dei collegamenti, ricordi con prima riga, collegamenti del dreaming, espandi), domande che seguono, «Salva come ricordo», cronologia solo locale. Mappa su 5 000 ricordi in ~0,1 s. Vedi «B10 in dettaglio» |
 | B11 | **Misurazione dell'efficienza del sistema** | `feature/efficacia` | ✅ Fatto. Pagina «Efficacia»: consultazioni degli agenti in tempo reale (tool MCP e contesto automatico, con il tempo di risposta), esiti per ricordo a sessione finita (euristica sempre, LLM nella stessa chiamata della distillazione), pollice in su automatico sui ricordi confermati utili (mai sopra un voto a mano), utilità condivisa con il team (`useful.report`, peso 3 nell'attivazione), rumore, sbagliati, domande senza risposta, notifiche del desktop solo per utile/sbagliato. Vedi «B11 in dettaglio» |
+| B12 | **Memoria che impara dall'uso** (idee da Spector) | `feature/memoria-dall-uso` | Da fare. Quattro interventi sul modo in cui i ricordi salgono e scendono: (1) abituazione, i ricordi proposti spesso e mai utili scendono in classifica; (2) sinapsi da uso congiunto, due ricordi utili nella stessa sessione rafforzano il loro legame; (3) peso alle scoperte sudate, più importanza ai ricordi nati da una lunga lotta; (4) ricevuta di redazione, ogni nodo conferma di aver tolto il contenuto. Vedi «B12 in dettaglio» |
 
 ### B7 in dettaglio: backup e ripristino del sapere di un team
 
@@ -406,6 +407,44 @@ Richieste dell'utente del 2026-10-18 (B1–B3) e brainstorming sui concorrenti d
    Filtri per progetto e periodo. Impostazioni: notifiche on/off.
 5. **Prestazioni:** registrare una consultazione non deve rallentare la risposta all'agente (scrittura in sottofondo, indici). Euristica lineare nella lunghezza della sessione. Prova con migliaia di consultazioni.
 6. **Guida** «Efficacia» IT/EN con il funzionamento interno; test unitari (euristica, piano dei voti) e d'integrazione (consultazione → esito → voto → contatore di team).
+
+### B12 in dettaglio: memoria che impara dall'uso
+
+**Origine (2026-10-21).** Un commento al post LinkedIn su Micelio ha segnalato [Spector](https://github.com/spectrayan/spector), un motore di memoria per agenti in Java (Apache-2.0). Non è un concorrente diretto: è una memoria per singolo utente o agente, senza condivisione nel team e senza raccolta automatica dalle sessioni. Molte idee le abbiamo già (decadimento, rinforzo con l'uso, ricerca ibrida con RRF, consolidamento, grafo). Quattro meritano di entrare in Micelio. L'utente ha chiesto di metterle in piano tutte e quattro.
+
+**Perché ora.** Nei primi tre giorni la pagina Efficacia ha mostrato che solo una parte dei ricordi passati all'agente serve davvero: 28% nel team A, 10% nel team B. Il contesto automatico propone spesso gli stessi ricordi anche quando non c'entrano. Ogni ricordo inutile nel contesto è rumore per l'agente e token sprecati.
+
+**1. Abituazione: chi non serve scende.**
+- Oggi il «rumore» (ricordi restituiti almeno 5 volte e mai utili) si vede solo nella pagina Efficacia; la classifica non ne tiene conto.
+- Si aggiunge all'attivazione un fattore di abituazione: più volte un ricordo è stato restituito senza essere utile, più scende. Un esito utile lo azzera, perché il ricordo ha dimostrato di servire.
+- Vale soprattutto per il contesto automatico (`SessionStart`, `UserPromptSubmit`), dove l'agente non ha chiesto niente. Una `recall` esplicita lo applica più leggero, perché lì la domanda è precisa.
+- Le Radici non scendono sotto la soglia attuale, i ricordi fissati non sono toccati.
+- Dati condivisi: i contatori «restituito» e «utile» del team esistono già (`usage.report`, `useful.report`), quindi l'effetto vale per tutto il team senza eventi nuovi.
+- Misura del successo: la percentuale di ricordi utili nella pagina Efficacia deve salire nelle settimane dopo il rilascio, a parità di consultazioni.
+
+**2. Sinapsi da uso congiunto (apprendimento hebbiano).**
+- Oggi le sinapsi nascono da tag in comune, significato simile e dreaming.
+- Nuovo tipo di sinapsi «uso»: quando due ricordi risultano utili nella stessa sessione, il loro legame si rafforza. Un legame che non viene più rinforzato si indebolisce con il tempo, come l'attivazione.
+- In ricerca, un ricordo trovato porta con sé i vicini più forti per uso, anche se non contengono le parole cercate: sono quelli che di solito servono insieme.
+- Nella costellazione e nella mappa della chat queste sinapsi hanno un colore loro.
+- Condivisione con il team: evento nuovo con le coppie e il loro peso, accumulato come gli altri contatori; i nodi di versioni precedenti lo ignorano.
+- Prestazioni: le coppie crescono con il quadrato dei ricordi utili per sessione, quindi si tiene un massimo di coppie per sessione e di vicini per ricordo. Prova con migliaia di ricordi.
+
+**3. Peso alle scoperte sudate.**
+- Un gotcha trovato dopo un'ora di errori vale più di un fatto ovvio, ma oggi nasce con lo stesso peso.
+- Durante la distillazione si misura quanto è stata faticosa la parte di sessione da cui nasce il ricordo: comandi falliti, tentativi ripetuti, durata, messaggi dell'utente. Il dato c'è già nella trascrizione e non richiede chiamate LLM in più.
+- Il ricordo nasce con un'importanza iniziale più alta, che decade normalmente se poi nessuno lo usa. Si vede nel dettaglio del ricordo («nato da una sessione difficile»).
+- Da tarare sulle trascrizioni reali prima di fissare le soglie.
+
+**4. Ricevuta di redazione.**
+- Oggi la redazione di un admin toglie il contenuto da tutti i nodi, ma chi l'ha chiesta non sa quando è successo davvero su ognuno.
+- Ogni nodo, dopo aver tolto il contenuto (indice, export Markdown, cache), pubblica un evento firmato di conferma con l'id del ricordo e l'istante.
+- Nella UI, per ogni redazione: elenco dei membri con «confermato il …» o «in attesa» (nodi spenti). Esportabile, per chi deve dimostrare a un cliente che un dato è stato tolto.
+- Limite da scrivere nella guida: la ricevuta dice che il software ha tolto il dato, non che nessuno ne abbia fatto una copia a mano.
+
+**Ordine proposto:** 1, poi 2, poi 4, poi 3. Il primo ha l'effetto più diretto sull'efficacia ed è il più piccolo; il terzo richiede di tarare le soglie su dati veri.
+
+**Per ogni punto:** guida in-app IT/EN con il funzionamento interno, testi della UI nelle due lingue, test unitari e d'integrazione, prova a scala con migliaia di ricordi.
 
 ### B10 in dettaglio: chat AI sulla memoria, con mappa mentale del sapere
 
@@ -484,3 +523,4 @@ Le domande successive tengono conto della conversazione. Sotto ogni risposta c'�
 | 2026-10-18 | B2 completato sul branch `feature/guida-in-linea`: guida in linea in italiano e inglese, «?» contestuali, F1, pagina Guida. Il test di parità ha confermato che tutte le 21 voci hanno le stesse sezioni nelle due lingue |
 | 2026-10-21 | Bug grave corretto sul branch `fix/mcp-team-cartella` (0.5.1): l'MCP utente era registrato via HTTP e lavorava sempre sul team predefinito, così 25 ricordi salvati da una sessione nel progetto `progetto-a` (team A) erano finiti nel team B. Ora l'MCP utente è lo shim stdio `micelio mcp`, che manda la cartella del progetto a ogni richiesta, e il daemon sceglie il team che la possiede. `remember` dice in quale team pubblica. I 25 ricordi sono stati copiati nel team A e redatti dal team sbagliato |
 | 2026-10-21 | Avvio lento corretto sul branch `fix/avvio-lento` (0.5.2): il daemon ci metteva 55 s a partire (l'app ne aspettava 30 e diceva «daemon non attivo»), per la scansione sincrona di una trascrizione da 209 MB. Cause: il controllo dei file sensibili ricompilava 33 espressioni per ogni parola (36 s su 40); la scansione girava nel thread principale e durante l'avvio. Ora espressioni in cache, trascrizioni lette in un worker thread, prima scansione dopo l'avvio, sessioni non mature non rilette, attesa dell'app a 90 s. Blocco massimo del thread principale con la trascrizione da 209 MB: 51 ms |
+| 2026-10-21 | Aggiunto al backlog B12 «Memoria che impara dall'uso»: abituazione, sinapsi da uso congiunto, peso alle scoperte sudate, ricevuta di redazione. Idee prese dal confronto con Spector, segnalato in un commento al post LinkedIn |
