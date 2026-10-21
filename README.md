@@ -1,11 +1,13 @@
+[Italiano](README.it.md) | **English**
+
 # Micelio
 
-**Secondo cervello distribuito, peer-to-peer, per gli strumenti AI di un team di sviluppo.**
+**A distributed, peer-to-peer second brain for a development team's AI tools.**
 
-Ogni macchina del team esegue un nodo Micelio. I nodi si trovano da soli su internet e si scambiano la conoscenza del team senza alcun server centrale. A sincronizzazione completata **ogni nodo possiede il 100% del sapere condiviso**. Gli assistenti AI (Claude Code, e in futuro Codex, VS Code e WebStorm) leggono e scrivono questa memoria tramite **MCP**.
+Every machine in the team runs a Micelio node. The nodes find each other on the internet by themselves and exchange the team's knowledge without any central server. Once synchronized, **every node holds 100% of the shared knowledge**. AI assistants (Claude Code, and in the future Codex, VS Code and WebStorm) read and write this memory through **MCP**.
 
 ```
- PC di Alice            PC di Bob             Container "sempre acceso"
+ Alice's PC             Bob's PC              "Always-on" container
 ┌───────────┐  P2P   ┌───────────┐   P2P    ┌───────────┐
 │  micelio  │◀──────▶│  micelio  │◀────────▶│  micelio  │
 └─────▲─────┘        └─────▲─────┘          └───────────┘
@@ -13,24 +15,24 @@ Ogni macchina del team esegue un nodo Micelio. I nodi si trovano da soli su inte
   Claude Code          Claude Code
 ```
 
-> Stato: **Fase 3 completata**: team P2P, ricerca, MCP per Claude Code, raccolta automatica con filtro privacy e inbox, **app desktop** con il Nucleo 3D. Il piano è in [docs/PLAN.md](docs/PLAN.md).
+> Status: **Phase 3 complete**: P2P team, search, MCP for Claude Code, automatic collection with privacy filter and inbox, **desktop app** with the 3D Nucleus. The plan is in [docs/en/PLAN.md](docs/en/PLAN.md).
 
-![Il Nucleo: il sapere del team come ologramma 3D](docs/img/nucleo.png)
+![The Nucleus: the team's knowledge as a 3D hologram](docs/img/nucleo.png)
 
-## Avvio rapido
+## Quick start
 
 ```bash
-npm ci && npm run build && npm link     # rende disponibile il comando `micelio`
-npm run desktop                         # app desktop (avvia anche il daemon)
-npm run demo                            # oppure: team dimostrativo con 3 nodi e ~50 ricordi
+npm ci && npm run build && npm link     # makes the `micelio` command available
+npm run desktop                         # desktop app (also starts the daemon)
+npm run demo                            # or: demo team with 3 nodes and ~50 memories
 
-micelio start                           # avvia il daemon locale
-micelio init "Team Dev" --name mio-pc   # crea un team (solo il primo nodo)
-micelio invite                          # genera un codice per un collega
-micelio setup claude-code               # collega Claude Code via MCP
+micelio start                           # starts the local daemon
+micelio init "Team Dev" --name mio-pc   # creates a team (first node only)
+micelio invite                          # generates a code for a colleague
+micelio setup claude-code               # connects Claude Code via MCP
 ```
 
-Il collega, sulla sua macchina:
+The colleague, on their machine:
 
 ```bash
 micelio start
@@ -38,20 +40,20 @@ micelio join <codice> --name suo-pc
 micelio setup claude-code
 ```
 
-Da quel momento, in Claude Code: *"cerca nella memoria del team come risolviamo X"* oppure *"salva nella memoria del team questa decisione"*.
+From then on, in Claude Code: *"search the team memory for how we solve X"* or *"save this decision in the team memory"*.
 
-## Documentazione
+## Documentation
 
-| Documento | Per chi |
+| Document | For whom |
 |---|---|
-| [Guida utente](docs/guida-utente.md) | Chi usa Micelio: installazione, team, inviti, ricordi, Claude Code |
-| [App desktop e interfaccia](docs/app.md) | Il Nucleo 3D, le viste, le notifiche, il team demo |
-| [Server MCP](docs/mcp.md) | Tool esposti agli agenti AI e configurazione dei client |
-| [Guida per sviluppatori](docs/sviluppo.md) | Chi lavora sul codice: struttura, build, test, convenzioni |
-| [Design](docs/DESIGN.md) | Architettura e decisioni |
-| [Piano di lavoro](docs/PLAN.md) | Stato delle fasi e prossimi passi |
-| [Spike della Fase 0](docs/spike-fase-0.md) | Esperimenti che hanno validato le scelte tecniche |
+| [User guide](docs/en/user-guide.md) | Micelio users: installation, team, invites, memories, Claude Code |
+| [Desktop app and interface](docs/en/app.md) | The 3D Nucleus, the views, the notifications, the demo team |
+| [MCP server](docs/en/mcp.md) | Tools exposed to AI agents and client configuration |
+| [Developer guide](docs/en/development.md) | Those working on the code: structure, build, tests, conventions |
+| [Design](docs/en/DESIGN.md) | Architecture and decisions |
+| [Work plan](docs/en/PLAN.md) | Phase status and next steps |
+| [Phase 0 spike](docs/en/phase-0-spike.md) | Experiments that validated the technical choices |
 
-## Requisiti
+## Requirements
 
-Node.js ≥ 22.13 su Windows, macOS o Linux. Docker serve solo per i test end-to-end.
+Node.js ≥ 22.13 on Windows, macOS or Linux. Docker is only needed for the end-to-end tests.
