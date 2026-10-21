@@ -217,6 +217,10 @@ th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .app.holo .sidebar { background: #05090c; border-right-color: #2a1d0b; }
 .app.holo .brand, .app.holo .nav-link { color: #ffcf8a; }
 .app.holo .brand small, .app.holo .sidebar-footer { color: rgb(255 207 138 / 60%); }
+/* Selettore della lingua sul tema scuro: con i colori normali «EN» era grigio scuro su nero, illeggibile */
+.app.holo .lang-switch { border-color: rgb(255 170 60 / 40%); }
+.app.holo .lang-btn { color: rgb(255 207 138 / 80%); }
+.app.holo .lang-btn.on { background: rgb(255 170 60 / 24%); color: #ffd27a; }
 .app.holo .nav-link:hover { background: rgb(255 170 60 / 10%); }
 .app.holo .nav-link.active { background: rgb(255 170 60 / 18%); color: #ffd27a; }
 .app.holo .dot.on { background: #ffb347; box-shadow: 0 0 6px #ffb347; }
