@@ -6,7 +6,7 @@ AI agents (Claude Code, Codex, VS Code, WebStorm…) use Micelio through **MCP**
 
 The daemon exposes an MCP server at `http://127.0.0.1:7337/mcp`, protected by the token. `micelio setup claude-code` (or the button in Settings) registers it with `claude mcp add` at **user level**: from then on every Claude Code session, in any folder, sees Micelio's tools. For clients that use MCP through a process there is the `micelio mcp` shim; `micelio setup codex|vscode|webstorm` prints the configuration to paste.
 
-With several teams, `/mcp` works on the **default team** and `/mcp/<team>` on a specific team. For a project of another team use "Connect Claude Code" next to the folder (Settings) or `micelio --team <team> setup claude-code --project <folder>`: see **Several teams**.
+With several teams, Claude Code's MCP picks the team from the project folder: the team that enabled it, otherwise the **default team**. Every `remember` reply says which team the memory went to. `/mcp/<team>` always works on one specific team: to force it in a project use "Connect Claude Code" next to the folder (Settings) or `micelio --team <team> setup claude-code --project <folder>`. See **Several teams**.
 
 ## The tools {#tools}
 

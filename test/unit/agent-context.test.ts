@@ -12,7 +12,7 @@ import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { contextLine, firstLine, promptContext, sessionContext } from '../../src/context/agent-context'
 import type { RecallHit } from '../../src/core/model'
-import { installHooks } from '../../src/node/integrations'
+import { installHooks, mcpAddArgs } from '../../src/node/integrations'
 import { relevanceCutoff } from '../../src/node/micelio-node'
 import { tmpHome } from '../helpers'
 
@@ -74,6 +74,19 @@ describe('installazione degli hook', () => {
     expect(s.hooks.SessionStart).toBeUndefined()
     expect(cmds('UserPromptSubmit')).toEqual(['echo mio'])
     expect(cmds('SessionEnd')).toHaveLength(1)
+  })
+})
+
+describe('registrazione MCP', () => {
+  // Lo shim stdio, non l'endpoint HTTP: Claude Code lo avvia nella cartella del progetto e il daemon
+  // ne ricava il team (bug del 2026-10-21). Nessun token negli argomenti: lo shim lo legge da config.json.
+  // EN: The stdio shim, not the HTTP endpoint: Claude Code starts it in the project folder and the daemon
+  //     derives the team from it (bug of 2026-10-21). No token in the arguments: the shim reads it from config.json.
+  it('registra lo shim `micelio mcp` in ambito utente, senza token', () => {
+    const args = mcpAddArgs('C:\\Users\\me\\.micelio', 'C:\\app\\dist\\cli\\main.js')
+    expect(args.slice(0, 6)).toEqual(['mcp', 'add', '--scope', 'user', 'micelio', '--'])
+    expect(args.slice(-4)).toEqual(['C:/app/dist/cli/main.js', '--home', 'C:/Users/me/.micelio', 'mcp'])
+    expect(args.join(' ')).not.toMatch(/Bearer|--transport|http/)
   })
 })
 

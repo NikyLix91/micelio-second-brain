@@ -1187,9 +1187,20 @@ async function contextHook (event: 'session-start' | 'prompt', input: { session_
 program.command('mcp')
   .description('server MCP su stdio (per client che non supportano HTTP): inoltra al daemon')
   .action(async () => {
+    const p = paths()
+    // Claude Code avvia lo shim a inizio sessione: se il daemon è spento lo si avvia, come fa
+    // l'hook di inizio sessione, altrimenti l'agente resterebbe senza memoria per tutta la sessione
+    // EN: Claude Code starts the shim at session start: if the daemon is off we start it, like the
+    //     session-start hook does, otherwise the agent would have no memory for the whole session
+    if (!(await new DaemonClient(p).health())) await startInBackground(p, 8000)
     const c = client()
     const { runStdioProxy } = require('../mcp/stdio-proxy') as typeof import('../mcp/stdio-proxy')
-    await runStdioProxy(c.mcpUrl, c.config.token)
+    // Senza --team il team lo sceglie il daemon dalla cartella del progetto (CLAUDE_PROJECT_DIR
+    // la imposta Claude Code; gli altri client avviano lo shim nella cartella di lavoro)
+    // EN: Without --team the daemon picks the team from the project folder (Claude Code sets
+    //     CLAUDE_PROJECT_DIR; the other clients start the shim in the working folder)
+    const team = program.opts().team as string | undefined
+    await runStdioProxy(c.mcpUrl, c.config.token, team ? undefined : (process.env.CLAUDE_PROJECT_DIR || process.cwd()))
   })
 
 /** Configurazioni pronte da incollare per i client MCP diversi da Claude Code (Fase 7). / EN: Ready-to-paste configurations for MCP clients other than Claude Code (Phase 7). */
@@ -1242,7 +1253,7 @@ program.command('setup')
     const p = paths()
     const c = new DaemonClient(p)
     if (o.print) {
-      const args = mcpAddArgs(c.mcpUrl, c.config.token)
+      const args = mcpAddArgs(p.home)
       console.log(`claude ${args.map((a) => (/\s/.test(a) ? JSON.stringify(a) : a)).join(' ')}`)
       if (o.hook) console.log(`+ hook SessionEnd in ${claudeSettingsFile()}:\n  ${hookCommand(p.home)}`)
       if (o.context) console.log(`+ hook SessionStart e UserPromptSubmit (contesto automatico):\n  ${hookCommand(p.home, undefined, 'session-start')}\n  ${hookCommand(p.home, undefined, 'prompt')}`)
@@ -1252,7 +1263,7 @@ program.command('setup')
       // Stessa logica del pulsante nelle Impostazioni della UI (src/node/integrations.ts).
       // EN: Same logic as the button in the UI Settings (src/node/integrations.ts).
       const r = setupClaudeCode({ mcpUrl: c.mcpUrl, token: c.config.token, home: p.home, hook: o.hook, context: o.context })
-      console.log(`Server MCP registrato: ${r.mcpUrl}`)
+      console.log(`Server MCP registrato (shim stdio verso ${r.mcpUrl}; il team si sceglie dalla cartella del progetto)`)
       if (r.hookFile) console.log(`Hook di fine sessione installato in ${r.hookFile} (copia di backup accanto)`)
     } catch (err) {
       throw err instanceof IntegrationError ? new DaemonError(err.message + '\nProva `micelio setup claude-code --print` ed esegui i comandi a mano.') : err

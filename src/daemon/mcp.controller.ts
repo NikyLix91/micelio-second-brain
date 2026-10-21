@@ -11,6 +11,14 @@
  * specific team. For a project, `/mcp/<team>` is registered in Claude Code's "local" scope
  * (`micelio setup project`), so the agent of that project sees only its team.
  *
+ * Lo shim stdio (`micelio mcp`, registrato da «Collega Claude Code») manda la cartella di lavoro
+ * dell'agente nell'intestazione `x-micelio-cwd`: allora `/mcp` usa il team che possiede quella
+ * cartella (vedi nodeForRequest), e solo in mancanza il predefinito.
+ *
+ * EN: The stdio shim (`micelio mcp`, registered by "Connect Claude Code") sends the agent's working
+ * folder in the `x-micelio-cwd` header: then `/mcp` uses the team that owns that folder (see
+ * nodeForRequest), and the default one only as a fallback.
+ *
  * Modalità STATELESS: per ogni richiesta HTTP creiamo un McpServer e un trasporto nuovi, li
  * colleghiamo, gestiamo la richiesta e chiudiamo tutto quando la risposta è finita. Niente
  * sessioni da ricordare, niente stream SSE: per un servizio locale con pochi client è la
@@ -29,6 +37,7 @@ import { All, Controller, Param, Post, Req, Res } from '@nestjs/common'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import type { Request, Response } from 'express'
 import { createMcpServer } from '../mcp/mcp-server'
+import { CWD_HEADER } from '../mcp/stdio-proxy'
 import type { MicelioNode } from '../node/micelio-node'
 import { MicelioService } from './micelio.service'
 
@@ -45,7 +54,34 @@ export class McpController {
    */
   @Post()
   async handle (@Req() req: Request, @Res() res: Response): Promise<void> {
-    await this.serve(this.micelio.node, req, res)
+    await this.serve(this.nodeForRequest(req), req, res)
+  }
+
+  /**
+   * Team di una richiesta a `/mcp`. Se lo shim stdio ha mandato la cartella di lavoro
+   * dell'agente (intestazione `x-micelio-cwd`), vale il team che la possiede, ricalcolato a ogni
+   * richiesta: così vale anche una cartella abilitata a sessione già aperta. Altrimenti il team
+   * dell'intestazione `x-micelio-team` o il predefinito, come prima.
+   * Bug reale (2026-10-21): senza questa scelta i ricordi salvati da un progetto del team A
+   * finivano nel team predefinito, visibili a colleghi che non dovevano vederli.
+   *
+   * EN: Team of a request to `/mcp`. If the stdio shim sent the agent's working folder
+   * (`x-micelio-cwd` header), the team that owns it wins, recomputed on every request: so a
+   * folder enabled while a session is already open works too. Otherwise the team from the
+   * `x-micelio-team` header or the default one, as before.
+   * Real bug (2026-10-21): without this choice, memories saved from a project of the A team
+   * ended up in the default team, visible to colleagues who should not see them.
+   */
+  private nodeForRequest (req: Request): MicelioNode {
+    const raw = req.headers[CWD_HEADER]
+    const encoded = Array.isArray(raw) ? raw[0] : raw
+    if (encoded) {
+      let cwd: string | null = null
+      try { cwd = decodeURIComponent(encoded) } catch { /* intestazione malformata: si ignora / EN: malformed header: ignored */ }
+      const owner = cwd ? this.micelio.host.ownerOf(cwd) : null
+      if (owner) return this.micelio.host.node(owner)
+    }
+    return this.micelio.node
   }
 
   /** MCP di un team preciso: `/mcp/<id o nome del team>`. / EN: MCP of a specific team: `/mcp/<id o nome del team>`. */
