@@ -339,6 +339,7 @@ User requests of 2026-10-18 (B1–B3) and brainstorming on competitors on the sa
 | B9 | **Linux package** (AppImage and .deb) | `feature/package-linux` | ✅ Done. `npm run package:linux` (also in a container), parts shared with Windows in `scripts/package-common.js`. Tried in a clean Debian 12: .deb with dependencies, `micelio` on the PATH, daemon with the bundled Node, desktop app on a virtual display, removal. Fixed the missing dependency on the audio library. To be tried on a real Linux desktop |
 | B10 | **AI chat over the memory, with a mind map of knowledge** | `feature/chat-memoria` | ✅ Done. "Ask" page: LLM answer written only from the team's memories with clickable [n] references, "I don't know" without calling the LLM and reporting of the knowledge gap, instant mind map (themes as link communities, memories with their first line, dreaming links, expand), follow-up questions, "Save as memory", local-only history. Map over 5,000 memories in ~0.1 s. See "B10 in detail" |
 | B11 | **Measuring the system's effectiveness** | `feature/efficacia` | ✅ Done. "Effectiveness" page: agent lookups in real time (MCP tools and automatic context, with response time), per-memory outcomes once the session is over (heuristic always, LLM in the same call as distillation), automatic thumbs-up on memories confirmed useful (never over a manual vote), usefulness shared with the team (`useful.report`, weight 3 in activation), noise, wrong memories, unanswered questions, desktop notifications only for useful/wrong. See "B11 in detail" |
+| B12 | **Memory that learns from use** (ideas from Spector) | `feature/memoria-dall-uso` | To do. Four changes to how memories rise and fall: (1) habituation, memories offered often and never useful drop in the ranking; (2) co-use synapses, two memories useful in the same session strengthen their link; (3) weight for hard-won discoveries, more importance to memories born from a long struggle; (4) redaction receipt, every node confirms it removed the content. See "B12 in detail" |
 
 ### B7 in detail: backup and restore of a team's knowledge
 
@@ -408,6 +409,44 @@ User requests of 2026-10-18 (B1–B3) and brainstorming on competitors on the sa
    Filters by project and period. Settings: notifications on/off.
 5. **Performance:** recording a lookup must not slow down the response to the agent (background write, indexes). Heuristic linear in the session length. Trial with thousands of lookups.
 6. **Guide** "Effectiveness" IT/EN with the internals; unit tests (heuristic, vote plan) and integration tests (lookup → outcome → vote → team counter).
+
+### B12 in detail: memory that learns from use
+
+**Origin (2026-10-21).** A comment on the LinkedIn post about Micelio pointed to [Spector](https://github.com/spectrayan/spector), a memory engine for agents written in Java (Apache-2.0). It isn't a direct competitor: it's a memory for a single user or agent, with no team sharing and no automatic collection from sessions. We already have many of its ideas (decay, reinforcement through use, hybrid search with RRF, consolidation, graph). Four are worth bringing into Micelio. The user asked to plan all four.
+
+**Why now.** In the first three days the Effectiveness page showed that only part of the memories handed to the agent are really useful: 28% in the A team, 10% in the B team. Automatic context often offers the same memories even when they're off topic. Every useless memory in the context is noise for the agent and wasted tokens.
+
+**1. Habituation: what doesn't help goes down.**
+- Today "noise" (memories returned at least 5 times and never useful) is only visible on the Effectiveness page; the ranking ignores it.
+- A habituation factor is added to activation: the more often a memory has been returned without being useful, the lower it goes. A useful outcome resets it, because the memory has proven its worth.
+- It applies mostly to automatic context (`SessionStart`, `UserPromptSubmit`), where the agent didn't ask for anything. An explicit `recall` applies it more lightly, because there the question is precise.
+- Roots don't go below the current floor, pinned memories aren't affected.
+- Shared data: the team's "returned" and "useful" counters already exist (`usage.report`, `useful.report`), so the effect applies to the whole team with no new events.
+- Success measure: the share of useful memories on the Effectiveness page must go up in the weeks after release, for the same number of lookups.
+
+**2. Co-use synapses (Hebbian learning).**
+- Today synapses come from shared tags, similar meaning and dreaming.
+- New "use" synapse type: when two memories turn out useful in the same session, their link gets stronger. A link that is no longer reinforced weakens over time, like activation.
+- In search, a memory that is found brings along its strongest co-use neighbours, even if they don't contain the searched words: they are the ones usually needed together.
+- In the constellation and in the chat's map these synapses have their own colour.
+- Team sharing: a new event with the pairs and their weight, accumulated like the other counters; nodes on older versions ignore it.
+- Performance: pairs grow with the square of the useful memories per session, so there is a cap on pairs per session and on neighbours per memory. Trial with thousands of memories.
+
+**3. Weight for hard-won discoveries.**
+- A gotcha found after an hour of errors is worth more than an obvious fact, but today it starts with the same weight.
+- During distillation we measure how hard the part of the session that produced the memory was: failed commands, repeated attempts, duration, user messages. The data is already in the transcript and needs no extra LLM calls.
+- The memory starts with a higher initial importance, which decays normally if nobody uses it afterwards. It shows in the memory's details ("born from a hard session").
+- To be tuned on real transcripts before fixing the thresholds.
+
+**4. Redaction receipt.**
+- Today an admin's redaction removes the content from every node, but whoever asked for it doesn't know when it actually happened on each one.
+- Every node, after removing the content (index, Markdown export, caches), publishes a signed confirmation event with the memory id and the time.
+- In the UI, for each redaction: the list of members with "confirmed on …" or "pending" (nodes that are off). Exportable, for whoever has to show a customer that some data was removed.
+- Limit to state in the guide: the receipt says the software removed the data, not that nobody made a manual copy.
+
+**Proposed order:** 1, then 2, then 4, then 3. The first has the most direct effect on effectiveness and is the smallest; the third needs thresholds tuned on real data.
+
+**For each item:** in-app guide IT/EN with the internals, UI text in both languages, unit and integration tests, trial at scale with thousands of memories.
 
 ### B10 in detail: AI chat over the memory, with a mind map of knowledge
 
@@ -486,3 +525,4 @@ Follow-up questions take the conversation into account. Below each answer there 
 | 2026-10-18 | B2 completed on branch `feature/guida-in-linea`: in-app help in Italian and English, contextual "?", F1, Help page. The parity test confirmed that all 21 topics have the same sections in both languages |
 | 2026-10-21 | Serious bug fixed on branch `fix/mcp-team-cartella` (0.5.1): the user-scope MCP was registered over HTTP and always worked on the default team, so 25 memories saved from a session in the `progetto-a` project (A team) ended up in the B team. The user-scope MCP is now the `micelio mcp` stdio shim, which sends the project folder on every request, and the daemon picks the team that owns it. `remember` says which team it publishes to. The 25 memories were copied to the A team and redacted from the wrong one |
 | 2026-10-21 | Slow startup fixed on branch `fix/avvio-lento` (0.5.2): the daemon took 55 s to start (the app waited 30 and said "daemon not running"), because of the synchronous scan of a 209 MB transcript. Causes: the sensitive-file check recompiled 33 expressions for every word (36 s out of 40); the scan ran on the main thread and during startup. Now cached expressions, transcripts read in a worker thread, first scan after startup, unripe sessions not re-read, app wait at 90 s. Maximum main-thread block with the 209 MB transcript: 51 ms |
+| 2026-10-21 | Added B12 "Memory that learns from use" to the backlog: habituation, co-use synapses, weight for hard-won discoveries, redaction receipt. Ideas taken from comparing with Spector, pointed out in a comment on the LinkedIn post |
