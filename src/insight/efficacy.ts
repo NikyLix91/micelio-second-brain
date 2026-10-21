@@ -15,23 +15,40 @@
  * "probabilmente utile", con quell'elemento come prova. Le parole comuni non contano: "kafka" o
  * "retry" si ripetono comunque, una riga di comando copiata no.
  * Il giudizio dell'LLM (alla distillazione, vedi src/ingest/pipeline.ts) conferma o smentisce.
+ *
+ * EN: Micelio's effectiveness for agents (B11): what Micelio provided in a Claude Code
+ * session and whether the agent used it. Pure functions over the lines of the JSONL transcript.
+ *
+ * EN: WHAT IT PROVIDED. Two channels, both recognizable in the transcript:
+ * - Micelio MCP tools (`mcp__micelio…__recall`, `architecture`, `get`…): the assistant's
+ *   `tool_use` block and its `tool_result`, which reports `id:<12 chars>` for each memory;
+ * - automatic context from hooks (session start, every prompt): `attachment` lines of type
+ *   `hook_additional_context`, with `(id:<12 chars>)` for each memory.
+ *
+ * EN: WHETHER IT USED IT (heuristic, no LLM). After delivery we look at the assistant's messages
+ * and commands (text and tool inputs: commands run, files opened or modified).
+ * If a DISTINCTIVE element of the memory shows up there (a path, a command in backticks, a class
+ * or function name, a URL, a file cited in the code references) the outcome is
+ * "probably useful", with that element as evidence. Common words don't count: "kafka" or
+ * "retry" get repeated anyway, a copied command line doesn't.
+ * The LLM's judgment (at distillation, see src/ingest/pipeline.ts) confirms or refutes it.
  */
 
-/** Ricordi forniti da Micelio in un punto della trascrizione. */
+/** Ricordi forniti da Micelio in un punto della trascrizione. / EN: Memories provided by Micelio at one point of the transcript. */
 export interface Delivery {
-  /** Indice della riga (nella porzione letta) in cui sono arrivati all'agente. */
+  /** Indice della riga (nella porzione letta) in cui sono arrivati all'agente. / EN: Index of the line (in the portion read) where they reached the agent. */
   index: number
-  /** recall | architecture | get | … per i tool MCP; session-start | prompt per gli hook. */
+  /** recall | architecture | get | … per i tool MCP; session-start | prompt per gli hook. / EN: recall | architecture | get | … for MCP tools; session-start | prompt for hooks. */
   channel: string
-  /** Id abbreviati (12 caratteri), come li mostra Micelio. */
+  /** Id abbreviati (12 caratteri), come li mostra Micelio. / EN: Short ids (12 chars), as Micelio shows them. */
   ids: string[]
 }
 
 const ID_RE = /\bid:([0-9a-f]{12})\b/g
-/** Nome dei tool MCP di Micelio: il server può chiamarsi `micelio` o `micelio-<qualcosa>`. */
+/** Nome dei tool MCP di Micelio: il server può chiamarsi `micelio` o `micelio-<qualcosa>`. / EN: Name of Micelio's MCP tools: the server can be called `micelio` or `micelio-<something>`. */
 const MICELIO_TOOL_RE = /^mcp__micelio[\w-]*__(\w+)$/
 
-/** Testo di un contenuto (stringa, blocco o array annidato). */
+/** Testo di un contenuto (stringa, blocco o array annidato). / EN: Text of a content (string, block or nested array). */
 function textOf (c: any): string {
   if (typeof c === 'string') return c
   if (Array.isArray(c)) return c.map(textOf).join('\n')
@@ -43,7 +60,7 @@ function idsIn (text: string): string[] {
   return [...new Set([...text.matchAll(ID_RE)].map((m) => m[1]))]
 }
 
-/** Righe JSON della trascrizione (quelle malformate si saltano). */
+/** Righe JSON della trascrizione (quelle malformate si saltano). / EN: JSON lines of the transcript (malformed ones are skipped). */
 export function parseLines (raw: string[]): any[] {
   const out: any[] = []
   for (const l of raw) {
@@ -53,10 +70,10 @@ export function parseLines (raw: string[]): any[] {
   return out
 }
 
-/** Dove e cosa ha fornito Micelio nella porzione di trascrizione. */
+/** Dove e cosa ha fornito Micelio nella porzione di trascrizione. / EN: Where and what Micelio provided in the transcript portion. */
 export function findDeliveries (rows: any[]): Delivery[] {
   const out: Delivery[] = []
-  const pending = new Map<string, string>() // id del tool_use → canale
+  const pending = new Map<string, string>() // id del tool_use → canale / EN: tool_use id → channel
   rows.forEach((r, index) => {
     if (!r || r.isSidechain) return
     const content = r.message?.content
@@ -84,6 +101,9 @@ export function findDeliveries (rows: any[]): Delivery[] {
 /**
  * Cosa ha fatto l'assistente DOPO la riga `from`: testo dei messaggi e input degli strumenti
  * (comandi, file letti o modificati). Esclusi i tool di Micelio stessi, che ripeterebbero la domanda.
+ *
+ * EN: What the assistant did AFTER line `from`: message text and tool inputs
+ * (commands, files read or modified). Micelio's own tools are excluded, since they would repeat the question.
  */
 export function actionsAfter (rows: any[], from: number): string {
   const parts: string[] = []
@@ -98,19 +118,22 @@ export function actionsAfter (rows: any[], from: number): string {
   return parts.join('\n')
 }
 
-/** Un ricordo, per quanto serve all'euristica. */
+/** Un ricordo, per quanto serve all'euristica. / EN: A memory, as far as the heuristic needs it. */
 export interface MemoryForJudge {
   title: string
   body: string
   source?: { code?: { files?: string[], symbols?: string[] } }
 }
 
-/** Parole che compaiono fra backtick ma non distinguono nulla (comandi e valori generici). */
+/** Parole che compaiono fra backtick ma non distinguono nulla (comandi e valori generici). / EN: Words that appear in backticks but distinguish nothing (generic commands and values). */
 const GENERIC = new Set(['true', 'false', 'null', 'undefined', 'npm', 'npm install', 'npm test', 'git', 'node', 'yes', 'no', 'main', 'master', 'src', 'test', 'tests', 'docs', 'build', 'dist', 'index.ts', 'index.js', 'package.json', 'readme.md'])
 
 /**
  * Elementi distintivi di un ricordo: ciò che, ritrovato nelle azioni dell'agente, indica che il
  * ricordo è stato usato davvero. In ordine di forza (i primi sono le prove migliori).
+ *
+ * EN: Distinctive elements of a memory: what, when found in the agent's actions, shows that the
+ * memory was really used. In order of strength (the first ones are the best evidence).
  */
 export function distinctiveTokens (m: MemoryForJudge): string[] {
   const out: string[] = []
@@ -121,32 +144,40 @@ export function distinctiveTokens (m: MemoryForJudge): string[] {
   }
   const text = `${m.title}\n${m.body}`
   // 1. file e simboli dei riferimenti al codice
+  // EN: 1. files and symbols from the code references
   for (const f of m.source?.code?.files ?? []) add(f)
   for (const s of m.source?.code?.symbols ?? []) add(s.replace(/^(class|function|interface|const|POST|GET|PUT|DELETE|PATCH)\s+/, ''))
   // 2. testo fra backtick (comandi, nomi, valori di configurazione); dei comandi anche la prima parte
+  // EN: 2. text in backticks (commands, names, config values); for commands, also the first part
   for (const mm of text.matchAll(/`([^`\n]{3,200})`/g)) {
     add(mm[1])
     const head = mm[1].split(/\s+/).slice(0, 3).join(' ')
     if (head !== mm[1] && head.includes(' ')) add(head)
   }
   // 3. percorsi di file e file con estensione
+  // EN: 3. file paths and files with an extension
   for (const mm of text.matchAll(/(?:[\w.-]+[\\/])+[\w.-]+\.\w{1,8}\b/g)) add(mm[0])
   for (const mm of text.matchAll(/\b[\w-]+\.(?:ts|tsx|js|jsx|json|ya?ml|py|cs|java|sql|xml|toml|sh|ps1|env|properties|gradle|csproj|config)\b/g)) add(mm[0])
   // 4. URL
+  // EN: 4. URLs
   for (const mm of text.matchAll(/https?:\/\/[^\s)>\]]+/g)) add(mm[0])
   // 5. identificatori: CamelCase con almeno due "gobbe", snake_case, nomi con punti (Foo.bar)
+  // EN: 5. identifiers: CamelCase with at least two "humps", snake_case, dotted names (Foo.bar)
   for (const mm of text.matchAll(/\b(?:[A-Z][a-z0-9]+){2,}[A-Za-z0-9]*\b|\b[a-z][a-z0-9]*(?:_[a-z0-9]+){1,}\b|\b[A-Za-z_]\w*\.[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*\b/g)) add(mm[0])
   return out
 }
 
-/** Per confrontare percorsi scritti con barre diverse e maiuscole diverse (Windows). */
+/** Per confrontare percorsi scritti con barre diverse e maiuscole diverse (Windows). / EN: To compare paths written with different slashes and different casing (Windows). */
 function normPath (s: string): string {
   return s.replace(/\\\\/g, '/').replace(/\\/g, '/').toLowerCase()
 }
 
 /**
  * Euristica: il ricordo ha lasciato tracce nelle azioni successive?
+ *
+ * EN: Heuristic: did the memory leave traces in the following actions?
  * @returns 'likely' con la prova (l'elemento ritrovato), o 'none'
+ *          EN: 'likely' with the evidence (the element found), or 'none'
  */
 export function judgeUse (m: MemoryForJudge, after: string): { verdict: 'likely' | 'none', evidence: string | null } {
   if (!after) return { verdict: 'none', evidence: null }

@@ -1,15 +1,27 @@
 /**
  * @file Team: membri (albero degli inviti), inviti, ruoli e impostazioni condivise (attività 3.7).
  *
+ * EN: Team: members (invitation tree), invites, roles and shared settings (task 3.7).
+ *
  * Le azioni da admin (promuovi, espelli, impostazioni di team) sono mostrate solo agli admin;
  * il daemon le verifica comunque (e apply le verifica di nuovo su ogni nodo).
+ *
+ * EN: Admin actions (promote, remove, team settings) are shown to admins only;
+ * the daemon checks them anyway (and apply checks them again on every node).
  *
  * Fase 10: l'admin sceglie quanti ricordi distillare al massimo per sessione (`distill.maxMemories`);
  * la scheda "Qualità della distillazione" (visibile a tutti) dà i dati per decidere.
  *
+ * EN: Phase 10: the admin chooses the maximum number of memories to distill per session
+ * (`distill.maxMemories`); the "Distillation quality" card (visible to everyone) gives the data to decide.
+ *
  * B3 (più team sullo stesso PC): la scheda "I tuoi team su questo PC" sceglie il predefinito e
  * toglie un team; accanto ai membri compare in quali ALTRI tuoi team c'è la stessa persona
  * (identità personale, vedi src/core/identity.ts).
+ *
+ * EN: B3 (several teams on the same PC): the "Your teams on this PC" card picks the default and
+ * removes a team; next to the members it shows in which OTHER teams of yours the same person is
+ * (personal identity, see src/core/identity.ts).
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { BackupCard } from '../components/Backup'
@@ -195,6 +207,10 @@ export function Team () {
  * Team del PC diversi da quello mostrato, e dove compare ogni persona: chiave pubblica della
  * persona → nomi degli altri team in cui è membro attivo. Serve a riconoscere la stessa persona
  * in più team (e a distinguere due colleghi con lo stesso nome).
+ *
+ * EN: The PC's teams other than the one shown, and where each person appears: the person's public
+ * key → names of the other teams where they are an active member. Used to recognize the same
+ * person across teams (and to tell apart two colleagues with the same name).
  */
 function usePersonTeams (): Map<string, string[]> {
   const teams = useQuery({ queryKey: ['teams'], queryFn: api.teams })
@@ -218,7 +234,7 @@ function usePersonTeams (): Map<string, string[]> {
   return q.data ?? new Map()
 }
 
-/** I team di questo PC: predefinito, uscita, identità personale (B3). */
+/** I team di questo PC: predefinito, uscita, identità personale (B3). / EN: The teams on this PC: default, leaving, personal identity (B3). */
 function YourTeamsCard () {
   const s = useStrings(S)
   const client = useQueryClient()
@@ -229,6 +245,7 @@ function YourTeamsCard () {
     mutationFn: (id: string) => api.leaveTeam(id),
     onSuccess: (_r, id) => {
       // Se era il team mostrato, l'interfaccia torna al predefinito
+      // EN: If it was the team being shown, the UI goes back to the default one
       if (currentTeam() === id) setCurrentTeam(null)
       void client.resetQueries()
     }
@@ -258,7 +275,7 @@ function YourTeamsCard () {
   )
 }
 
-/** Albero ricorsivo: i figli di un membro sono quelli entrati con un suo invito. */
+/** Albero ricorsivo: i figli di un membro sono quelli entrati con un suo invito. / EN: Recursive tree: a member's children are those who joined with one of their invites. */
 function MemberTree ({ members, parent, me, isAdmin, others }: { members: MemberRecord[], parent: string | null, me: string | null, isAdmin: boolean, others: Map<string, string[]> }) {
   const children = members.filter((m) => m.invitedBy === parent).sort((a, b) => a.joinedAt - b.joinedAt)
   if (children.length === 0) return null
@@ -301,7 +318,7 @@ function MemberRow ({ member: m, me, isAdmin, alsoIn }: { member: MemberRecord, 
   )
 }
 
-/** Creazione di un invito: mostra il codice da copiare e l'avviso se non è ancora replicato. */
+/** Creazione di un invito: mostra il codice da copiare e l'avviso se non è ancora replicato. / EN: Invite creation: shows the code to copy and a warning if it isn't replicated yet. */
 function InviteCard () {
   const s = useStrings(S)
   const invites = useQuery({ queryKey: ['invites'], queryFn: api.invites })
@@ -310,6 +327,7 @@ function InviteCard () {
   const [copied, setCopied] = useState(false)
   const r = create.data
   // Solo locale (B4): nessuno potrebbe usare l'invito, si spiega cosa fare invece del pulsante
+  // EN: Local only (B4): nobody could use the invite, so we explain what to do instead of the button
   if (status.data?.localOnly) return <Card help='solo#local' title={s.invite}><div className='notice'>{s.localOnly}</div></Card>
 
   return (
@@ -336,7 +354,7 @@ function InviteCard () {
   )
 }
 
-/** Impostazioni condivise del team (solo admin): lingua dei ricordi, limite di distillazione, parole chiave. */
+/** Impostazioni condivise del team (solo admin): lingua dei ricordi, limite di distillazione, parole chiave. / EN: Shared team settings (admin only): memory language, distillation limit, keywords. */
 function TeamSettings () {
   const s = useStrings(S)
   const cfg = useQuery({ queryKey: ['teamConfig'], queryFn: api.teamConfig })
@@ -393,13 +411,17 @@ function TeamSettings () {
   )
 }
 
-/** Stile dell'indicazione sul limite. */
+/** Stile dell'indicazione sul limite. / EN: Style of the advice about the limit. */
 const ADVICE_CLASS: Record<Advice['action'], string> = { raise: 'ok', keep: '', lower: 'warn', unknown: '' }
 
 /**
  * Qualità della distillazione (Fase 10): per ogni fascia di posizione nel distillato, quanti
  * ricordi si sono rivelati utili, inutili, fusi/archiviati o mai usati; quanto spesso il limite
  * viene raggiunto; e un'indicazione per l'admin. Gli stessi dati su ogni PC del team.
+ *
+ * EN: Distillation quality (Phase 10): for each position band in the distillate, how many
+ * memories turned out useful, useless, merged/archived or never used; how often the limit is
+ * reached; and advice for the admin. The same data on every PC of the team.
  */
 export function DistillQualityCard () {
   const s = useStrings(S)

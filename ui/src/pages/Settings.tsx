@@ -2,6 +2,10 @@
  * @file Impostazioni locali (attività 3.9): rete P2P (DHT pubblica o privata), cartelle abilitate
  * alla raccolta, modelli e budget LLM, configurazione di Claude Code. Sono impostazioni di QUESTO
  * nodo (config.json), non del team.
+ *
+ * EN: Local settings (task 3.9): P2P network (public or private DHT), folders enabled for collection, LLM
+ * models and budget, Claude Code configuration. These are settings of THIS node (config.json), not of
+ * the team.
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AutoBackupCard } from '../components/Backup'
@@ -258,6 +262,12 @@ export function Settings () {
  * - "Applica" salva e ricollega subito il nodo, dopo una conferma: tutti i membri del team
  *   devono usare la stessa DHT, altrimenti non si trovano più.
  * I server privati restano salvati anche passando alla DHT pubblica.
+ *
+ * EN: P2P network: Holepunch public DHT or the team's private DHT (server/README.md).
+ * - "Verifica" (Check) tests the DRAFT choice without changing anything (entry, public IP, NAT);
+ * - "Applica" (Apply) saves and reconnects the node right away, after a confirmation: all team members
+ *   must use the same DHT, otherwise they can no longer find each other.
+ * Private servers stay saved even when switching to the public DHT.
  */
 export function NetworkCard () {
   const s = useStrings(S)
@@ -265,6 +275,7 @@ export function NetworkCard () {
   const client = useQueryClient()
   const net = useQuery({ queryKey: ['network'], queryFn: api.network })
   // Bozza: null = nessuna modifica rispetto a quanto salvato
+  // EN: Draft: null = no change compared to what is saved
   const [mode, setMode] = useState<NetworkMode | null>(null)
   const [text, setText] = useState<string | null>(null)
   const check = useMutation({ mutationFn: () => api.checkNetwork(draftMode, draftList) })
@@ -277,6 +288,7 @@ export function NetworkCard () {
 
   const draftMode = mode ?? n.mode
   // Un nodo per riga (accetta anche virgole e spazi come separatori)
+  // EN: One node per line (commas and spaces are accepted as separators too)
   const draftList = (text ?? n.bootstrap.join('\n')).split(/[\s,]+/).map((x) => x.trim()).filter(Boolean)
   const changed = draftMode !== n.mode || (draftMode === 'private' && draftList.join(',') !== n.bootstrap.join(','))
   const inUse = n.mode === 'local' ? t.localInUse : n.active.length ? t.privateInUse(n.active.join(', ')) : t.publicInUse
@@ -330,7 +342,7 @@ export function NetworkCard () {
           {c.reachable
             ? t.reachable(c.nodes, c.ms, c.publicHost ?? t.ipUnknown, c.randomizedPort === null ? t.natUnknown : c.randomizedPort ? t.natYes : t.natNo)
             : t.unreachable}
-          {/* B8: solo con la DHT privata (null con quella pubblica) */}
+          {/* B8: solo con la DHT privata (null con quella pubblica) / EN: B8: only with the private DHT (null with the public one) */}
           {c.reachable && c.relay !== null && <div className='small' style={{ marginTop: 4 }}>{c.relay ? t.relayYes : t.relayNo}</div>}
         </div>
       )}
@@ -352,7 +364,7 @@ export function NetworkCard () {
   )
 }
 
-/** Cartelle in cui le sessioni di Claude Code vengono raccolte (opt-in, D7). */
+/** Cartelle in cui le sessioni di Claude Code vengono raccolte (opt-in, D7). / EN: Folders where Claude Code sessions are collected (opt-in, D7). */
 function WatchCard () {
   const s = useStrings(S)
   const client = useQueryClient()
@@ -362,9 +374,10 @@ function WatchCard () {
   const add = useMutation({ mutationFn: (p: string) => api.watchAdd(p), onSuccess: () => { setPath(''); refresh() } })
   const remove = useMutation({ mutationFn: (p: string) => api.watchRemove(p), onSuccess: refresh })
   // B3: Claude Code avviato nella cartella parla con QUESTO team (MCP in ambito "local")
+  // EN: B3: Claude Code started in the folder talks to THIS team (MCP with "local" scope)
   const link = useMutation({ mutationFn: (p: string) => api.setupProject(p) })
 
-  /** Nell'app desktop usiamo il selettore di cartelle del sistema; nel browser si scrive il percorso. */
+  /** Nell'app desktop usiamo il selettore di cartelle del sistema; nel browser si scrive il percorso. / EN: In the desktop app we use the system folder picker; in the browser you type the path. */
   const pick = async () => {
     const chosen = await window.micelio?.pickFolder?.()
     if (chosen) add.mutate(chosen)
@@ -380,7 +393,7 @@ function WatchCard () {
           <div key={w} className='list-item row'>
             <span className='mono small' style={{ overflowWrap: 'anywhere' }}>{w}</span>
             <span className='spacer' />
-            {/* I pulsanti restano insieme anche con percorsi lunghi */}
+            {/* I pulsanti restano insieme anche con percorsi lunghi / EN: The buttons stay together even with long paths */}
             <span className='row' style={{ flexShrink: 0, flexWrap: 'nowrap' }}>
               <span title={s.watch.linkTitle}><ConfirmButton label={s.watch.link} confirmLabel={s.watch.linkConfirm} disabled={link.isPending} onConfirm={() => link.mutate(w)} /></span>
               <button className='btn small' onClick={() => remove.mutate(w)}>{s.remove}</button>
@@ -399,7 +412,7 @@ function WatchCard () {
   )
 }
 
-/** Cartelle di documenti sorvegliate (Fase 4). */
+/** Cartelle di documenti sorvegliate (Fase 4). / EN: Watched document folders (Phase 4). */
 function DocumentsCard () {
   const s = useStrings(S)
   const d = s.docs
@@ -459,12 +472,19 @@ function DocumentsCard () {
  * Modelli proposti nelle tendine. Sono gli alias della CLI di Claude Code (`claude --model …`),
  * che puntano sempre all'ultima versione di ciascuna famiglia. Con «Altro…» si scrive qualunque
  * nome accettato dalla CLI (es. l'id completo di una versione precisa). Le etichette sono in S.
+ *
+ * EN: Models offered in the dropdowns. They are the Claude Code CLI aliases (`claude --model …`), which
+ * always point to the latest version of each family. With «Altro…» (Other…) you can type any name the
+ * CLI accepts (e.g. the full id of a specific version). The labels are in S.
  */
 export const MODEL_OPTIONS = ['haiku', 'sonnet', 'opus']
 
 /**
  * Tendina di scelta del modello: alias noti più «Altro…», che mostra un campo libero.
  * Un valore già salvato che non è un alias noto (es. un id completo) apre direttamente «Altro…».
+ *
+ * EN: Model dropdown: known aliases plus «Altro…» (Other…), which shows a free-text field. An already saved
+ * value that is not a known alias (e.g. a full id) opens «Altro…» directly.
  */
 export function ModelSelect ({ value, onChange, label }: { value: string, onChange: (v: string) => void, label: string }) {
   const s = useStrings(S).llm
@@ -498,7 +518,7 @@ export function ModelSelect ({ value, onChange, label }: { value: string, onChan
   )
 }
 
-/** Modelli e budget giornaliero: hanno effetto subito, senza riavviare il daemon. */
+/** Modelli e budget giornaliero: hanno effetto subito, senza riavviare il daemon. / EN: Models and daily budget: they take effect immediately, without restarting the daemon. */
 function LlmCard () {
   const s = useStrings(S)
   const t = s.llm
@@ -541,7 +561,7 @@ function LlmCard () {
   )
 }
 
-/** Contesto automatico per gli agenti (B4): cosa inseriscono gli hook di Claude Code. */
+/** Contesto automatico per gli agenti (B4): cosa inseriscono gli hook di Claude Code. / EN: Automatic context for agents (B4): what the Claude Code hooks inject. */
 function ContextCard () {
   const t = useStrings(S).ctx
   const client = useQueryClient()
@@ -559,7 +579,7 @@ function ContextCard () {
       <div className='stack'>
         <label className='row'><input type='checkbox' checked={c.sessionStart} onChange={(e) => save.mutate({ sessionStart: e.target.checked })} /> {t.sessionStart}</label>
         <label className='row'><input type='checkbox' checked={c.prompt} onChange={(e) => save.mutate({ prompt: e.target.checked })} /> {t.prompt}</label>
-        {/* B11: notifiche del desktop per gli esiti dei ricordi forniti agli agenti */}
+        {/* B11: notifiche del desktop per gli esiti dei ricordi forniti agli agenti / EN: B11: desktop notifications for the outcomes of memories provided to agents */}
         {settings.data?.efficacy && (
           <label className='row'>
             <input type='checkbox' checked={settings.data.efficacy.notify} onChange={(e) => { void api.setEfficacyNotify(e.target.checked).then(() => client.invalidateQueries({ queryKey: ['settings'] })) }} /> {t.notify} <HelpButton topic='efficacy#notifications' />
@@ -576,10 +596,12 @@ function ContextCard () {
   )
 }
 
-/** Registra MCP e hook di fine sessione in Claude Code (come `micelio setup claude-code`). */
+/** Registra MCP e hook di fine sessione in Claude Code (come `micelio setup claude-code`). / EN: Registers MCP and the session-end hook in Claude Code (like `micelio setup claude-code`). */
 function ClaudeCodeCard () {
   const t = useStrings(S).cc
   // "Configura" = MCP + tutti gli hook; "Solo MCP" = nessun hook (né raccolta né contesto automatico)
+  // EN: "Configura" (Configure) = MCP + all hooks; "Solo MCP" (MCP only) = no hooks (neither collection nor
+  //     automatic context)
   const setup = useMutation({ mutationFn: (hooks: boolean) => api.setupClaudeCode(hooks, hooks) })
   return (
     <Card help='settings#claude-code' title={t.title}>

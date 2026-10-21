@@ -1,4 +1,5 @@
 // B4: contesto automatico per gli agenti, dal nodo (come lo chiedono gli hook di Claude Code).
+// EN: B4: automatic context for agents, from the node (as the Claude Code hooks request it).
 import fs from 'node:fs'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -22,6 +23,7 @@ describe('contesto automatico', () => {
     published(await node.remember({ title: 'Retry del pagamento negli ordini', body: 'Il pagamento si riprova al massimo tre volte con backoff esponenziale.', tags: ['ordini', 'pagamenti'] }))
     published(await node.remember({ title: 'Configurazione del proxy aziendale per npm', body: 'Impostare HTTPS_PROXY prima di npm install nelle pipeline.', tags: ['npm'] }))
     // i vettori si calcolano in background: aspettiamo che ci siano
+    // EN: vectors are computed in the background: wait until they exist
     for (let i = 0; i < 50 && (node as any).index.missingVectors('hash', 1).length; i++) await new Promise((r) => setTimeout(r, 100))
   })
 
@@ -35,15 +37,17 @@ describe('contesto automatico', () => {
     expect(t).toContain('per il progetto «ordini»')
     expect(t).toContain('[RADICE architettura] Architettura del servizio ordini')
     expect(t).toContain('Retry del pagamento negli ordini')
-    expect(t).not.toContain('proxy aziendale') // di un altro argomento
+    expect(t).not.toContain('proxy aziendale') // di un altro argomento / EN: about another topic
   })
 
   it('a ogni richiesta: solo ciò che è pertinente e non già mostrato nella sessione', async () => {
     const t = await node.agentContext({ event: 'prompt', cwd: project, sessionId: 's2', prompt: 'come configuro il proxy aziendale per npm install?' })
     expect(t).toContain('Configurazione del proxy aziendale per npm')
     // stessa sessione, stessa domanda: niente di nuovo da dire
+    // EN: same session, same question: nothing new to say
     expect(await node.agentContext({ event: 'prompt', cwd: project, sessionId: 's2', prompt: 'come configuro il proxy aziendale per npm install?' })).toBe('')
     // richiesta troppo corta: nessun contesto
+    // EN: request too short: no context
     expect(await node.agentContext({ event: 'prompt', cwd: project, sessionId: 's3', prompt: 'ok grazie' })).toBe('')
   })
 
@@ -56,16 +60,17 @@ describe('contesto automatico', () => {
 
   it('lacune: una ricerca senza risposta si registra, si segnala al team e si chiude', async () => {
     expect(await node.recallHybrid('kubernetes helm chart', 5)).toEqual([])
-    await node.recallHybrid('helm chart kubernetes', 5) // stessa domanda, altre parole in ordine diverso
+    await node.recallHybrid('helm chart kubernetes', 5) // stessa domanda, altre parole in ordine diverso / EN: same question, words in a different order
     const [mine] = node.myGaps()
     expect(mine).toMatchObject({ query: 'helm chart kubernetes', count: 2, answer: null })
     // ricerche interne (track = false) non contano
+    // EN: internal searches (track = false) don't count
     await node.recallHybrid('terraform', 5, false)
     expect(node.myGaps()).toHaveLength(1)
 
     const [g] = await node.reportGap(mine.key)
     expect(g).toMatchObject({ question: 'helm chart kubernetes', status: 'open', askerNames: ['ada'] })
-    expect(node.myGaps()).toEqual([]) // segnalata: non è più fra le tue
+    expect(node.myGaps()).toEqual([]) // segnalata: non è più fra le tue / EN: reported: no longer among yours
     const mem = published(await node.remember({ title: 'Chart Helm per kubernetes', body: 'I chart Helm del team stanno nel repository infra, cartella charts.', tags: ['helm'] }))
     expect((await node.teamGaps())[0].answer?.id).toBe(mem.id)
     const [closed] = await node.closeGap(g.id.slice(0, 10), mem.id)
@@ -77,7 +82,7 @@ describe('contesto automatico', () => {
     expect(d.memories.added).toBe(4)
     expect(d.memories.byAuthor).toEqual([{ name: 'ada', count: 4 }])
     expect(d.roots.added.map((r) => r.title)).toEqual(['Architettura del servizio ordini'])
-    expect(d.gaps).toEqual([]) // l'unica lacuna è chiusa
+    expect(d.gaps).toEqual([]) // l'unica lacuna è chiusa / EN: the only knowledge gap is closed
   })
 
   it('file per gli agenti: CLAUDE.md con le Radici, aggiornato da solo quando cambiano', async () => {
@@ -89,6 +94,7 @@ describe('contesto automatico', () => {
     expect(text).toContain('**Architettura del servizio ordini**')
     expect(node.agentFiles()).toMatchObject([{ format: 'claude', project: 'ordini', exists: true }])
     // una nuova Radice del progetto: il file si aggiorna senza fare nulla
+    // EN: a new Root of the project: the file updates without doing anything
     const id = published(await node.remember({ title: 'Policy dei segreti negli ordini', body: 'Le chiavi del servizio ordini stanno nel vault, mai nel repository.', tags: ['ordini'] })).id
     await node.rootSet(id, 'policy')
     for (let i = 0; i < 50 && !fs.readFileSync(path.join(project, 'CLAUDE.md'), 'utf8').includes('Policy dei segreti'); i++) await new Promise((r) => setTimeout(r, 100))
@@ -110,8 +116,10 @@ describe('contesto automatico', () => {
     const roots = await node.roots()
     expect(roots.find((x) => x.memory.title === 'API REST versionate')).toMatchObject({ category: 'architecture' })
     // reimportare non duplica
+    // EN: reimporting doesn't duplicate
     expect(await node.importRoots(dir)).toMatchObject({ imported: 0, updated: 0, duplicates: 1 })
     // file cambiato: reimportare AGGIORNA la Radice (la versione vecchia va nello storico)
+    // EN: file changed: reimporting UPDATES the Root (the old version goes to history)
     const before = (await node.roots()).find((x) => x.memory.title === 'API REST versionate')!
     fs.writeFileSync(path.join(dir, '0002-api-rest.md'), '---\ntitle: API REST versionate\ntags: [api]\n---\nTutte le API pubbliche hanno la versione nel percorso (/v1/, /v2/).')
     expect(await node.importRoots(dir)).toMatchObject({ imported: 0, updated: 1, duplicates: 0 })

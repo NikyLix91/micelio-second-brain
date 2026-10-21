@@ -4,6 +4,12 @@
  * Per ogni elemento: motivo, scadenza, anteprima. Si può approvare così com'è, correggere
  * titolo e corpo prima di approvare (es. per togliere un dettaglio sensibile), o rifiutare.
  * Approvare significa pubblicare a TUTTO il team: il pulsante lo dice esplicitamente.
+ *
+ * EN: Inbox: the memories the privacy filter could not decide on by itself (D9, activity 3.6).
+ *
+ * EN: For each item: reason, expiry, preview. It can be approved as is, title and body can be
+ * corrected before approving (e.g. to remove a sensitive detail), or it can be rejected.
+ * Approving means publishing to the WHOLE team: the button says so explicitly.
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
@@ -60,7 +66,7 @@ export function Inbox () {
   )
 }
 
-/** Un elemento dell'inbox, con modalità di modifica. */
+/** Un elemento dell'inbox, con modalità di modifica. / EN: An Inbox item, with edit mode. */
 export function InboxCard ({ item }: { item: InboxItem }) {
   const client = useQueryClient()
   const s = useStrings(S)
@@ -70,6 +76,8 @@ export function InboxCard ({ item }: { item: InboxItem }) {
 
   // Dopo una decisione ricarichiamo inbox e memoria (gli eventi SSE lo farebbero comunque,
   // ma così la UI reagisce subito anche se lo stream è momentaneamente disconnesso).
+  // EN: After a decision we reload the Inbox and the memories (SSE events would do it anyway,
+  //     but this way the UI reacts right away even if the stream is briefly disconnected).
   const refresh = () => {
     void client.invalidateQueries({ queryKey: ['inbox'] })
     void client.invalidateQueries({ queryKey: ['memories'] })
@@ -80,6 +88,7 @@ export function InboxCard ({ item }: { item: InboxItem }) {
   })
   const reject = useMutation({ mutationFn: () => api.reject(item.id), onSuccess: refresh })
   // B4: né al team né scartato, resta come ricordo personale
+  // EN: B4: neither to the team nor discarded, it stays as a personal memory
   const keep = useMutation({ mutationFn: () => api.keepPersonal(item.id), onSuccess: refresh })
   const busy = approve.isPending || reject.isPending || keep.isPending
 

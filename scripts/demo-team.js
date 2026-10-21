@@ -3,9 +3,16 @@
  * @file Team dimostrativo: 3 nodi Micelio locali (alice, bruno, carla) con ~50 ricordi tecnici
  * verosimili e INVENTATI, per provare UI e app desktop senza toccare il proprio nodo reale.
  *
+ * EN: Demo team: 3 local Micelio nodes (alice, bruno, carla) with ~50 realistic, MADE-UP
+ * technical memories, to try the UI and the desktop app without touching your real node.
+ *
  * Uso:   npm run build && npm run demo
  * Poi, in un altro terminale:   MICELIO_HOME=.demo/alice npm run desktop
  * (oppure `micelio --home .demo/alice ui` per il browser). Ctrl+C ferma il team demo.
+ *
+ * EN: Usage:   npm run build && npm run demo
+ * Then, in another terminal:   MICELIO_HOME=.demo/alice npm run desktop
+ * (or `micelio --home .demo/alice ui` for the browser). Ctrl+C stops the demo team.
  *
  * Come funziona:
  * - una DHT privata in-process (hyperdht/testnet): i nodi demo non escono su internet;
@@ -13,6 +20,13 @@
  *   e la sua porta (7401-7403), con LLM finto (nessuna chiamata a Claude);
  * - alice crea il team, bruno e carla entrano con un invito, poi ognuno scrive i suoi ricordi.
  * Le home restano in .demo/: un secondo avvio riparte dai dati esistenti.
+ *
+ * EN: How it works:
+ * - an in-process private DHT (hyperdht/testnet): the demo nodes do not go out to the internet;
+ * - 3 real daemons (`micelio daemon`) as child processes, each with its own home in .demo/
+ *   and its own port (7401-7403), with a fake LLM (no calls to Claude);
+ * - alice creates the team, bruno and carla join with an invite, then each writes its memories.
+ * The homes stay in .demo/: a second run starts again from the existing data.
  */
 const { spawn } = require('node:child_process')
 const fs = require('node:fs')
@@ -27,7 +41,7 @@ const NODES = [
   { name: 'carla', port: 7403 }
 ]
 
-/** [autore, tipo, titolo, corpo, tag] */
+/** [autore, tipo, titolo, corpo, tag] / EN: [author, kind, title, body, tags] */
 const MEMORIES = [
   ['alice', 'gotcha', 'Build Angular in out of memory su Azure DevOps', 'Sugli agent ospitati l’heap di Node è basso: impostare `NODE_OPTIONS=--max-old-space-size=6144` nello step di build.', ['angular', 'ci', 'azure-devops', 'node']],
   ['alice', 'howto', 'Cache delle dipendenze npm nelle pipeline Azure', 'Usare il task Cache con chiave su `package-lock.json`: la build passa da 6 a 2 minuti.', ['ci', 'azure-devops', 'npm', 'performance']],
@@ -80,13 +94,14 @@ const MEMORIES = [
   ['carla', 'gotcha', 'CORS troppo permissivo sulle API interne', 'Un `Access-Control-Allow-Origin: *` con credenziali esponeva le API: whitelist esplicita dei domini.', ['security', 'node']],
   ['carla', 'howto', 'Release notes generate dalle PR', 'Etichette sulle PR (feature, fix, breaking) e changelog generato al tag: niente note scritte a mano.', ['release', 'git', 'ci']],
   // Quasi duplicati scritti da colleghi diversi: materiale per il dreaming (`micelio dream now`).
+  // EN: Near duplicates written by different colleagues: material for dreaming (`micelio dream now`).
   ['bruno', 'howto', 'Procedura hotfix in produzione', 'Hotfix: branch hotfix da main, PR con un’approvazione, tag di versione che avvia la release, poi merge in develop.', ['git', 'release']],
   ['alice', 'gotcha', 'Build Angular out of memory su Azure DevOps', 'La build Angular su Azure DevOps va out of memory: heap di Node basso, impostare NODE_OPTIONS=--max-old-space-size=6144.', ['angular', 'ci']]
 ]
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
-/** true se il daemon di un nodo demo risponde sulla sua porta. */
+/** true se il daemon di un nodo demo risponde sulla sua porta. / EN: true if a demo node's daemon answers on its port. */
 async function isUp (node) {
   try { return (await fetch(`http://127.0.0.1:${node.port}/api/health`, { signal: AbortSignal.timeout(1000) })).ok } catch { return false }
 }
@@ -96,17 +111,22 @@ async function isUp (node) {
  * Su Windows Ctrl+C e `child.kill()` non bastano: il daemon non riceve i segnali POSIX (vedi
  * src/daemon/shutdown.ts) e poteva sopravvivere allo script, tenendo bloccati i suoi dati
  * ("File descriptor could not be locked" al giro successivo).
+ *
+ * EN: ORDERLY shutdown of a demo daemon through its API, then wait for the port to be freed.
+ * On Windows Ctrl+C and `child.kill()` are not enough: the daemon does not receive POSIX signals
+ * (see src/daemon/shutdown.ts) and could outlive the script, keeping its data locked
+ * ("File descriptor could not be locked" on the next run).
  */
 async function shutdownNode (node) {
   if (!(await isUp(node))) return
   try {
     const token = JSON.parse(fs.readFileSync(path.join(node.home, 'config.json'), 'utf8')).token
     await fetch(`http://127.0.0.1:${node.port}/api/shutdown`, { method: 'POST', headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(2000) })
-  } catch { /* già in chiusura */ }
+  } catch { /* già in chiusura / EN: already shutting down */ }
   for (let i = 0; i < 40 && await isUp(node); i++) await sleep(250)
 }
 
-/** Chiamata all'API di un nodo demo (il token si legge dalla sua config.json). */
+/** Chiamata all'API di un nodo demo (il token si legge dalla sua config.json). / EN: Call to a demo node's API (the token is read from its config.json). */
 async function call (node, method, route, body) {
   const token = JSON.parse(fs.readFileSync(path.join(node.home, 'config.json'), 'utf8')).token
   const res = await fetch(`http://127.0.0.1:${node.port}${route}`, {
@@ -128,19 +148,22 @@ async function main () {
 
   // Daemon demo rimasti accesi da un giro precedente (es. script chiuso male): vanno spenti PRIMA,
   // altrimenti i nuovi non possono aprire i dati e questo script parlerebbe con quelli vecchi.
+  // EN: Demo daemons left running from a previous run (e.g. script closed badly) must be stopped
+  //     FIRST, otherwise the new ones cannot open the data and this script would talk to the old ones.
   for (const n of NODES) n.home = path.join(DEMO, n.name)
   const stale = []
   for (const n of NODES) if (await isUp(n)) stale.push(n)
   if (stale.length) {
     console.log(`Chiusura dei daemon demo rimasti accesi: ${stale.map((n) => n.name).join(', ')}…`)
     await Promise.all(stale.map(shutdownNode))
-    await sleep(1000) // il sistema operativo rilascia i lock dei file
+    await sleep(1000) // il sistema operativo rilascia i lock dei file / EN: the operating system releases the file locks
   }
 
   const children = []
   for (const n of NODES) {
     fs.mkdirSync(n.home, { recursive: true })
     // La porta va salvata in config.json: così anche CLI e app desktop la trovano.
+    // EN: The port must be saved in config.json: this way the CLI and the desktop app find it too.
     const cfgFile = path.join(n.home, 'config.json')
     const cfg = fs.existsSync(cfgFile) ? JSON.parse(fs.readFileSync(cfgFile, 'utf8')) : {}
     fs.writeFileSync(cfgFile, JSON.stringify({ ...cfg, port: n.port, token: cfg.token ?? require('node:crypto').randomBytes(24).toString('hex'), llm: { ...(cfg.llm ?? {}), adapter: 'fake' }, embeddings: { adapter: process.env.MICELIO_DEMO_EMBEDDER ?? 'hash' } }, null, 2))
@@ -156,6 +179,7 @@ async function main () {
     stopping = true
     console.log('\nChiusura del team demo…')
     // Prima la chiusura ordinata via API, poi kill per sicurezza
+    // EN: First the orderly shutdown via API, then kill to be safe
     await Promise.all(NODES.map(shutdownNode))
     for (const c of children) c.kill()
     await testnet.destroy()
@@ -165,6 +189,7 @@ async function main () {
   process.on('SIGTERM', stopAll)
 
   // Attende che i daemon rispondano.
+  // EN: Waits for the daemons to answer.
   for (const n of NODES) {
     for (let i = 0; i < 60; i++) {
       try { if ((await fetch(`http://127.0.0.1:${n.port}/api/health`)).ok) break } catch {}
@@ -190,6 +215,8 @@ async function main () {
     }
     // Cartella di documenti condivisibile di alice (Fase 4): un DOCX vero e un Markdown.
     // Con il LLM finto, ogni riga "LEZIONE: titolo | corpo" diventa un ricordo con la fonte.
+    // EN: alice's shareable document folder (Phase 4): a real DOCX and a Markdown file.
+    //     With the fake LLM, each "LEZIONE: titolo | corpo" line becomes a memory with its source.
     const docs = path.join(DEMO, 'documenti-alice')
     fs.mkdirSync(docs, { recursive: true })
     const md = path.join(DEMO, 'tmp-architettura.md')
@@ -200,14 +227,16 @@ async function main () {
     fs.writeFileSync(path.join(docs, 'runbook-incidenti.md'), '# Runbook incidenti\n\nLEZIONE: Primo passo in un incidente di produzione | Aprire il canale di incidente e nominare un coordinatore prima di intervenire.\n')
     await call(alice, 'POST', '/api/documents/folders', { path: docs, shareable: true })
     // Un caso dubbio in inbox e una decisione privata, per popolare anche quelle schermate.
+    // EN: A doubtful case in the Inbox and a private decision, to fill those screens too.
     await call(alice, 'POST', '/api/memories', { title: 'Proxy aziendale nelle pipeline [incerto]', body: 'Serve HTTPS_PROXY negli step che scaricano pacchetti.', tags: ['ci'] })
     await call(alice, 'POST', '/api/memories', { title: 'Nota per la valutazione di fine anno', body: 'Appunti personali: non devono arrivare al team.' })
   }
 
   // Attende la convergenza sul nodo di alice.
+  // EN: Waits for convergence on alice's node.
   for (let i = 0; i < 60; i++) {
     const s = await call(alice, 'GET', '/api/status')
-    if (s.memories >= MEMORIES.length + 3) break // + 3 ricordi dai documenti
+    if (s.memories >= MEMORIES.length + 3) break // + 3 ricordi dai documenti / EN: + 3 memories from the documents
     await sleep(500)
   }
   const s = await call(alice, 'GET', '/api/status')

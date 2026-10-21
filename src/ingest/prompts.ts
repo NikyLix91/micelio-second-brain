@@ -1,13 +1,18 @@
 /**
  * @file Prompt e schemi dei compiti LLM di ingestione (validati nello spike B).
  *
+ * EN: Prompts and schemas of the ingestion LLM tasks (validated in spike B).
+ *
  * I prompt sono "codice": cambiarli cambia cosa entra nel sapere del team. Dopo ogni modifica
  * va rieseguito il set di valutazione (npm run eval:ingest).
+ *
+ * EN: Prompts are "code": changing them changes what enters the team's knowledge. After every
+ * change, rerun the evaluation set (npm run eval:ingest).
  */
 import { z } from 'zod'
 import { MEMORY_KINDS, ROOT_CATEGORIES } from '../core/events'
 
-/** Output della classificazione (Haiku). L'instradamento lo decide poi `route()` nella pipeline. */
+/** Output della classificazione (Haiku). L'instradamento lo decide poi `route()` nella pipeline. / EN: Classification output (Haiku). Routing is then decided by `route()` in the pipeline. */
 export const Classification = z.object({
   destination: z.enum(['team', 'private', 'discard']),
   category: z.enum(['technical', 'process', 'personal', 'hr', 'commercial', 'other']),
@@ -18,7 +23,7 @@ export const Classification = z.object({
 })
 export type Classification = z.infer<typeof Classification>
 
-/** Prompt di sistema della classificazione. */
+/** Prompt di sistema della classificazione. / EN: System prompt for classification. */
 export const CLASSIFY_SYSTEM = `Sei il filtro d'ingresso di "Micelio", la memoria condivisa di un team di sviluppo software.
 Tutto ciò che classifichi come "team" verrà distillato e replicato sui computer di TUTTI i colleghi.
 Ricevi il contenuto di una sessione con un assistente AI o una nota che un utente vuole salvare. Decidi:
@@ -32,7 +37,7 @@ sensibili in "sensitivity" e imposta "reusable": true: l'utente deciderà cosa c
 I segnaposto [REDACTED:...] indicano dati già rimossi: da soli non rendono il contenuto sensibile.
 "confidence" è la tua sicurezza nella decisione, tra 0 e 1.`
 
-/** Output della distillazione (Sonnet): da 0 a N ricordi atomici. */
+/** Output della distillazione (Sonnet): da 0 a N ricordi atomici. / EN: Distillation output (Sonnet): from 0 to N atomic memories. */
 export const Distilled = z.object({
   memories: z.array(z.object({
     kind: z.enum(MEMORY_KINDS),
@@ -42,15 +47,22 @@ export const Distilled = z.object({
     // Riferimenti per approfondire (vedi CodeRefs in events.ts). Obbligatori nello schema, così il
     // modello li considera sempre; liste vuote quando il ricordo non riguarda codice specifico.
     // La pipeline li verifica (commit esistenti, percorsi relativi) prima di salvarli.
+    // EN: References to dig deeper (see CodeRefs in events.ts). Required in the schema, so the
+    //     model always considers them; empty lists when the memory isn't about specific code.
+    //     The pipeline checks them (existing commits, relative paths) before saving them.
     files: z.array(z.string()),
     symbols: z.array(z.string()),
     commits: z.array(z.string()),
     // Suggerimento di RADICE (Fase 8): categoria se il ricordo è sapere fondante, altrimenti "none".
     // È solo un suggerimento: la promozione la decide una persona (salvo cartelle "di Radici").
+    // EN: ROOT suggestion (Phase 8): category if the memory is foundational knowledge, otherwise "none".
+    //     It's only a suggestion: a person decides the promotion (except for "Roots" folders).
     root: z.enum([...ROOT_CATEGORIES, 'none'])
   })),
   // Efficacia (B11): giudizio sui ricordi che MICELIO ha fornito all'assistente durante la
   // sessione, se ce ne sono (elencati in fondo al testo). Vuoto per i documenti.
+  // EN: Effectiveness (B11): verdict on the memories that MICELIO gave the assistant during the
+  //     session, if any (listed at the end of the text). Empty for documents.
   micelio: z.array(z.object({
     id: z.string(),
     verdict: z.enum(['used', 'ignored', 'wrong']),
@@ -59,12 +71,15 @@ export const Distilled = z.object({
 })
 export type Distilled = z.infer<typeof Distilled>
 
-/** Intestazione dell'elenco dei ricordi forniti da Micelio, in coda al testo della sessione. */
+/** Intestazione dell'elenco dei ricordi forniti da Micelio, in coda al testo della sessione. / EN: Header of the list of memories provided by Micelio, appended to the session text. */
 export const MICELIO_DELIVERED_HEADER = '=== RICORDI FORNITI DA MICELIO IN QUESTA SESSIONE ==='
 
 /**
  * Regola aggiunta al prompt di distillazione quando nella sessione Micelio ha fornito ricordi
  * all'assistente (B11). Severa su "used": il pollice in su automatico dipende da questo giudizio.
+ *
+ * EN: Rule added to the distillation prompt when Micelio gave memories to the assistant during
+ * the session (B11). Strict on "used": the automatic thumbs-up depends on this verdict.
  */
 export const MICELIO_JUDGE_RULE = `
 - micelio: se in fondo al testo c'è la sezione "${MICELIO_DELIVERED_HEADER}", per OGNI ricordo elencato
@@ -78,8 +93,15 @@ export const MICELIO_JUDGE_RULE = `
  * Prompt di sistema della distillazione.
  * La regola di FEDELTÀ ALLA FONTE nasce da un problema reale (spike B e Fase 1): il modello
  * aggiungeva dettagli plausibili ma non presenti nella sessione.
+ *
+ * EN: System prompt for distillation.
+ * The FAITHFULNESS TO THE SOURCE rule comes from a real problem (spike B and Phase 1): the model
+ * added plausible details that weren't in the session.
+ *
  * @param language lingua del team (`memory.language`): "it", "en" o altro codice
+ *                 EN: team language (`memory.language`): "it", "en" or another code
  * @param maxMemories ricordi massimi per distillazione (`distill.maxMemories`, scelto dall'admin)
+ *                    EN: maximum memories per distillation (`distill.maxMemories`, chosen by the admin)
  */
 export function distillSystem (language: string, maxMemories = 5): string {
   const lang = language === 'en' ? 'inglese' : language === 'it' ? 'italiano' : language

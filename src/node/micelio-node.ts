@@ -1,6 +1,8 @@
 /**
  * @file Nodo Micelio: l'orchestratore di tutto ciò che vive su una macchina.
  *
+ * EN: Micelio node: the orchestrator of everything that lives on one machine.
+ *
  * Mette insieme:
  * - `TeamNode`        rete P2P e log del team (src/net);
  * - `MemoryIndex`     ricerca locale, derivata dalla vista (src/store/memory-index);
@@ -10,15 +12,34 @@
  * - `FileShare`       download dell'originale di un documento dai colleghi (src/net/file-share);
  * - export Markdown   (src/export).
  *
+ * EN: It brings together:
+ * - `TeamNode`        P2P network and team log (src/net);
+ * - `MemoryIndex`     local search, derived from the view (src/store/memory-index);
+ * - `PrivateStore`    private store: inbox, decisions, queue, budget (src/store/private-store);
+ * - `IngestPipeline`  filter + classification + distillation (src/ingest);
+ * - `DocumentWatcher` watched document folders (src/ingest/documents, Phase 4);
+ * - `FileShare`       download of a document's original from colleagues (src/net/file-share);
+ * - Markdown export   (src/export).
+ *
  * Non dipende da NestJS né da HTTP: il daemon lo espone via API e MCP, i test lo usano
  * direttamente. Ogni operazione "utente" (CLI, API, MCP, UI) passa da qui.
+ *
+ * EN: It doesn't depend on NestJS or HTTP: the daemon exposes it through the API and MCP, tests use it
+ * directly. Every "user" operation (CLI, API, MCP, UI) goes through here.
  *
  * Eventi: il nodo è un EventEmitter che emette `change` con un "argomento" (ChangeTopic) ogni
  * volta che una parte del suo stato cambia. Il daemon li inoltra alla UI (SSE /api/events),
  * che ricarica solo i dati interessati invece di interrogare il daemon a intervalli.
  *
+ * EN: Events: the node is an EventEmitter that emits `change` with a "topic" (ChangeTopic) every
+ * time part of its state changes. The daemon forwards them to the UI (SSE /api/events),
+ * which reloads only the affected data instead of polling the daemon.
+ *
  * Errori: le condizioni causate dall'utente (nodo non configurato, permessi, input non valido)
  * sono `UserError` e diventano HTTP 400 con un messaggio leggibile; il resto sono bug (500).
+ *
+ * EN: Errors: conditions caused by the user (node not configured, permissions, invalid input)
+ * are `UserError` and become HTTP 400 with a readable message; everything else is a bug (500).
  */
 import { EventEmitter } from 'node:events'
 import fs from 'node:fs'
@@ -74,69 +95,85 @@ import { type Identity, signMembership } from '../core/identity'
 import { checkDecision, WRITE_CANDIDATES, WriteDecision, writeUpdateInput, writeUpdateSystem } from '../ingest/write-update'
 
 export interface MicelioNodeOptions {
-  /** Nodi bootstrap DHT (test o rete privata); assente = DHT pubblica. */
+  /** Nodi bootstrap DHT (test o rete privata); assente = DHT pubblica. / EN: DHT bootstrap nodes (tests or private network); missing = public DHT. */
   bootstrap?: { host: string, port: number }[]
   log?: (msg: string) => void
-  /** Ritardo con cui si accorpano gli aggiornamenti della vista prima di reindicizzare. */
+  /** Ritardo con cui si accorpano gli aggiornamenti della vista prima di reindicizzare. / EN: Delay used to batch view updates before reindexing. */
   materializeDelayMs?: number
   /**
    * Adapter LLM da usare al posto di quello configurato (test). `null` = nessun LLM.
    * Se omesso si usa `llm.adapter` di config.json.
+   *
+   * EN: LLM adapter to use instead of the configured one (tests). `null` = no LLM.
+   * If omitted, `llm.adapter` from config.json is used.
    */
   llm?: LlmAdapter | null
   /**
    * Embedder da usare al posto di quello configurato (test, o quello CONDIVISO fra i team di
    * MicelioHost). `null` = nessuna ricerca semantica. Se arriva da fuori, lo chiude chi l'ha creato.
+   *
+   * EN: Embedder to use instead of the configured one (tests, or the one SHARED across MicelioHost's
+   * teams). `null` = no semantic search. If it comes from outside, whoever created it closes it.
    */
   embedder?: Embedder | null
   /**
    * Esecutore LLM CONDIVISO (B3): con più team le chiamate a Claude devono restare una alla volta
    * e il budget giornaliero è uno solo per macchina. Ha la precedenza su `llm`.
+   *
+   * EN: SHARED LLM runner (B3): with several teams, calls to Claude must still run one at a time
+   * and there is a single daily budget per machine. Takes precedence over `llm`.
    */
   llmRunner?: LlmRunner | null
-  /** Identità personale da legare a questo team (B3, src/core/identity.ts); assente = nessuna. */
+  /** Identità personale da legare a questo team (B3, src/core/identity.ts); assente = nessuna. / EN: Personal identity to bind to this team (B3, src/core/identity.ts); missing = none. */
   identity?: () => Identity | null
   /**
    * Con più team: true se una cartella di lavoro appartiene a QUESTO team. Una sessione in una
    * cartella abilitata in due team (es. `C:\work` nel team A e `C:\work\clienteX` nel team B)
    * va solo al team con la cartella più specifica. Assente = tutte le cartelle abilitate.
+   *
+   * EN: With several teams: true if a working folder belongs to THIS team. A session in a
+   * folder enabled in two teams (e.g. `C:\work` in team A and `C:\work\clienteX` in team B)
+   * goes only to the team with the most specific folder. Missing = all enabled folders.
    */
   owns?: (dir: string) => boolean
   /**
    * Con più team: controlla che una cartella si possa abilitare in QUESTO team, e lancia un
    * UserError se un altro team la usa già (vedi MicelioHost.claimFolder).
+   *
+   * EN: With several teams: checks that a folder can be enabled in THIS team, and throws a
+   * UserError if another team already uses it (see MicelioHost.claimFolder).
    */
   claimFolder?: (dir: string, kind: 'sessions' | 'documents') => void
 }
 
-/** Errore causato dall'utente o dallo stato del nodo: messaggio pensato per essere mostrato. */
+/** Errore causato dall'utente o dallo stato del nodo: messaggio pensato per essere mostrato. / EN: Error caused by the user or by the node's state: the message is meant to be shown. */
 export class UserError extends LocalizedError {}
 
-/** Risposta della chat (B10): testo, ricordi citati, numeri dei riferimenti, mappa mentale. */
+/** Risposta della chat (B10): testo, ricordi citati, numeri dei riferimenti, mappa mentale. / EN: Chat reply (B10): text, cited memories, reference numbers, mind map. */
 export interface ChatReply {
   chatId: number
   messageId: number
   answer: string
-  /** true = la memoria del team non basta a rispondere (proposta: segnalare la lacuna). */
+  /** true = la memoria del team non basta a rispondere (proposta: segnalare la lacuna). / EN: true = the team memory is not enough to answer (suggestion: report the knowledge gap). */
   unknown: boolean
   cited: string[]
-  /** Numero del riferimento [n] → ricordo. */
+  /** Numero del riferimento [n] → ricordo. / EN: Reference number [n] → memory. */
   refs: { n: number, id: string, title: string }[]
   map: MindMap
 }
 
-/** Un ricordo nel resoconto di efficacia (B11). */
+/** Un ricordo nel resoconto di efficacia (B11). / EN: A memory in the efficacy report (B11). */
 export interface EfficacyMemory { id: string, title: string, root: boolean, teamUseful: number }
-/** Resoconto per la pagina «Efficacia» (B11, vedi MicelioNode.efficacyReport). */
+/** Resoconto per la pagina «Efficacia» (B11, vedi MicelioNode.efficacyReport). / EN: Report for the "Efficacy" page (B11, see MicelioNode.efficacyReport). */
 export interface EfficacyReport {
   days: number
   summary: {
     consultations: number
     withResults: number
     byChannel: Record<string, number>
-    /** Ricordi forniti in sessioni già valutate. */
+    /** Ricordi forniti in sessioni già valutate. / EN: Memories delivered in sessions already evaluated. */
     delivered: number
-    /** Utili: confermati dall'LLM o con tracce d'uso (euristica). */
+    /** Utili: confermati dall'LLM o con tracce d'uso (euristica). / EN: Useful: confirmed by the LLM or with traces of use (heuristic). */
     useful: number
     confirmed: number
     wrong: number
@@ -159,42 +196,51 @@ export interface EfficacyReport {
  * - memories:  ricordi del team;   members: membri;
  * - inbox, jobs, decisions: archivio privato (inbox, coda di ingestione, registro);
  * - settings:  impostazioni locali (cartelle abilitate, LLM).
+ *
+ * EN: Parts of the state that can change, used as the "topic" of `change` events:
+ * - status:    node and team state (peers, role, team configuration);
+ * - memories:  team memories;   members: members;
+ * - inbox, jobs, decisions: private store (inbox, ingestion queue, log);
+ * - settings:  local settings (enabled folders, LLM).
  */
 export type ChangeTopic = 'status' | 'memories' | 'members' | 'inbox' | 'jobs' | 'decisions' | 'settings' | 'roots' | 'security' | 'gaps' | 'efficacy'
 
-/** Una lacuna del team come la mostrano UI e CLI (B4). */
+/** Una lacuna del team come la mostrano UI e CLI (B4). / EN: A team knowledge gap as the UI and CLI show it (B4). */
 export interface GapView extends GapRecord {
   askerNames: string[]
-  /** Un ricordo che forse la colma (ricerca per parole chiave), se la lacuna è aperta. */
+  /** Un ricordo che forse la colma (ricerca per parole chiave), se la lacuna è aperta. / EN: A memory that may fill it (keyword search), if the knowledge gap is open. */
   answer: { id: string, title: string } | null
 }
 
-/** Impostazioni LOCALI modificabili dalla UI (config.json). */
+/** Impostazioni LOCALI modificabili dalla UI (config.json). / EN: LOCAL settings editable from the UI (config.json). */
 export interface NodeSettings {
   llm: { adapter: string, command: string, classifyModel: string, distillModel: string, dailyBudget: number }
   watched: string[]
-  /** Cartelle di documenti sorvegliate: originali scaricabili dai colleghi? cartella "di Radici"? */
+  /** Cartelle di documenti sorvegliate: originali scaricabili dai colleghi? cartella "di Radici"? / EN: Watched document folders: can colleagues download the originals? Is it a "Roots" folder? */
   documents: { path: string, shareable: boolean, roots: boolean }[]
   port: number
-  /** Rete P2P: DHT pubblica o privata del team (vedi server/README.md). */
+  /** Rete P2P: DHT pubblica o privata del team (vedi server/README.md). / EN: P2P network: public DHT or the team's private one (see server/README.md). */
   network: NetworkSettings
-  /** Contesto automatico per gli agenti (B4). */
+  /** Contesto automatico per gli agenti (B4). / EN: Automatic context for agents (B4). */
   context: { sessionStart: boolean, prompt: boolean, maxChars: number }
-  /** Efficacia (B11): notifiche del desktop per gli esiti "utile" e "sbagliato". */
+  /** Efficacia (B11): notifiche del desktop per gli esiti "utile" e "sbagliato". / EN: Efficacy (B11): desktop notifications for "useful" and "wrong" outcomes. */
   efficacy: { notify: boolean }
 }
 
-/** Impostazioni di rete come le mostra la UI. */
+/** Impostazioni di rete come le mostra la UI. / EN: Network settings as the UI shows them. */
 export interface NetworkSettings {
-  /** DHT scelta nelle impostazioni del team ("local" = nessuna rete, B4). */
+  /** DHT scelta nelle impostazioni del team ("local" = nessuna rete, B4). / EN: DHT chosen in the team settings ("local" = no network, B4). */
   mode: NetworkMode
-  /** Nodi di avvio della DHT privata salvati ("host:porta"), anche se ora si usa la pubblica. */
+  /** Nodi di avvio della DHT privata salvati ("host:porta"), anche se ora si usa la pubblica. / EN: Saved bootstrap nodes of the private DHT ("host:port"), even if the public one is in use now. */
   bootstrap: string[]
-  /** Nodi di avvio IN USO adesso ([] = DHT pubblica). */
+  /** Nodi di avvio IN USO adesso ([] = DHT pubblica). / EN: Bootstrap nodes IN USE now ([] = public DHT). */
   active: string[]
   /**
    * Se valorizzato, la rete è fissata dalla variabile d'ambiente MICELIO_DHT_BOOTSTRAP (demo,
    * container, test) e non si può cambiare dalla UI: contiene il suo valore.
+   *
+   * EN: When set, the network is fixed by the MICELIO_DHT_BOOTSTRAP environment variable (demo,
+   * container, tests) and can't be changed from the UI: it holds that variable's value.
    */
   fixedByEnv: string | null
 }
@@ -204,119 +250,131 @@ export interface NetworkSettings {
  * - `disk`: byte su QUESTO disco, per componente;
  * - `members`: quanto del log del team viene da ciascun membro. Ogni nodo replica tutto, quindi
  *   la ripartizione è la stessa su ogni PC del team.
+ *
+ * EN: Space taken by the knowledge ("Node status" screen).
+ * - `disk`: bytes on THIS disk, per component;
+ * - `members`: how much of the team log comes from each member. Every node replicates everything, so
+ *   the breakdown is the same on every PC of the team.
  */
 export interface StorageReport {
   disk: {
-    /** Log replicato del team (corestore): feed di tutti i membri, cifrati. */
+    /** Log replicato del team (corestore): feed di tutti i membri, cifrati. / EN: Replicated team log (corestore): all members' feeds, encrypted. */
     log: number
-    /** Indice di ricerca e vettori (view.db): derivato, ricostruibile. */
+    /** Indice di ricerca e vettori (view.db): derivato, ricostruibile. / EN: Search index and vectors (view.db): derived, can be rebuilt. */
     index: number
-    /** Archivio privato (private.db): inbox, registro, coda. Mai replicato. */
+    /** Archivio privato (private.db): inbox, registro, coda. Mai replicato. / EN: Private store (private.db): inbox, log, queue. Never replicated. */
     private: number
-    /** Documenti originali scaricati dai colleghi (cache, svuotata dopo 30 giorni). */
+    /** Documenti originali scaricati dai colleghi (cache, svuotata dopo 30 giorni). / EN: Original documents downloaded from colleagues (cache, emptied after 30 days). */
     cache: number
-    /** Copia Markdown in sola lettura. */
+    /** Copia Markdown in sola lettura. / EN: Read-only Markdown copy. */
     export: number
     total: number
   }
-  /** Somma dei feed dei membri (byte del log del team). */
+  /** Somma dei feed dei membri (byte del log del team). / EN: Sum of the members' feeds (bytes of the team log). */
   teamLogBytes: number
   members: {
     key: string
     name: string
     removed: boolean
-    /** Byte del feed del membro: tutti i suoi eventi (ricordi, voti, uso, sogni…). */
+    /** Byte del feed del membro: tutti i suoi eventi (ricordi, voti, uso, sogni…). / EN: Bytes of the member's feed: all their events (memories, votes, usage, dreams…). */
     bytes: number
-    /** Quota del log del team (0..1). */
+    /** Quota del log del team (0..1). / EN: Share of the team log (0..1). */
     share: number
-    /** Ricordi attivi di cui è autore e loro dimensione in testo (titolo + corpo + tag). */
+    /** Ricordi attivi di cui è autore e loro dimensione in testo (titolo + corpo + tag). / EN: Active memories they authored and their text size (title + body + tags). */
     memories: number
     memoryBytes: number
   }[]
 }
 
-/** Regole di sicurezza come le mostra la schermata Sicurezza (Fase 9). */
+/** Regole di sicurezza come le mostra la schermata Sicurezza (Fase 9). / EN: Security rules as the Security screen shows them (Phase 9). */
 export interface SecurityRules {
-  /** Tipi di segreto e dato personale riconosciuti sempre (non modificabili). */
+  /** Tipi di segreto e dato personale riconosciuti sempre (non modificabili). / EN: Secret and personal data types that are always detected (not editable). */
   builtin: { type: string, label: string }[]
-  /** Pattern di file sensibili di default (non modificabili). */
+  /** Pattern di file sensibili di default (non modificabili). / EN: Default sensitive file patterns (not editable). */
   defaultSensitiveFiles: string[]
-  /** Regole del TEAM, modificabili dall'admin. */
+  /** Regole del TEAM, modificabili dall'admin. / EN: TEAM rules, editable by the admin. */
   team: { secretPatterns: TeamSecretPattern[], allow: string[], sensitiveFiles: string[] }
 }
 
-/** Esito del banco di prova: cosa farebbe il filtro con un testo e/o un nome di file. */
+/** Esito del banco di prova: cosa farebbe il filtro con un testo e/o un nome di file. / EN: Test bench outcome: what the filter would do with a text and/or a file name. */
 export interface SecurityTestResult {
-  /** Testo dopo la redazione. */
+  /** Testo dopo la redazione. / EN: Text after redaction. */
   text: string
   redactions: Record<string, number>
-  /** Parole chiave HR/personali trovate: il contenuto resterebbe privato. */
+  /** Parole chiave HR/personali trovate: il contenuto resterebbe privato. / EN: HR/personal keywords found: the content would stay private. */
   blockedBy: string[]
-  /** Se è stato indicato un file: il pattern che lo rende sensibile, o null. */
+  /** Se è stato indicato un file: il pattern che lo rende sensibile, o null. / EN: If a file was given: the pattern that makes it sensitive, or null. */
   sensitiveFile: string | null
 }
 
-/** Un ricordo pubblicato che contiene segreti secondo le regole attuali (scansione retroattiva). */
+/** Un ricordo pubblicato che contiene segreti secondo le regole attuali (scansione retroattiva). / EN: A published memory that contains secrets under the current rules (retroactive scan). */
 export interface SecurityFinding {
   id: string
   title: string
   author: string
   authorName: string | null
-  /** Tipi trovati, con il conteggio. */
+  /** Tipi trovati, con il conteggio. / EN: Types found, with their count. */
   kinds: Record<string, number>
-  /** È una Radice: dopo la pulizia lo resta. */
+  /** È una Radice: dopo la pulizia lo resta. / EN: It's a Root: it stays one after the cleanup. */
   root: boolean
 }
 
-/** Una Radice con il suo ricordo, come la mostrano UI, CLI e MCP. */
+/** Una Radice con il suo ricordo, come la mostrano UI, CLI e MCP. / EN: A Root with its memory, as the UI, CLI and MCP show it. */
 export interface RootView extends RootRecord {
   memory: RecallHit
-  /** Nome di chi l'ha promossa / confermata per ultimo (null se non più membro). */
+  /** Nome di chi l'ha promossa / confermata per ultimo (null se non più membro). / EN: Name of who last promoted / confirmed it (null if no longer a member). */
   byName: string | null
   reviewedByName: string | null
 }
 
-/** Resoconto di una revisione delle Radici, come lo mostrano UI e CLI. */
+/** Resoconto di una revisione delle Radici, come lo mostrano UI e CLI. / EN: Report of a Roots review, as the UI and CLI show it. */
 export interface RootReviewResult {
-  /** Radici esaminate. */
+  /** Radici esaminate. / EN: Roots checked. */
   checked: number
-  /** Radici segnalate "da rivedere" in questa revisione, con i motivi. */
+  /** Radici segnalate "da rivedere" in questa revisione, con i motivi. / EN: Roots flagged "to review" in this review, with the reasons. */
   flagged: { id: string, title: string, reasons: string[] }[]
-  /** Cosa non è stato possibile verificare da questo PC, e perché (codice, valori e testo italiano). */
+  /** Cosa non è stato possibile verificare da questo PC, e perché (codice, valori e testo italiano). / EN: What couldn't be checked from this PC, and why (code, values and Italian text). */
   notes: ReviewNote[]
 }
 
-/** Filtri per l'elenco delle Radici (tool MCP `architecture`, API, CLI). */
+/** Filtri per l'elenco delle Radici (tool MCP `architecture`, API, CLI). / EN: Filters for the Roots list (MCP tool `architecture`, API, CLI). */
 export interface RootFilter {
-  /** Progetto: confrontato con `source.code.project` e con i tag (maiuscole indifferenti). */
+  /** Progetto: confrontato con `source.code.project` e con i tag (maiuscole indifferenti). / EN: Project: compared with `source.code.project` and with the tags (case-insensitive). */
   project?: string
   category?: RootCategory
   /**
    * File su cui si sta lavorando: restituisce le Radici che citano quei file o le loro cartelle
    * (una Radice su "src/orders/" vale per "src/orders/order.service.ts").
+   *
+   * EN: Files being worked on: returns the Roots that mention those files or their folders
+   * (a Root on "src/orders/" applies to "src/orders/order.service.ts").
    */
   files?: string[]
-  /** Testo: ordina le Radici per pertinenza (stessa ricerca ibrida di recall). */
+  /** Testo: ordina le Radici per pertinenza (stessa ricerca ibrida di recall). / EN: Text: sorts the Roots by relevance (same hybrid search as recall). */
   query?: string
 }
 
-/** Esito del download di un documento originale. */
+/** Esito del download di un documento originale. / EN: Outcome of downloading an original document. */
 export interface SourceFile {
-  /** Percorso locale del file (copia in cache, o l'originale se il documento è di questo nodo). */
+  /** Percorso locale del file (copia in cache, o l'originale se il documento è di questo nodo). / EN: Local path of the file (cached copy, or the original if the document belongs to this node). */
   path: string
   name: string
   size: number
-  /** true se il file era già in cache o è locale (nessun download). */
+  /** true se il file era già in cache o è locale (nessun download). / EN: true if the file was already cached or is local (no download). */
   local: boolean
 }
 
-/** Ogni quanto si pubblica al team l'uso locale dei ricordi (usage.report, DESIGN §8.3). */
+/** Ogni quanto si pubblica al team l'uso locale dei ricordi (usage.report, DESIGN §8.3). / EN: How often local memory usage is published to the team (usage.report, DESIGN §8.3). */
 const USAGE_FLUSH_MS = 30 * 60 * 1000
 
 /**
  * Soglia di similarità sotto la quale un risultato semantico non è considerato pertinente.
  * Dipende dal modello: i punteggi di e5 sono "compressi" fra 0,8 e 0,9 (spike C), quelli
  * dell'embedder finto sono più bassi e sparsi.
+ *
+ * EN: Similarity threshold below which a semantic result is not considered relevant.
+ * It depends on the model: e5 scores are "squeezed" between 0.8 and 0.9 (spike C), the
+ * fake embedder's are lower and more spread out.
  */
 function semanticThreshold (model: string): number {
   return model.includes('e5') ? 0.83 : 0.3
@@ -326,6 +384,10 @@ function semanticThreshold (model: string): number {
  * Soglia per il contesto automatico di ogni richiesta (B4): più alta di quella della ricerca. Una
  * richiesta in linguaggio libero «somiglia» un po' a molti ricordi, e inserirli tutti sarebbe solo
  * rumore nella conversazione: meglio nessun contesto che un contesto fuori tema.
+ *
+ * EN: Threshold for the automatic per-request context (B4): higher than the search one. A
+ * free-text request "looks like" many memories a little, and injecting them all would just be
+ * noise in the conversation: no context is better than off-topic context.
  */
 function promptThreshold (model: string): number {
   return model.includes('e5') ? 0.86 : 0.45
@@ -338,6 +400,13 @@ function promptThreshold (model: string): number {
  * fissa per molti ricordi, specie se si somigliano fra loro (es. note di un vault con la stessa
  * struttura). Ciò che conta è distaccarsi dal resto. Con pochi ricordi la statistica non dice
  * nulla: vale solo la soglia fissa.
+ *
+ * EN: Effective threshold for the per-request context: the model's fixed threshold, but also "clearly
+ * above the others" (mean + 2 standard deviations of the request's similarities with ALL
+ * memories). With e5 scores are squeezed (0.80–0.90): any sentence exceeds the fixed
+ * threshold for many memories, especially if they resemble each other (e.g. vault notes with the same
+ * structure). What matters is standing out from the rest. With few memories the statistics say
+ * nothing: only the fixed threshold applies.
  */
 export function relevanceCutoff (scores: number[], floor: number): number {
   if (scores.length < 8) return floor
@@ -346,31 +415,34 @@ export function relevanceCutoff (scores: number[], floor: number): number {
   return Math.max(floor, mean + 2 * std)
 }
 
-/** Soglia "quasi duplicato" per il dreaming: più alta di quella di pertinenza. */
+/** Soglia "quasi duplicato" per il dreaming: più alta di quella di pertinenza. / EN: "Near duplicate" threshold for dreaming: higher than the relevance one. */
 function duplicateThreshold (model: string): number {
   return model.includes('e5') ? 0.92 : 0.7
 }
 
-/** Ogni quanto il nodo controlla se è il suo turno di sognare. */
+/** Ogni quanto il nodo controlla se è il suo turno di sognare. / EN: How often the node checks whether it's its turn to dream. */
 const DREAM_CHECK_MS = 10 * 60 * 1000
 
-/** Contesto automatico (B4): Radici e ricordi a inizio sessione, ricordi per richiesta, lunghezza minima della richiesta. */
+/** Contesto automatico (B4): Radici e ricordi a inizio sessione, ricordi per richiesta, lunghezza minima della richiesta. / EN: Automatic context (B4): Roots and memories at session start, memories per request, minimum request length. */
 const CONTEXT_ROOTS = 8
 const CONTEXT_MEMORIES = 6
 const CONTEXT_PER_PROMPT = 4
 const CONTEXT_MIN_PROMPT = 15
 
-/** Ritardo del ricalcolo del grado dei nodi dopo un aggiornamento (raggruppa le scritture vicine). */
+/** Ritardo del ricalcolo del grado dei nodi dopo un aggiornamento (raggruppa le scritture vicine). / EN: Delay before recomputing node degrees after an update (groups nearby writes). */
 const DEGREES_DELAY_MS = 2000
 
-/** Oltre questa durata l'aggiornamento della vista finisce nel log con i tempi per fase. */
+/** Oltre questa durata l'aggiornamento della vista finisce nel log con i tempi per fase. / EN: Beyond this duration the view update is logged with per-phase timings. */
 const SLOW_MATERIALIZE_MS = 300
-/** Sotto questi ricordi la costellazione vecchia si ricalcola subito alla richiesta (costa poche decine di ms). */
+/** Sotto questi ricordi la costellazione vecchia si ricalcola subito alla richiesta (costa poche decine di ms). / EN: Below this many memories a stale constellation is recomputed right away on request (it costs a few tens of ms). */
 const SYNC_GRAPH_MAX = 1000
 
 /**
  * Cronometro per fasi: `lap('nome')` chiude la fase corrente; `report(soglia)` restituisce
  * "vista 120 ms · indice 80 ms · …" se il totale supera la soglia, altrimenti null.
+ *
+ * EN: Phase stopwatch: `lap('nome')` closes the current phase; `report(soglia)` returns
+ * "vista 120 ms · indice 80 ms · …" if the total exceeds the threshold, otherwise null.
  */
 function phaseTimer (): ((name: string) => void) & { report: (thresholdMs: number) => string | null } {
   const t0 = Date.now()
@@ -381,35 +453,40 @@ function phaseTimer (): ((name: string) => void) & { report: (thresholdMs: numbe
   return lap
 }
 
-/** Progetto di una cartella: il repository git che la contiene, altrimenti il nome della cartella. */
+/** Progetto di una cartella: il repository git che la contiene, altrimenti il nome della cartella. / EN: Project of a folder: the git repository that contains it, otherwise the folder name. */
 function projectOf (dir: string): string {
   return repoInfo(dir)?.project ?? path.basename(dir)
 }
 
-/** Ricordi e codice (B4): primo controllo dopo l'avvio, poi ogni 6 ore. */
+/** Ricordi e codice (B4): primo controllo dopo l'avvio, poi ogni 6 ore. / EN: Memories and code (B4): first check after startup, then every 6 hours. */
 const STALE_FIRST_CHECK_MS = 60 * 1000
 const STALE_CHECK_MS = 6 * 60 * 60 * 1000
-/** Ogni quanto si controlla se è ora del backup automatico (B7): uno al giorno. */
+/** Ogni quanto si controlla se è ora del backup automatico (B7): uno al giorno. / EN: How often we check whether the automatic backup is due (B7): one per day. */
 const AUTO_BACKUP_CHECK_MS = 60 * 60 * 1000
 const AUTO_BACKUP_EVERY_MS = 24 * 60 * 60 * 1000
-/** Eventi per scrittura durante un ripristino: blocchi grandi, ma il daemon risponde fra l'uno e l'altro. */
+/** Eventi per scrittura durante un ripristino: blocchi grandi, ma il daemon risponde fra l'uno e l'altro. / EN: Events per write during a restore: large blocks, but the daemon stays responsive between them. */
 const RESTORE_BATCH = 500
 /**
  * Oltre questi ricordi nuovi in un solo giro di embedding (ripristino di un backup, import, primo
  * avvio con un team già pieno) i vicini per significato si ricalcolano tutti insieme invece che uno
  * per uno: l'aggiornamento singolo costa un confronto con TUTTI gli altri, quindi N nuovi su N
  * totali è N² (5 000 ricordi: 13 s), il ricalcolo completo N²/2 ed è a blocchi, in sottofondo.
+ *
+ * EN: Above this many new memories in a single embedding round (backup restore, import, first
+ * start with an already full team) the semantic neighbors are recomputed all together instead of one
+ * by one: a single update costs a comparison with ALL the others, so N new out of N
+ * total is N² (5,000 memories: 13 s), while the full recompute is N²/2, in blocks, in the background.
  */
 const BULK_NEIGHBORS = 200
-/** Efficacia (B11): consultazioni ed esiti si conservano 90 giorni. */
+/** Efficacia (B11): consultazioni ed esiti si conservano 90 giorni. / EN: Efficacy (B11): queries and outcomes are kept for 90 days. */
 const EFFICACY_KEEP_MS = 90 * 24 * 60 * 60 * 1000
-/** Una risposta a un agente oltre questo tempo è "lenta" nelle statistiche (l'hook ha 10 s in tutto). */
+/** Una risposta a un agente oltre questo tempo è "lenta" nelle statistiche (l'hook ha 10 s in tutto). / EN: An answer to an agent beyond this time counts as "slow" in the stats (the hook has 10 s in total). */
 const SLOW_CONSULTATION_MS = 1000
 
-/** Dopo quanti giorni le copie scaricate escono dalla cache (decisione D11). */
+/** Dopo quanti giorni le copie scaricate escono dalla cache (decisione D11). / EN: After how many days downloaded copies leave the cache (decision D11). */
 const SOURCE_CACHE_DAYS = 30
 
-/** Stato dell'ingestione, per `micelio ingest status` e la futura Dashboard. */
+/** Stato dell'ingestione, per `micelio ingest status` e la futura Dashboard. / EN: Ingestion status, for `micelio ingest status` and the future Dashboard. */
 export interface IngestStatus {
   llm: { adapter: string, available: boolean, budget: { used: number, limit: number } } | null
   jobs: Record<string, number>
@@ -419,37 +496,40 @@ export interface IngestStatus {
 
 export class MicelioNode extends EventEmitter {
   private team: TeamNode | null = null
-  /** Radici del team (Fase 8), dalla vista: id del ricordo → record. */
+  /** Radici del team (Fase 8), dalla vista: id del ricordo → record. / EN: Team Roots (Phase 8), from the view: memory id → record. */
   private rootsById = new Map<string, RootRecord>()
   private nodeName: string | null = null
-  /** Vicini per significato di ogni ricordo, aggiornati in modo incrementale (src/rank/semantic-neighbors.ts). */
+  /** Vicini per significato di ogni ricordo, aggiornati in modo incrementale (src/rank/semantic-neighbors.ts). / EN: Semantic neighbors of each memory, updated incrementally (src/rank/semantic-neighbors.ts). */
   private semantic = new SemanticNeighbors(2)
-  /** Ricordi con un vettore nuovo arrivati durante un ricalcolo completo dei vicini. */
+  /** Ricordi con un vettore nuovo arrivati durante un ricalcolo completo dei vicini. / EN: Memories with a new vector that arrived during a full neighbor recompute. */
   private semanticPending: string[] = []
-  /** Un ricalcolo completo dei vicini è stato chiesto mentre ne era già in corso uno. */
+  /** Un ricalcolo completo dei vicini è stato chiesto mentre ne era già in corso uno. / EN: A full neighbor recompute was requested while one was already running. */
   private semanticRedo = false
-  /** Ricordi il cui codice citato è cambiato (B4, src/rank/code-staleness.ts), da private.db. */
+  /** Ricordi il cui codice citato è cambiato (B4, src/rank/code-staleness.ts), da private.db. / EN: Memories whose cited code changed (B4, src/rank/code-staleness.ts), from private.db. */
   private staleness = new Map<string, { commits: number, missing: number, checked: number }>()
   private staleTimer: NodeJS.Timeout | null = null
-  /** Timer del backup automatico (B7). */
+  /** Timer del backup automatico (B7). / EN: Automatic backup timer (B7). */
   private backupTimer: NodeJS.Timeout | null = null
-  /** Esito dell'ultimo backup automatico, per Impostazioni. */
+  /** Esito dell'ultimo backup automatico, per Impostazioni. / EN: Outcome of the last automatic backup, for Settings. */
   private lastAutoBackup: { at: number, file?: string, error?: string } | null = null
   /**
    * true durante il ripristino di un backup: gli aggiornamenti della vista non si materializzano a
    * ogni blocco (con migliaia di ricordi sarebbero secondi ciascuno), ma una volta sola alla fine.
+   *
+   * EN: true while restoring a backup: view updates are not materialized at
+   * every block (with thousands of memories each would take seconds), but just once at the end.
    */
   private bulkWriting = false
   private bulkPending = false
-  /** Contesto automatico (B4): ricordi già mostrati in ogni sessione, per non ripeterli. */
+  /** Contesto automatico (B4): ricordi già mostrati in ogni sessione, per non ripeterli. / EN: Automatic context (B4): memories already shown in each session, so we don't repeat them. */
   private injected = new Map<string, Set<string>>()
-  /** Id dei ricordi PERSONALI presenti nell'indice (B4): restano su questo PC. */
+  /** Id dei ricordi PERSONALI presenti nell'indice (B4): restano su questo PC. / EN: Ids of the PERSONAL memories in the index (B4): they stay on this PC. */
   private personalIds = new Set<string>()
-  /** Volte in cui ogni ricordo è stato utile a un agente, nel team (B11, da useful.report). */
+  /** Volte in cui ogni ricordo è stato utile a un agente, nel team (B11, da useful.report). / EN: How many times each memory was useful to an agent, across the team (B11, from useful.report). */
   private usefulCounts = new Map<string, number>()
-  /** Collegamenti per la chat (B10), validi per la costellazione indicata. */
+  /** Collegamenti per la chat (B10), validi per la costellazione indicata. / EN: Links for the chat (B10), valid for the given constellation. */
   private chatLinksCache: { graph: Graph, links: MapLink[] } | null = null
-  /** Nome del team letto all'ultima materializzazione (vedi teamName). */
+  /** Nome del team letto all'ultima materializzazione (vedi teamName). / EN: Team name read at the last materialization (see teamName). */
   private teamNameCache: string | null = null
   private readonly index: MemoryIndex
   private readonly privateStore: PrivateStore
@@ -457,33 +537,33 @@ export class MicelioNode extends EventEmitter {
   private readonly documents: DocumentWatcher
   private readonly files: FileShare
   private readonly llm: LlmRunner | null
-  /** Calcolo degli embedding (null = solo ricerca per parole chiave). */
+  /** Calcolo degli embedding (null = solo ricerca per parole chiave). / EN: Embedding computation (null = keyword search only). */
   private readonly embedder: Embedder | null
-  /** Collegamenti per ricordo nell'ultima costellazione calcolata (per l'attivazione). */
+  /** Collegamenti per ricordo nell'ultima costellazione calcolata (per l'attivazione). / EN: Links per memory in the last computed constellation (for activation). */
   private degrees = new Map<string, number>()
-  /** Catena dei calcoli di embedding: mai due in parallelo. */
+  /** Catena dei calcoli di embedding: mai due in parallelo. / EN: Chain of embedding computations: never two in parallel. */
   private embedding: Promise<void> = Promise.resolve()
   private usageTimer: NodeJS.Timeout | null = null
   private dreamTimer: NodeJS.Timeout | null = null
   private scanTimer: NodeJS.Timeout | null = null
   private readonly scanner: SessionScanner
   private readonly dreamer: Dreamer
-  /** Ricordi non attivi (archiviati o sostituiti), per la schermata Archivio. */
+  /** Ricordi non attivi (archiviati o sostituiti), per la schermata Archivio. / EN: Inactive memories (archived or superseded), for the Archive screen. */
   private inactive: MemoryRecord[] = []
-  /** Collegamenti espliciti creati dal dreaming (per la costellazione). */
+  /** Collegamenti espliciti creati dal dreaming (per la costellazione). / EN: Explicit links created by dreaming (for the constellation). */
   private dreamLinks: { from: string, to: string, rel: string }[] = []
   private config: Config
-  /** Timer di accorpamento degli aggiornamenti della vista (vedi scheduleMaterialize). */
+  /** Timer di accorpamento degli aggiornamenti della vista (vedi scheduleMaterialize). / EN: Timer that batches view updates (see scheduleMaterialize). */
   private timer: NodeJS.Timeout | null = null
-  /** Versione della vista all'ultimo aggiornamento dell'indice: se non cambia non si ricalcola nulla. */
+  /** Versione della vista all'ultimo aggiornamento dell'indice: se non cambia non si ricalcola nulla. / EN: View version at the last index update: if it doesn't change, nothing is recomputed. */
   private materializedVersion = -1
-  /** Timer del ricalcolo in sottofondo di costellazione e grado dei nodi (vedi scheduleGraph). */
+  /** Timer del ricalcolo in sottofondo di costellazione e grado dei nodi (vedi scheduleGraph). / EN: Timer for the background recompute of the constellation and node degrees (see scheduleGraph). */
   private degreesTimer: NodeJS.Timeout | null = null
-  /** Costellazione con le galassie, pronta per graph() (null = da ricalcolare). */
+  /** Costellazione con le galassie, pronta per graph() (null = da ricalcolare). / EN: Constellation with galaxies, ready for graph() (null = must be recomputed). */
   private graphCache: Graph | null = null
-  /** true se ci sono aggiornamenti della vista non ancora nella costellazione in cache. */
+  /** true se ci sono aggiornamenti della vista non ancora nella costellazione in cache. / EN: true if there are view updates not yet in the cached constellation. */
   private graphStale = false
-  /** Catena delle materializzazioni: mai due ricostruzioni dell'indice in parallelo. */
+  /** Catena delle materializzazioni: mai due ricostruzioni dell'indice in parallelo. / EN: Chain of materializations: never two index rebuilds in parallel. */
   private materializing: Promise<void> = Promise.resolve()
   private readonly log: (msg: string) => void
 
@@ -497,11 +577,14 @@ export class MicelioNode extends EventEmitter {
 
     if (opts.llmRunner !== undefined) {
       // Esecutore condiviso da MicelioHost: una sola coda e un solo budget per tutti i team.
+      // EN: Runner shared by MicelioHost: a single queue and a single budget for all teams.
       this.llm = opts.llmRunner
     } else {
       // Scelta dell'adapter: override dei test > configurazione.
+      // EN: Adapter choice: test override > configuration.
       const adapter = opts.llm !== undefined ? opts.llm : createAdapter(this.config)
       // Budget e modelli si leggono da this.config a ogni uso: la UI può cambiarli senza riavvio.
+      // EN: Budget and models are read from this.config on every use: the UI can change them without a restart.
       this.llm = adapter ? new LlmRunner(adapter, this.privateStore, { dailyBudget: () => this.config.llm.dailyBudget, log: this.log }) : null
     }
 
@@ -511,7 +594,9 @@ export class MicelioNode extends EventEmitter {
       models: () => ({ classify: this.config.llm.classifyModel, distill: this.config.llm.distillModel }),
       publish: (m) => this.publish(m),
       // Regole e lingua si leggono dalla vista a ogni uso: un admin può cambiarle in qualunque momento.
+      // EN: Rules and language are read from the view on every use: an admin can change them at any time.
       // Regole del filtro: default + quelle del team (parole chiave, pattern di segreti, eccezioni)
+      // EN: Filter rules: defaults + the team's (keywords, secret patterns, exceptions)
       rules: async () => mergeRules(await this.team?.config('filter.blockKeywords'), await this.team?.config('security.secretPatterns'), await this.team?.config('security.allow')),
       sensitiveFiles: async () => mergeSensitiveFiles(await this.team?.config('security.sensitiveFiles')).filter((p) => !DEFAULT_SENSITIVE_FILES.includes(p)),
       blockedPaths: async () => mergeBlockedPaths(await this.team?.config('filter.blockedPaths')),
@@ -521,11 +606,13 @@ export class MicelioNode extends EventEmitter {
       log: this.log,
       notify: (topic) => this.changed(topic),
       // B11: efficacia dei ricordi forniti agli agenti
+      // EN: B11: efficacy of the memories delivered to agents
       efficacy: {
         evaluate: (transcriptPath, fromLine, sessionId, cwd) => this.evaluateSession(transcriptPath, fromLine, sessionId, cwd),
         verdicts: (sessionId, cwd, verdicts) => this.applyVerdicts(sessionId, cwd, verdicts)
       },
       // Radici (Fase 8): suggerimenti del distillatore e cartelle di documenti "di Radici"
+      // EN: Roots (Phase 8): distiller suggestions and "Roots" document folders
       suggestRoot: (id, category, title) => {
         if (this.rootsById.has(id)) return
         this.privateStore.addRootSuggestion(id, category, title)
@@ -560,31 +647,39 @@ export class MicelioNode extends EventEmitter {
   }
 
   // ═══════════════════════════════ Ciclo di vita ═══════════════════════════════
+  // EN: Lifecycle
 
-  /** Avvia il nodo: se il team è già configurato si ricollega alla rete. Avvia il worker di ingestione. */
+  /** Avvia il nodo: se il team è già configurato si ricollega alla rete. Avvia il worker di ingestione. / EN: Starts the node: if the team is already configured it reconnects to the network. Starts the ingestion worker. */
   async start (): Promise<void> {
     this.pipeline.start()
     this.sweepSourceCache()
     // Pubblicazione periodica dell'uso locale dei ricordi (Fase 5).
+    // EN: Periodic publishing of local memory usage (Phase 5).
     this.usageTimer = setInterval(() => { this.flushUsage().catch(() => {}); this.flushUseful().catch(() => {}) }, USAGE_FLUSH_MS)
     // B11: conservazione di consultazioni ed esiti (all'avvio basta: il daemon si riavvia spesso)
-    try { this.privateStore.pruneEfficacy(Date.now() - EFFICACY_KEEP_MS) } catch { /* archivio non ancora pronto */ }
+    // EN: B11: retention of queries and outcomes (at startup is enough: the daemon restarts often)
+    try { this.privateStore.pruneEfficacy(Date.now() - EFFICACY_KEEP_MS) } catch { /* archivio non ancora pronto / EN: private store not ready yet */ }
     this.usageTimer.unref()
     // Raccolta delle sessioni in corso e recupero di quelle finite mentre il daemon era spento.
+    // EN: Collect running sessions and recover those that ended while the daemon was off.
     const scanEvery = this.config.watch.sessionScan.intervalMinutes * 60_000
     this.scanTimer = setInterval(() => { this.scanSessions() }, scanEvery)
     this.scanTimer.unref()
     // Controllo periodico del turno di sogno (Fase 6).
+    // EN: Periodic check of the dream turn (Phase 6).
     this.dreamTimer = setInterval(() => { this.checkDreamTurn().catch((e) => this.log(`dreaming: ${e.message}`)) }, DREAM_CHECK_MS)
     this.dreamTimer.unref()
     // B4: ricordi che invecchiano con il codice. Primo controllo poco dopo l'avvio (non lo rallenta),
     // poi a intervalli: i repository cambiano con il lavoro di tutti i giorni.
+    // EN: B4: memories that age with the code. First check shortly after startup (it doesn't slow it down),
+    //     then at intervals: repositories change with everyday work.
     this.staleness = this.privateStore.staleness()
     const firstCheck = setTimeout(() => { this.checkStaleness() }, STALE_FIRST_CHECK_MS)
     firstCheck.unref()
     this.staleTimer = setInterval(() => { this.checkStaleness() }, STALE_CHECK_MS)
     this.staleTimer.unref()
     // B7: backup automatico giornaliero (se attivato). Primo controllo poco dopo l'avvio.
+    // EN: B7: daily automatic backup (if enabled). First check shortly after startup.
     const firstBackup = setTimeout(() => { this.autoBackup().catch(() => {}) }, STALE_FIRST_CHECK_MS)
     firstBackup.unref()
     this.backupTimer = setInterval(() => { this.autoBackup().catch(() => {}) }, AUTO_BACKUP_CHECK_MS)
@@ -602,10 +697,11 @@ export class MicelioNode extends EventEmitter {
     await this.linkIdentity()
     await this.documents.start(this.config.watch.documents)
     // Recupero: sessioni lavorate mentre il daemon era spento (o parti nuove di sessioni lunghe).
+    // EN: Recovery: sessions worked on while the daemon was off (or new parts of long sessions).
     this.scanSessions()
   }
 
-  /** Ferma tutto in ordine: worker, indicizzazione in corso, rete, database. */
+  /** Ferma tutto in ordine: worker, indicizzazione in corso, rete, database. / EN: Stops everything in order: worker, running indexing, network, databases. */
   async stop (): Promise<void> {
     if (this.usageTimer) clearInterval(this.usageTimer)
     if (this.dreamTimer) clearInterval(this.dreamTimer)
@@ -617,6 +713,7 @@ export class MicelioNode extends EventEmitter {
     await this.flushUseful().catch(() => {})
     await this.embedding.catch(() => {})
     // Si chiude solo l'embedder creato qui: quello passato da fuori è condiviso con altri team.
+    // EN: Only close the embedder created here: one passed from outside is shared with other teams.
     if (this.opts.embedder === undefined) await this.embedder?.close()
     await this.documents.stop()
     await this.pipeline.stop()
@@ -630,8 +727,9 @@ export class MicelioNode extends EventEmitter {
   }
 
   // ═══════════════════════════════════ Team ════════════════════════════════════
+  // EN: Team
 
-  /** Nome del team, dall'ultima lettura della vista (null prima della prima sincronizzazione). */
+  /** Nome del team, dall'ultima lettura della vista (null prima della prima sincronizzazione). / EN: Team name, from the last view read (null before the first sync). */
   get teamName (): string | null {
     return this.teamNameCache
   }
@@ -639,17 +737,20 @@ export class MicelioNode extends EventEmitter {
   /**
    * Rilegge la configurazione dal disco. Con più team (B3) la parte della macchina (modelli LLM,
    * budget) è condivisa: quando un team la cambia, MicelioHost fa rileggere gli altri.
+   *
+   * EN: Reloads the configuration from disk. With several teams (B3) the machine part (LLM models,
+   * budget) is shared: when one team changes it, MicelioHost makes the others reload it.
    */
   reloadConfig (): void {
     this.config = loadConfig(this.paths)
   }
 
-  /** true se il nodo appartiene a un team (state.json presente). */
+  /** true se il nodo appartiene a un team (state.json presente). / EN: true if the node belongs to a team (state.json present). */
   get configured (): boolean {
     return this.team !== null || loadState(this.paths) !== null
   }
 
-  /** Crea un nuovo team con questo nodo come fondatore. */
+  /** Crea un nuovo team con questo nodo come fondatore. / EN: Creates a new team with this node as founder. */
   async init (teamName: string, nodeName: string): Promise<NodeStatus> {
     this.assertNotConfigured()
     const team = this.newTeamNode()
@@ -657,7 +758,7 @@ export class MicelioNode extends EventEmitter {
       const secrets = await team.create(teamName, nodeName)
       saveState(this.paths, { nodeName, ...secrets })
     } catch (err) {
-      await team.close() // non lasciare swarm e file aperti se qualcosa va storto
+      await team.close() // non lasciare swarm e file aperti se qualcosa va storto / EN: don't leave the swarm and files open if something goes wrong
       throw err
     }
     this.nodeName = nodeName
@@ -669,7 +770,7 @@ export class MicelioNode extends EventEmitter {
     return this.status()
   }
 
-  /** Entra in un team esistente con un codice d'invito. */
+  /** Entra in un team esistente con un codice d'invito. / EN: Joins an existing team with an invite code. */
   async join (code: string, nodeName: string): Promise<NodeStatus> {
     this.assertNotConfigured()
     const team = this.newTeamNode()
@@ -689,25 +790,26 @@ export class MicelioNode extends EventEmitter {
     return this.status()
   }
 
-  /** Crea un invito (qualunque membro). Vedi TeamNode.createInvite per `replicated`. */
+  /** Crea un invito (qualunque membro). Vedi TeamNode.createInvite per `replicated`. / EN: Creates an invite (any member). See TeamNode.createInvite for `replicated`. */
   async invite (): Promise<{ code: string, expires: number, replicated: boolean }> {
     const team = this.requireTeam()
     // Solo locale: nessuno potrebbe raggiungere questo nodo per usare l'invito
+    // EN: Local only: nobody could reach this node to use the invite
     if (this.localOnly) throw new UserError('Il team è in modalità solo locale: per invitare qualcuno scegli prima una rete (Impostazioni → Rete)', 'The team is in local-only mode: to invite someone, choose a network first (Settings → Network)')
     return team.createInvite()
   }
 
-  /** Inviti non ancora usati. */
+  /** Inviti non ancora usati. / EN: Invites not used yet. */
   async invites (): Promise<InviteRecord[]> {
     return this.requireTeam().invites()
   }
 
-  /** Tutti i membri, compresi gli espulsi. */
+  /** Tutti i membri, compresi gli espulsi. / EN: All members, removed ones included. */
   async members (): Promise<MemberRecord[]> {
     return this.requireTeam().members()
   }
 
-  /** Espelle un membro (solo admin). Un nodo non può espellere se stesso. */
+  /** Espelle un membro (solo admin). Un nodo non può espellere se stesso. / EN: Removes a member (admin only). A node cannot remove itself. */
   async removeMember (ref: string): Promise<MemberRecord> {
     await this.requireAdmin()
     const target = await this.resolveMember(ref)
@@ -717,7 +819,7 @@ export class MicelioNode extends EventEmitter {
     return target
   }
 
-  /** Promuove un membro ad admin e indexer (solo admin). */
+  /** Promuove un membro ad admin e indexer (solo admin). / EN: Promotes a member to admin and indexer (admin only). */
   async promoteMember (ref: string): Promise<MemberRecord> {
     await this.requireAdmin()
     const target = await this.resolveMember(ref)
@@ -729,9 +831,13 @@ export class MicelioNode extends EventEmitter {
   /**
    * Imposta una configurazione condivisa del team (solo admin).
    * Chiavi note: `memory.language` (es. "it", "en"), `filter.blockKeywords` (array di stringhe).
+   *
+   * EN: Sets a shared team configuration value (admin only).
+   * Known keys: `memory.language` (e.g. "it", "en"), `filter.blockKeywords` (array of strings).
    */
   async setTeamConfig (key: string, value: unknown): Promise<void> {
     // Validazione delle chiavi note: un valore sbagliato vale per tutto il team
+    // EN: Validate known keys: a wrong value applies to the whole team
     if (key === 'memory.updateOnWrite' && typeof value !== 'boolean') {
       throw new UserError('memory.updateOnWrite: true oppure false', 'memory.updateOnWrite: true or false')
     }
@@ -744,7 +850,7 @@ export class MicelioNode extends EventEmitter {
     this.changed('status')
   }
 
-  /** Configurazione condivisa del team (lingua, parole chiave del filtro), per la UI. */
+  /** Configurazione condivisa del team (lingua, parole chiave del filtro), per la UI. / EN: Shared team configuration (language, filter keywords), for the UI. */
   async teamConfig (): Promise<{ language: string, blockKeywords: string[], maxMemories: number, updateOnWrite: boolean }> {
     const team = this.requireTeam()
     const kw = await team.config<unknown>('filter.blockKeywords')
@@ -753,6 +859,7 @@ export class MicelioNode extends EventEmitter {
       blockKeywords: Array.isArray(kw) ? kw.filter((k): k is string => typeof k === 'string') : [],
       maxMemories: maxMemoriesOf(await team.config('distill.maxMemories')),
       // B4: aggiornare invece di aggiungere (attivo salvo scelta contraria dell'admin)
+      // EN: B4: update instead of add (on unless the admin decides otherwise)
       updateOnWrite: (await team.config('memory.updateOnWrite')) !== false
     }
   }
@@ -761,6 +868,10 @@ export class MicelioNode extends EventEmitter {
    * Qualità della distillazione (Fase 10): per fascia di posizione nel distillato, quanti ricordi
    * risultano utili, inutili, rimossi o mai usati, la saturazione del limite e un'indicazione per
    * l'admin. Calcolata sulla vista replicata: la stessa su ogni PC.
+   *
+   * EN: Distillation quality (Phase 10): per position band in the distilled output, how many memories
+   * turn out useful, useless, removed or never used, the saturation of the limit and a hint for
+   * the admin. Computed on the replicated view: the same on every PC.
    */
   async distillQuality (now = Date.now()): Promise<DistillQuality> {
     const team = this.requireTeam()
@@ -771,10 +882,14 @@ export class MicelioNode extends EventEmitter {
   }
 
   // ═════════════════════════════════ Ricordi ═══════════════════════════════════
+  // EN: Memories
 
   /**
    * Salvataggio ESPLICITO (CLI, API, MCP). Passa da filtro e classificazione (decisione D6):
    * l'esito può essere "team", "inbox" o "private".
+   *
+   * EN: EXPLICIT save (CLI, API, MCP). It goes through the filter and classification (decision D6):
+   * the outcome can be "team", "inbox" or "private".
    */
   async remember (input: MemoryInput): Promise<ExplicitOutcome> {
     this.requireTeam()
@@ -783,26 +898,32 @@ export class MicelioNode extends EventEmitter {
     return this.pipeline.ingestExplicit(parsed.data)
   }
 
-  /** Ricerca full-text nella memoria del team (indice locale). */
+  /** Ricerca full-text nella memoria del team (indice locale). / EN: Full-text search in the team memory (local index). */
   recall (query: string, limit = 5): RecallHit[] {
     return this.index.search(query, limit)
   }
 
-  /** Costellazione del sapere: ricordi come nodi, correlazioni come collegamenti (src/graph). */
+  /** Costellazione del sapere: ricordi come nodi, correlazioni come collegamenti (src/graph). / EN: Knowledge constellation: memories as nodes, correlations as links (src/graph). */
   /**
    * Costellazione del team con le galassie. Con migliaia di ricordi calcolarla costa (secondi),
    * quindi si tiene pronta: la ricalcola in sottofondo `scheduleGraph` dopo ogni aggiornamento.
    * Se viene chiesta prima, si calcola qui.
+   *
+   * EN: Team constellation with galaxies. With thousands of memories computing it is costly (seconds),
+   * so it's kept ready: `scheduleGraph` recomputes it in the background after every update.
+   * If it's requested before that, it's computed here.
    */
   graph (): Graph {
     // Vecchia (scritture dopo l'ultimo calcolo): nei team piccoli costa poco e si ricalcola subito;
     // nei grandi si restituisce quella di pochi secondi fa, mentre la nuova arriva in sottofondo
+    // EN: Stale (writes after the last computation): in small teams it's cheap and recomputed right away;
+    //     in large ones we return the one from a few seconds ago, while the new one arrives in the background
     const stale = this.graphStale && (this.graphCache?.nodes.length ?? 0) < SYNC_GRAPH_MAX
     if (!this.graphCache || stale) this.computeGraph()
     return this.graphCache!
   }
 
-  /** Calcola costellazione, galassie e grado dei nodi; li tiene pronti per graph() e l'attivazione. */
+  /** Calcola costellazione, galassie e grado dei nodi; li tiene pronti per graph() e l'attivazione. / EN: Computes the constellation, galaxies and node degrees; keeps them ready for graph() and activation. */
   private computeGraph (): void {
     const lap = phaseTimer()
     const memories = this.teamMemories()
@@ -811,6 +932,7 @@ export class MicelioNode extends EventEmitter {
     const g = buildGraph(memories, extra)
     lap('costellazione')
     // Grado dei nodi PRIMA dell'attivazione, che lo usa
+    // EN: Node degrees BEFORE activation, which uses them
     const degrees = new Map<string, number>()
     for (const l of g.links) for (const k of [l.source, l.target]) degrees.set(k, (degrees.get(k) ?? 0) + 1)
     this.degrees = degrees
@@ -820,6 +942,7 @@ export class MicelioNode extends EventEmitter {
       return { ...n, activation: this.activationOf(n.id, signals, { kind: n.kind as MemoryRecord['kind'], ts: n.ts }), ...(r ? { root: { category: r.category, status: r.status } } : {}) }
     })
     // Galassie per la vista d'insieme dei team grandi (src/graph/communities.ts): lineari nei collegamenti
+    // EN: Galaxies for the overview of large teams (src/graph/communities.ts): linear in the number of links
     lap('attivazione')
     const c = detectCommunities(nodes, g.links)
     lap('galassie')
@@ -834,18 +957,23 @@ export class MicelioNode extends EventEmitter {
     }
   }
 
-  /** Un ricordo completo con i segnali di priorità (attivazione, voti, usi, pin). */
+  /** Un ricordo completo con i segnali di priorità (attivazione, voti, usi, pin). / EN: A full memory with its priority signals (activation, votes, uses, pins). */
   detail (id: string): RecallHit | null {
     const rec = this.index.get(id)
     return rec ? this.enrich([rec])[0] : null
   }
 
   // ═══════════════════════════ Priorità (Fase 5) ═══════════════════════════
+  // EN: Priority (Phase 5)
 
   /**
    * Ricerca IBRIDA (DESIGN §8.1): parole chiave + significato + attivazione. È quella usata da
    * API, MCP e UI. Conta anche l'uso dei ricordi restituiti (segnale per l'attivazione).
+   *
+   * EN: HYBRID search (DESIGN §8.1): keywords + meaning + activation. It's the one used by the
+   * API, MCP and UI. It also counts usage of the returned memories (a signal for activation).
    * @param track false per non contare l'uso (es. ricerche interne)
+   *        EN: false to not count usage (e.g. internal searches)
    */
   async recallHybrid (query: string, limit = 5, track = true): Promise<RecallHit[]> {
     const keyword = this.index.keywordIds(query, 50)
@@ -856,6 +984,7 @@ export class MicelioNode extends EventEmitter {
         semantic = nearest(q, this.index.vectors(this.embedder.model), 50, semanticThreshold(this.embedder.model)).map((r) => r.id)
       } catch (err) {
         // Modello non disponibile (es. primo download fallito): si ripiega sulle parole chiave.
+        // EN: Model not available (e.g. first download failed): fall back to keywords.
         this.log(`ricerca semantica non disponibile: ${(err as Error).message}`)
       }
     }
@@ -865,19 +994,26 @@ export class MicelioNode extends EventEmitter {
     const hits = this.enrich(this.index.getMany(ranked.map((r) => r.id)), signals)
     ranked.forEach((r, i) => { if (hits[i]) hits[i].score = r.score })
     // L'uso dei ricordi personali non si conta: verrebbe pubblicato al team (usage.report)
+    // EN: Usage of personal memories isn't counted: it would be published to the team (usage.report)
     const used = hits.filter((h) => !this.personalIds.has(h.id)).map((h) => h.id)
     if (track && used.length) this.privateStore.countUsage(used)
     // B4: una ricerca esplicita senza risultati è una lacuna di conoscenza (solo su questo PC)
+    // EN: B4: an explicit search with no results is a knowledge gap (only on this PC)
     if (track && hits.length === 0) await this.recordMiss(query)
     return hits
   }
 
   // ═══════════════════════════ Dreaming (Fase 6) ═══════════════════════════
+  // EN: Dreaming (Phase 6)
 
   /**
    * Controlla se oggi tocca a questo nodo sognare (DESIGN §10.1): turnazione deterministica fra
    * i membri attivi; il primo può iniziare dall'ora configurata, ogni turno successivo dopo
    * `slotMinutes` se nessuno ha ancora rivendicato l'epoca.
+   *
+   * EN: Checks whether it's this node's turn to dream today (DESIGN §10.1): deterministic rotation among
+   * active members; the first can start from the configured hour, each next turn after
+   * `slotMinutes` if nobody has claimed the epoch yet.
    */
   private async checkDreamTurn (now = Date.now()): Promise<void> {
     const team = this.team
@@ -893,7 +1029,7 @@ export class MicelioNode extends EventEmitter {
     await this.runDream(epoch)
   }
 
-  /** Sogno manuale (`micelio dream now`, pulsante nell'app): epoca dedicata, nessuna attesa. */
+  /** Sogno manuale (`micelio dream now`, pulsante nell'app): epoca dedicata, nessuna attesa. / EN: Manual dream (`micelio dream now`, button in the app): dedicated epoch, no waiting. */
   async dreamNow (): Promise<DreamReport> {
     if (this.dreamer.busy) throw new UserError('Un sogno è già in corso', 'A dream is already running')
     if (!this.llm) throw new UserError('Serve un LLM per sognare (llm.adapter in config.json)', 'Dreaming needs an LLM (llm.adapter in config.json)')
@@ -908,12 +1044,12 @@ export class MicelioNode extends EventEmitter {
     return r
   }
 
-  /** Diario dei sogni del team, dal più recente. */
+  /** Diario dei sogni del team, dal più recente. / EN: The team's dream journal, newest first. */
   async dreams (): Promise<{ epoch: string, by: string, ts: number, summary: string, stats: Record<string, number> }[]> {
     return this.requireTeam().dreamLogs()
   }
 
-  /** Ricordi archiviati o sostituiti (storico), dal più recente. */
+  /** Ricordi archiviati o sostituiti (storico), dal più recente. / EN: Archived or superseded memories (history), newest first. */
   archived (): MemoryRecord[] {
     return [...this.inactive].sort((a, b) => b.ts - a.ts)
   }
@@ -922,6 +1058,10 @@ export class MicelioNode extends EventEmitter {
    * Redazione (solo admin): toglie dalla vista di tutti il contenuto di un ricordo pubblicato per
    * errore (es. un dato sensibile sfuggito al filtro). Limite intrinseco: chi l'aveva già letto
    * o esportato ne conserva una copia, e i blocchi cifrati restano nei log replicati.
+   *
+   * EN: Redaction (admin only): removes from everyone's view the content of a memory published by
+   * mistake (e.g. sensitive data that slipped past the filter). Inherent limit: whoever already read
+   * or exported it keeps a copy, and the encrypted blocks stay in the replicated logs.
    */
   async redact (id: string, reason: string): Promise<void> {
     await this.requireAdmin()
@@ -931,11 +1071,16 @@ export class MicelioNode extends EventEmitter {
   }
 
   // ═══════════════════════════ Backup e ripristino (B7) ═══════════════════════════
+  // EN: Backup and restore (B7)
 
   /**
    * Il sapere del team, pronto per il backup: ricordi attivi e storico (non i redatti), Radici,
    * collegamenti, voti, ricordi fissati, uso, lacune, configurazione condivisa. Letto dalla vista,
    * non dall'indice locale: comprende anche ciò che l'indice non tiene. Mai i ricordi personali.
+   *
+   * EN: The team's knowledge, ready for backup: active memories and history (not redacted ones), Roots,
+   * links, votes, pinned memories, usage, knowledge gaps, shared configuration. Read from the view,
+   * not from the local index: it also includes what the index doesn't keep. Never personal memories.
    */
   private async backupSnapshot (): Promise<{ content: BackupContent, manifest: BackupManifest }> {
     const team = this.requireTeam()
@@ -963,7 +1108,11 @@ export class MicelioNode extends EventEmitter {
   /**
    * Crea il file di backup del team, cifrato con la password. Qualunque membro (decisione
    * dell'utente): vede già tutto il sapere del team.
+   *
+   * EN: Creates the team backup file, encrypted with the password. Any member can do it (user's
+   * decision): they already see all of the team's knowledge.
    * @returns il file, il nome suggerito e il manifesto (cosa contiene)
+   *          EN: the file, the suggested name and the manifest (what it contains)
    */
   async createBackup (password: string): Promise<{ file: Buffer, name: string, manifest: BackupManifest }> {
     const t0 = Date.now()
@@ -979,7 +1128,14 @@ export class MicelioNode extends EventEmitter {
    * - `fresh`: team appena creato per il ripristino (MicelioHost.restoreAsNewTeam), di cui chi
    *   ripristina è fondatore; si riprende anche la configurazione condivisa del backup.
    * Gli eventi si scrivono a blocchi (RESTORE_BATCH) e la vista si materializza UNA volta alla fine.
+   *
+   * EN: Restores a backup into THIS team.
+   * - In an existing team only an admin can (user's decision): it writes for everyone.
+   * - `fresh`: team just created for the restore (MicelioHost.restoreAsNewTeam), whose founder is
+   *   the person restoring; the backup's shared configuration is restored too.
+   * Events are written in blocks (RESTORE_BATCH) and the view is materialized ONCE at the end.
    * @returns quanti ricordi erano nel backup, quanti sono stati aggiunti e quanti c'erano già
+   *          EN: how many memories were in the backup, how many were added and how many were already there
    */
   async restoreBackup (file: Buffer, password: string, { fresh = false }: { fresh?: boolean } = {}): Promise<{ team: string, memories: number, added: number, existing: number, events: number, ms: number }> {
     const team = this.requireTeam()
@@ -995,6 +1151,7 @@ export class MicelioNode extends EventEmitter {
       for (let i = 0; i < events.length; i += RESTORE_BATCH) {
         await team.appendMany(events.slice(i, i + RESTORE_BATCH))
         // Fra un blocco e l'altro il daemon risponde alle altre richieste
+        // EN: Between blocks the daemon answers other requests
         await new Promise((r) => setImmediate(r))
       }
     } finally {
@@ -1013,7 +1170,7 @@ export class MicelioNode extends EventEmitter {
     return report
   }
 
-  /** Impostazioni dei backup automatici (senza la password) ed esito dell'ultimo. */
+  /** Impostazioni dei backup automatici (senza la password) ed esito dell'ultimo. / EN: Automatic backup settings (without the password) and the outcome of the last one. */
   backupSettings (): { enabled: boolean, folder: string, keep: number, hasPassword: boolean, last: { at: number, file?: string, error?: string } | null } {
     const b = this.config.backup
     return { enabled: b.enabled, folder: b.folder, keep: b.keep, hasPassword: b.password.length > 0, last: this.lastAutoBackup }
@@ -1021,7 +1178,10 @@ export class MicelioNode extends EventEmitter {
 
   /**
    * Cambia le impostazioni dei backup automatici. `password` vuota o assente = resta quella salvata.
+   *
+   * EN: Changes the automatic backup settings. Empty or missing `password` = keep the saved one.
    * @throws UserError se si attivano senza cartella o senza password
+   *         EN: if enabled without a folder or without a password
    */
   async setBackupSettings (s: { enabled?: boolean, folder?: string, keep?: number, password?: string }): Promise<void> {
     const next = { ...this.config.backup, ...Object.fromEntries(Object.entries(s).filter(([k, v]) => v !== undefined && !(k === 'password' && v === ''))) }
@@ -1031,12 +1191,16 @@ export class MicelioNode extends EventEmitter {
     this.config = updateConfig(this.paths, (c) => { c.backup = next })
     this.changed('settings')
     // Appena attivati: il primo backup subito, senza aspettare il controllo orario
+    // EN: Just enabled: run the first backup now, without waiting for the hourly check
     if (next.enabled) this.autoBackup().catch(() => {})
   }
 
   /**
    * Backup automatico: se attivato e l'ultimo backup di questo team nella cartella ha più di un
    * giorno (o non c'è), ne crea uno e tiene solo gli ultimi `keep`. Errori nel log e in Impostazioni.
+   *
+   * EN: Automatic backup: if enabled and this team's latest backup in the folder is more than a
+   * day old (or missing), it creates one and keeps only the last `keep`. Errors go to the log and Settings.
    */
   private async autoBackup (): Promise<void> {
     const b = this.config.backup
@@ -1051,6 +1215,7 @@ export class MicelioNode extends EventEmitter {
       const { file, name } = await this.createBackup(b.password)
       fs.writeFileSync(path.join(b.folder, name), file)
       // Si tengono gli ultimi `keep` (il nome contiene la data: in ordine alfabetico = cronologico)
+      // EN: Keep the last `keep` (the name contains the date: alphabetical order = chronological)
       const all = mine()
       for (const old of all.slice(0, Math.max(0, all.length - b.keep))) fs.rmSync(path.join(b.folder, old), { force: true })
       this.lastAutoBackup = { at: Date.now(), file: name }
@@ -1062,13 +1227,18 @@ export class MicelioNode extends EventEmitter {
   }
 
   // ═══════════════════════════ Chat sulla memoria (B10) ═══════════════════════════
+  // EN: Chat over the memory (B10)
 
   /**
    * Collegamenti della costellazione per la chat, con il tipo del dreaming dove c'è (approfondisce,
    * dipende da, contraddice). La costellazione è già in cache (graph()): nessun ricalcolo.
+   *
+   * EN: Constellation links for the chat, with the dreaming type where present (deepens,
+   * depends on, contradicts). The constellation is already cached (graph()): no recompute.
    */
   private chatLinks (): MapLink[] {
     // Ricalcolati solo quando la costellazione cambia: con 5 000 ricordi sono decine di migliaia
+    // EN: Recomputed only when the constellation changes: with 5,000 memories there are tens of thousands
     const g = this.graph()
     if (this.chatLinksCache?.graph === g) return this.chatLinksCache.links
     const rel = new Map(this.dreamLinks.map((l) => [`${l.from}|${l.to}`, l.rel]))
@@ -1083,11 +1253,15 @@ export class MicelioNode extends EventEmitter {
   /**
    * Ricordi per una domanda e la loro mappa mentale, SENZA LLM (subito): ricerca ibrida, Radici
    * pertinenti, poi i vicini nella costellazione.
+   *
+   * EN: Memories for a question and their mind map, WITHOUT the LLM (immediate): hybrid search, relevant
+   * Roots, then the neighbors in the constellation.
    */
   async chatContext (question: string): Promise<{ map: MindMap, memories: ChatMemory[] }> {
     this.requireTeam()
     const q = question.trim()
     // track = false: è la chat, non una ricerca d'uso; finisce comunque fra le consultazioni (askChat)
+    // EN: track = false: it's the chat, not a usage search; it still ends up among the queries (askChat)
     const hits = await this.recallHybrid(q, CHAT_SEARCH_HITS, false)
     const roots = await this.relatedRoots(q, hits.map((h) => h.id))
     const found = [...hits, ...roots]
@@ -1106,7 +1280,12 @@ export class MicelioNode extends EventEmitter {
    * Domanda alla chat: mappa (come chatContext) e risposta dell'LLM scritta SOLO sui ricordi
    * trovati, con i riferimenti. Domanda e risposta finiscono nella cronologia (solo su questo PC).
    * Senza ricordi pertinenti non si chiama l'LLM: la risposta è "non lo so" (budget risparmiato).
+   *
+   * EN: A question to the chat: the map (as in chatContext) and an LLM answer written ONLY from the memories
+   * found, with references. Question and answer go into the history (only on this PC).
+   * Without relevant memories the LLM isn't called: the answer is "I don't know" (budget saved).
    * @param chatId conversazione esistente; assente = nuova
+   *        EN: existing conversation; missing = new one
    */
   async askChat (question: string, chatId?: number): Promise<ChatReply> {
     const t0 = Date.now()
@@ -1115,6 +1294,7 @@ export class MicelioNode extends EventEmitter {
     const { map, memories } = await this.chatContext(q)
     const id = chatId ?? this.privateStore.createChat(q)
     // Conversazione precedente: coppie domanda → risposta, per le domande che ne seguono un'altra
+    // EN: Previous conversation: question → answer pairs, for questions that follow another one
     const prev = this.privateStore.chatMessages(id)
     const history: { question: string, answer: string }[] = []
     for (let i = 0; i + 1 < prev.length; i++) if (prev[i].role === 'user' && prev[i + 1].role === 'assistant') history.push({ question: prev[i].text, answer: prev[i + 1].text })
@@ -1133,6 +1313,7 @@ export class MicelioNode extends EventEmitter {
       answer = await this.llm.run({ name: 'chat', system: chatSystem(language), input: built.input, schema: ChatAnswer, model: this.config.llm.distillModel })
     }
     // Nomi leggibili dei temi dati dall'LLM (se mancano restano i tag caratteristici)
+    // EN: Readable theme names given by the LLM (if missing, the characteristic tags stay)
     const titles = new Map(answer.themes.map((t) => [t.id, t.title.trim()]))
     for (const t of map.themes) if (titles.get(t.id)) t.label = titles.get(t.id)!
     const cited = [...new Set(answer.cited)].flatMap((n) => (numbers.has(n) ? [numbers.get(n)!] : []))
@@ -1142,7 +1323,7 @@ export class MicelioNode extends EventEmitter {
     return { chatId: id, messageId, answer: answer.answer, unknown: answer.unknown, cited, refs, map }
   }
 
-  /** I vicini di un ricordo nella costellazione, per "espandi" nella mappa (senza LLM). */
+  /** I vicini di un ricordo nella costellazione, per "espandi" nella mappa (senza LLM). / EN: A memory's neighbors in the constellation, for "expand" in the map (no LLM). */
   chatExpand (id: string, max = 8): { memories: MindMap['memories'], links: MapLink[] } {
     const rec = this.index.get(id)
     if (!rec) throw new UserError(`Nessun ricordo con id ${id}`, `No memory with id ${id}`)
@@ -1155,6 +1336,9 @@ export class MicelioNode extends EventEmitter {
   /**
    * "Salva come ricordo": la risposta diventa un ricordo del team, con le fonti. Passa dalla stessa
    * strada di un salvataggio esplicito (filtro privacy, eventuale Inbox).
+   *
+   * EN: "Save as memory": the answer becomes a team memory, with its sources. It goes the same
+   * way as an explicit save (privacy filter, possibly the Inbox).
    */
   async saveChatAnswer (messageId: number): Promise<ExplicitOutcome> {
     const msg = this.privateStore.chatMessage(messageId)
@@ -1164,6 +1348,7 @@ export class MicelioNode extends EventEmitter {
     const sources = this.index.getMany(msg.data?.cited ?? [])
     const tags = [...new Set(sources.flatMap((s) => s.tags))].slice(0, 5)
     // Il testo cita i ricordi con [n]: in fondo l'elenco, perché nel ricordo il numero da solo non dice nulla
+    // EN: The text cites memories as [n]: the list goes at the end, because in the memory the number alone means nothing
     const refs: { n: number, id: string, title: string }[] = msg.data?.refs ?? []
     const used = refs.filter((r) => (msg.data?.cited ?? []).includes(r.id))
     const body = `${msg.text}${used.length ? `\n\nFonti:\n${used.map((r) => `- [${r.n}] ${r.title} (id:${r.id.slice(0, 12)})`).join('\n')}` : ''}`
@@ -1173,13 +1358,13 @@ export class MicelioNode extends EventEmitter {
     return out
   }
 
-  /** Conversazioni della chat (solo su questo PC). */
+  /** Conversazioni della chat (solo su questo PC). / EN: Chat conversations (only on this PC). */
   chats (): ChatSummary[] { return this.privateStore.chats() }
   chatMessages (chatId: number): ChatMessage[] { return this.privateStore.chatMessages(chatId) }
   renameChat (chatId: number, title: string): void { this.privateStore.renameChat(chatId, title.trim() || 'Conversazione') }
   deleteChat (chatId: number): void { this.privateStore.deleteChat(chatId) }
 
-  /** Metriche sintetiche del nodo (per monitoraggio esterno o diagnostica). */
+  /** Metriche sintetiche del nodo (per monitoraggio esterno o diagnostica). / EN: Summary node metrics (for external monitoring or diagnostics). */
   async metrics (): Promise<Record<string, unknown>> {
     const s = await this.status()
     const ingest = await this.ingestStatus()
@@ -1199,7 +1384,7 @@ export class MicelioNode extends EventEmitter {
     }
   }
 
-  /** Ripristina un ricordo archiviato o sostituito. */
+  /** Ripristina un ricordo archiviato o sostituito. / EN: Restores an archived or superseded memory. */
   async restore (id: string): Promise<void> {
     const m = this.inactive.find((x) => (x.id === id || x.id.startsWith(id.toLowerCase())) && x.status !== 'redacted')
     if (!m) throw new UserError(`Nessun ricordo archiviato con id ${id}`, `No archived memory with id ${id}`)
@@ -1207,14 +1392,14 @@ export class MicelioNode extends EventEmitter {
     await this.sync()
   }
 
-  /** Voto di utilità su un ricordo: +1, -1, 0 per ritirarlo. Un voto per nodo. */
+  /** Voto di utilità su un ricordo: +1, -1, 0 per ritirarlo. Un voto per nodo. / EN: Usefulness vote on a memory: +1, -1, 0 to withdraw it. One vote per node. */
   async vote (id: string, delta: -1 | 0 | 1): Promise<void> {
     const rec = this.requireMemory(id)
     await this.requireTeam().append({ type: 'memory.vote', id: rec.id, delta })
     await this.sync()
   }
 
-  /** Fissa (o sblocca) un ricordo importante: non decade e il dreaming non lo archivia. */
+  /** Fissa (o sblocca) un ricordo importante: non decade e il dreaming non lo archivia. / EN: Pins (or unpins) an important memory: it doesn't decay and dreaming doesn't archive it. */
   async pin (id: string, pinned: boolean): Promise<void> {
     const rec = this.requireMemory(id)
     await this.requireTeam().append({ type: pinned ? 'memory.pin' : 'memory.unpin', id: rec.id })
@@ -1222,10 +1407,14 @@ export class MicelioNode extends EventEmitter {
   }
 
   // ═══════════════════════════ Radici (Fase 8) ═══════════════════════════
+  // EN: Roots (Phase 8)
 
   /**
    * Promuove un ricordo a Radice (o ne cambia la categoria). Qualunque membro può farlo.
+   *
+   * EN: Promotes a memory to Root (or changes its category). Any member can do it.
    * @param category vedi ROOT_CATEGORIES in events.ts
+   *        EN: see ROOT_CATEGORIES in events.ts
    */
   async rootSet (id: string, category: RootCategory): Promise<RootView> {
     if (!ROOT_CATEGORIES.includes(category)) throw new UserError(`Categoria sconosciuta: ${category} (${ROOT_CATEGORIES.join(', ')})`, `Unknown category: ${category} (${ROOT_CATEGORIES.join(', ')})`)
@@ -1240,6 +1429,9 @@ export class MicelioNode extends EventEmitter {
   /**
    * Radici suggerite dal distillatore su QUESTO nodo (archivio privato), ancora da decidere.
    * Si escludono i ricordi spariti (archiviati, sostituiti) o già diventati Radici.
+   *
+   * EN: Roots suggested by the distiller on THIS node (private store), still to be decided.
+   * Memories that are gone (archived, superseded) or already Roots are excluded.
    */
   rootSuggestions (): { id: string, category: RootCategory, title: string, created: number }[] {
     return this.privateStore.rootSuggestions()
@@ -1247,20 +1439,20 @@ export class MicelioNode extends EventEmitter {
       .map((s) => ({ ...s, category: s.category as RootCategory }))
   }
 
-  /** Ignora un suggerimento di Radice (resta un ricordo normale). */
+  /** Ignora un suggerimento di Radice (resta un ricordo normale). / EN: Ignores a Root suggestion (it stays a normal memory). */
   dismissRootSuggestion (id: string): void {
     this.privateStore.removeRootSuggestion(id)
     this.changed('roots')
   }
 
-  /** Il ricordo smette di essere una Radice. */
+  /** Il ricordo smette di essere una Radice. / EN: The memory stops being a Root. */
   async rootUnset (id: string): Promise<void> {
     const r = this.requireRoot(id)
     await this.requireTeam().append({ type: 'root.unset', id: r.id })
     await this.sync()
   }
 
-  /** Radice rivista e confermata: si azzerano le segnalazioni, la data di revisione riparte. */
+  /** Radice rivista e confermata: si azzerano le segnalazioni, la data di revisione riparte. / EN: Root reviewed and confirmed: flags are cleared, the review date restarts. */
   async rootConfirm (id: string): Promise<RootView> {
     const r = this.requireRoot(id)
     await this.requireTeam().append({ type: 'root.confirm', id: r.id })
@@ -1271,6 +1463,9 @@ export class MicelioNode extends EventEmitter {
   /**
    * Elenco delle Radici, filtrato e ordinato (vedi RootFilter). Senza `query`: per categoria,
    * poi quelle da rivedere prima, poi per titolo.
+   *
+   * EN: List of Roots, filtered and sorted (see RootFilter). Without `query`: by category,
+   * then those to review first, then by title.
    */
   async roots (filter: RootFilter = {}): Promise<RootView[]> {
     const members = new Map((this.team ? await this.team.members() : []).map((m) => [m.key, m.name]))
@@ -1303,8 +1498,14 @@ export class MicelioNode extends EventEmitter {
    * Radici pertinenti a una ricerca, ESCLUSE quelle già fra i risultati: è la sezione "Radici
    * pertinenti" in coda a ogni recall. Così il sapere fondante arriva all'agente anche quando la
    * ricerca non lo mette fra i primi risultati.
+   *
+   * EN: Roots relevant to a search, EXCLUDING those already among the results: it's the "Relevant
+   * Roots" section at the end of every recall. This way the founding knowledge reaches the agent even when the
+   * search doesn't put it among the top results.
    * @param exclude id già mostrati
+   *        EN: ids already shown
    * @param n quante al massimo
+   *        EN: how many at most
    */
   async relatedRoots (query: string, exclude: string[] = [], n = 3): Promise<RecallHit[]> {
     const skip = new Set(exclude)
@@ -1317,7 +1518,11 @@ export class MicelioNode extends EventEmitter {
   /**
    * Ordina un insieme di Radici per pertinenza a una query: parole chiave + significato, con
    * una soglia semantica più bassa del normale (le Radici sono testi lunghi e generali).
+   *
+   * EN: Sorts a set of Roots by relevance to a query: keywords + meaning, with
+   * a lower semantic threshold than usual (Roots are long, general texts).
    * @param strict true = solo quelle con un minimo di pertinenza (per "Radici pertinenti")
+   *        EN: true = only those with a minimum of relevance (for "Relevant Roots")
    */
   private async rankRoots (query: string, ids: string[], strict = false): Promise<string[]> {
     const allowed = new Set(ids)
@@ -1328,11 +1533,12 @@ export class MicelioNode extends EventEmitter {
         const [q] = await this.embedder.embed([query], 'query')
         const vectors = new Map([...this.index.vectors(this.embedder.model)].filter(([id]) => allowed.has(id)))
         semantic = nearest(q, vectors, ids.length, semanticThreshold(this.embedder.model) * ROOT_SEMANTIC_FACTOR).map((r) => r.id)
-      } catch { /* modello non disponibile: solo parole chiave */ }
+      } catch { /* modello non disponibile: solo parole chiave / EN: model not available: keywords only */ }
     }
     const ranked = hybridRank(keyword, semantic, () => 0).map((r) => r.id)
     if (strict) return ranked
     // Elenco completo: prima le pertinenti, poi le altre nell'ordine dato
+    // EN: Full list: relevant ones first, then the others in the given order
     return [...ranked, ...ids.filter((id) => !ranked.includes(id))]
   }
 
@@ -1340,7 +1546,12 @@ export class MicelioNode extends EventEmitter {
    * Revisione delle Radici, lanciata A MANO (vedi src/roots/review.ts): cerca codice o documenti
    * d'origine cambiati e ricordi più recenti che le contraddicono, e pubblica le segnalazioni
    * (`root.flag`). Le Radici segnalate diventano "da rivedere"; nessuna viene cambiata da sola.
+   *
+   * EN: Roots review, started BY HAND (see src/roots/review.ts): looks for changed source code or
+   * documents and newer memories that contradict them, and publishes the flags
+   * (`root.flag`). Flagged Roots become "to review"; none is changed automatically.
    * @param ids Radici da rivedere (default: tutte)
+   *        EN: Roots to review (default: all)
    */
   async rootReview (ids?: string[]): Promise<RootReviewResult> {
     const team = this.requireTeam()
@@ -1352,6 +1563,7 @@ export class MicelioNode extends EventEmitter {
       memories: this.enrich(this.teamMemories()),
       localKey: team.localKey,
       // I repository dei progetti si cercano nelle cartelle che l'utente ha abilitato su questo PC
+      // EN: Project repositories are looked up in the folders the user enabled on this PC
       folders: [...this.config.watch.sessions, ...this.config.watch.documents.map((d) => d.path)],
       documents: () => this.privateStore.allDocuments(),
       links: this.dreamLinks,
@@ -1365,6 +1577,7 @@ export class MicelioNode extends EventEmitter {
     for (const f of report.findings) await team.append({ type: 'root.flag', id: f.id, reason: f.reason, refs: f.refs })
     if (report.findings.length) await this.sync()
     // Raggruppa le segnalazioni per Radice, con il titolo
+    // EN: Group the flags by Root, with the title
     const flagged = new Map<string, { id: string, title: string, reasons: string[] }>()
     for (const f of report.findings) {
       const e = flagged.get(f.id) ?? { id: f.id, title: this.index.get(f.id)?.title ?? f.id, reasons: [] }
@@ -1382,7 +1595,7 @@ export class MicelioNode extends EventEmitter {
     return { ...r, memory: this.enrich([rec])[0], byName: rec.authorName, reviewedByName: null }
   }
 
-  /** Pubblica al team i contatori d'uso locali non ancora inviati (usage.report). */
+  /** Pubblica al team i contatori d'uso locali non ancora inviati (usage.report). / EN: Publishes to the team the local usage counters not sent yet (usage.report). */
   async flushUsage (): Promise<void> {
     if (!this.team?.writable) return
     const counts = this.privateStore.unreportedUsage()
@@ -1391,7 +1604,7 @@ export class MicelioNode extends EventEmitter {
     this.privateStore.markUsageReported(counts)
   }
 
-  /** Pubblica al team le volte in cui i ricordi sono stati utili agli agenti (B11, useful.report). */
+  /** Pubblica al team le volte in cui i ricordi sono stati utili agli agenti (B11, useful.report). / EN: Publishes to the team how many times memories were useful to agents (B11, useful.report). */
   async flushUseful (): Promise<void> {
     if (!this.team?.writable) return
     const counts = Object.fromEntries(Object.entries(this.privateStore.unreportedUseful()).filter(([id]) => !this.personalIds.has(id)))
@@ -1401,15 +1614,21 @@ export class MicelioNode extends EventEmitter {
   }
 
   // ═══════════════════════════ Efficacia (B11) ═══════════════════════════
+  // EN: Efficacy (B11)
 
   /**
    * Registra una richiesta di un agente a Micelio (tool MCP o contesto automatico) e avvisa la UI.
    * Sincrona e leggera (un INSERT): la risposta all'agente non deve aspettare.
+   *
+   * EN: Records an agent query to Micelio (MCP tool or automatic context) and notifies the UI.
+   * Synchronous and light (one INSERT): the answer to the agent must not wait.
    */
   consulted (channel: string, query: string | null, ids: string[], ms: number, extra: { project?: string | null, session?: string | null } = {}): void {
     try {
       // La domanda (es. il testo di un prompt) passa dalla redazione dei segreti: resta su questo PC,
       // ma si vede nella pagina «Efficacia» e un prompt può contenere una password incollata
+      // EN: The question (e.g. the text of a prompt) goes through secret redaction: it stays on this PC,
+      //     but it's visible on the "Efficacy" page and a prompt may contain a pasted password
       const q = query ? applyFilter(query.slice(0, 500)).text : null
       this.privateStore.addConsultation({ channel, query: q, ids, ms, project: extra.project ?? null, session: extra.session ?? null })
       this.changed('efficacy')
@@ -1422,6 +1641,10 @@ export class MicelioNode extends EventEmitter {
    * Parte nuova di una sessione (B11): cosa ha fornito Micelio e se l'agente ne ha lasciato tracce
    * (euristica, src/insight/efficacy.ts). Salva gli esiti e restituisce i ricordi forniti, per il
    * giudizio dell'LLM alla distillazione.
+   *
+   * EN: New part of a session (B11): what Micelio delivered and whether the agent left traces of it
+   * (heuristic, src/insight/efficacy.ts). Saves the outcomes and returns the delivered memories, for the
+   * LLM's judgment during distillation.
    */
   private evaluateSession (transcriptPath: string, fromLine: number, sessionId: string, cwd: string): { id: string, short: string, title: string }[] {
     const raw = fs.readFileSync(transcriptPath, 'utf8').split('\n').slice(fromLine)
@@ -1430,6 +1653,7 @@ export class MicelioNode extends EventEmitter {
     if (!deliveries.length) return []
     const project = projectOf(cwd)
     // Per ricordo l'esito migliore fra le consegne della sessione ("probabilmente utile" vince)
+    // EN: Per memory, the best outcome among the session's deliveries ("probably useful" wins)
     const best = new Map<string, { short: string, title: string, verdict: 'likely' | 'none', evidence: string | null }>()
     for (const d of deliveries) {
       const after = actionsAfter(rows, d.index)
@@ -1451,6 +1675,9 @@ export class MicelioNode extends EventEmitter {
   /**
    * Giudizio dell'LLM sui ricordi forniti (B11). "used" → pollice in su automatico (voto +1 di
    * questo nodo, mai sopra un voto già dato) e +1 al contatore di utilità del team.
+   *
+   * EN: The LLM's judgment on the delivered memories (B11). "used" → automatic thumbs up (+1 vote from
+   * this node, never over a vote already given) and +1 to the team's usefulness counter.
    */
   private applyVerdicts (sessionId: string, cwd: string, verdicts: Distilled['micelio']): void {
     const project = projectOf(cwd)
@@ -1469,7 +1696,7 @@ export class MicelioNode extends EventEmitter {
     if (changed) this.changed('efficacy')
   }
 
-  /** Voto +1 automatico, solo se questo nodo non ha già votato quel ricordo (decisione dell'utente). */
+  /** Voto +1 automatico, solo se questo nodo non ha già votato quel ricordo (decisione dell'utente). / EN: Automatic +1 vote, only if this node hasn't already voted on that memory (user's decision). */
   private async autoThumbsUp (sessionId: string, id: string): Promise<void> {
     const team = this.team
     if (!team?.writable) return
@@ -1480,17 +1707,25 @@ export class MicelioNode extends EventEmitter {
   /**
    * Resoconto per la pagina «Efficacia»: consultazioni, esiti, ricordi più utili, rumore,
    * ricordi sbagliati, domande senza risposta, tempi di risposta.
+   *
+   * EN: Report for the "Efficacy" page: queries, outcomes, most useful memories, noise,
+   * wrong memories, unanswered questions, response times.
    * @param days periodo (giorni)
+   *        EN: period (days)
    * @param project solo un progetto (nome della cartella), se indicato
+   *        EN: a single project (folder name), if given
    */
   efficacyReport (days = 30, project?: string): EfficacyReport {
     const since = Date.now() - days * 24 * 60 * 60 * 1000
     const match = (p: string | null) => !project || (p ?? '').toLowerCase() === project.toLowerCase()
     // Tutte quelle del periodo per i conteggi (90 giorni di uso intenso sono decine di migliaia di
     // righe piccole: si leggono in decimi di secondo); solo le ultime 100 vanno nell'elenco
+    // EN: All of the period's rows for the counts (90 days of heavy use are tens of thousands of
+    //     small rows: they're read in tenths of a second); only the last 100 go into the list
     const cons = this.privateStore.consultations(since, 1_000_000).filter((c) => match(c.project))
     const outs = this.privateStore.outcomes(since, 1_000_000).filter((o) => match(o.project))
     // Titoli e contatori di team, una lettura per tutti gli id coinvolti
+    // EN: Titles and team counters, one read for all the ids involved
     const ids = new Set<string>([...cons.flatMap((c) => c.ids), ...outs.map((o) => o.memory)])
     const byId = new Map(this.index.getMany([...ids]).map((h) => [h.id, h]))
     const mem = (id: string) => ({ id, title: byId.get(id)?.title ?? '(ricordo non più presente)', root: this.rootsById.has(id), teamUseful: this.usefulCounts.get(id) ?? 0 })
@@ -1499,6 +1734,7 @@ export class MicelioNode extends EventEmitter {
     const pct = (q: number) => (ms.length ? ms[Math.min(ms.length - 1, Math.floor(q * ms.length))] : 0)
     const useful = (o: Outcome) => o.verdict === 'used' || (o.verdict === 'likely')
     // Per ricordo: volte restituito, esiti utili, esiti senza uso
+    // EN: Per memory: times returned, useful outcomes, outcomes with no use
     const stats = new Map<string, { returned: number, useful: number, unused: number, wrong: number }>()
     const st = (id: string) => { if (!stats.has(id)) stats.set(id, { returned: 0, useful: 0, unused: 0, wrong: 0 }); return stats.get(id)! }
     for (const c of cons) for (const id of c.ids) st(id).returned++
@@ -1529,6 +1765,7 @@ export class MicelioNode extends EventEmitter {
       outcomes: outs.slice(0, 100).map((o) => ({ ...o, memory: mem(o.memory) })),
       topUseful: [...stats].filter(([, s]) => s.useful > 0).sort((a, b) => b[1].useful - a[1].useful).slice(0, 10).map(([id, s]) => ({ ...mem(id), ...s })),
       // Rumore: restituiti spesso ma mai utili (almeno 5 volte e qualche esito senza uso)
+      // EN: Noise: often returned but never useful (at least 5 times and some outcomes with no use)
       noisy: [...stats].filter(([, s]) => s.returned >= 5 && s.useful === 0 && s.unused > 0).sort((a, b) => b[1].returned - a[1].returned).slice(0, 10).map(([id, s]) => ({ ...mem(id), ...s })),
       wrong: outs.filter((o) => o.verdict === 'wrong').slice(0, 20).map((o) => ({ ...mem(o.memory), reason: o.evidence, session: o.session, ts: o.ts })),
       unanswered: [...misses].sort((a, b) => b[1] - a[1]).slice(0, 15).map(([query, count]) => ({ query, count }))
@@ -1538,6 +1775,9 @@ export class MicelioNode extends EventEmitter {
   /**
    * Esiti da notificare sul desktop (B11): "utile" (confermato) e "sbagliato" dopo `since`.
    * Vuoto se le notifiche sono spente in Impostazioni.
+   *
+   * EN: Outcomes to notify on the desktop (B11): "useful" (confirmed) and "wrong" after `since`.
+   * Empty if notifications are turned off in Settings.
    */
   efficacyNotices (since: number): { ts: number, verdict: OutcomeVerdict, title: string, reason: string | null }[] {
     if (!this.config.efficacy.notify) return []
@@ -1546,7 +1786,7 @@ export class MicelioNode extends EventEmitter {
       .map((o) => ({ ts: o.ts, verdict: o.verdict, title: this.index.get(o.memory)?.title ?? o.memory.slice(0, 8), reason: o.evidence }))
   }
 
-  /** Notifiche dell'efficacia accese o spente (impostazione di questo PC). */
+  /** Notifiche dell'efficacia accese o spente (impostazione di questo PC). / EN: Efficacy notifications on or off (setting of this PC). */
   setEfficacyNotify (notify: boolean): { notify: boolean } {
     this.config = updateConfig(this.paths, (c) => { c.efficacy.notify = notify })
     this.changed('settings')
@@ -1557,10 +1797,16 @@ export class MicelioNode extends EventEmitter {
    * Attivazione 0..1 di un ricordo (vedi src/rank/activation.ts), ridotta se il codice citato è
    * cambiato dopo il ricordo (B4). Radici e ricordi fissati non si riducono: per le Radici c'è la
    * revisione, i fissati sono una scelta esplicita del team.
+   *
+   * EN: Activation 0..1 of a memory (see src/rank/activation.ts), reduced if the cited code
+   * changed after the memory (B4). Roots and pinned memories aren't reduced: Roots have the
+   * review, and pinned ones are an explicit team choice.
    */
   /**
    * @param known tipo e data del ricordo, se già noti: con migliaia di ricordi (costellazione)
    *              evita una lettura dal database per ognuno
+   *              EN: kind and date of the memory, if already known: with thousands of memories (constellation)
+   *              it avoids one database read per memory
    */
   private activationOf (id: string, signals = this.index.signals(), known?: { kind: MemoryRecord['kind'], ts: number }): number {
     const s = signals.get(id)
@@ -1575,7 +1821,12 @@ export class MicelioNode extends EventEmitter {
    * Controlla quanto è cambiato il codice citato dai ricordi del team (B4), sui repository di
    * questo PC (cartelle abilitate e loro sotto-cartelle). Sincrono ma con UNA chiamata a git per
    * repository. Chiamato all'avvio, ogni 6 ore e da `micelio stale --check`.
+   *
+   * EN: Checks how much the code cited by team memories has changed (B4), on the repositories of
+   * this PC (enabled folders and their subfolders). Synchronous but with ONE git call per
+   * repository. Called at startup, every 6 hours and by `micelio stale --check`.
    * @returns ricordi controllati e quanti risultano con codice cambiato
+   *          EN: memories checked and how many have changed code
    */
   checkStaleness (): { checked: number, stale: number } {
     if (!this.team) return { checked: 0, stale: 0 }
@@ -1585,6 +1836,7 @@ export class MicelioNode extends EventEmitter {
       this.staleness = this.privateStore.staleness()
       const stale = [...found.values()].filter((s) => s.commits || s.missing).length
       // L'attivazione è cambiata: anche la costellazione (dimensione delle stelle) va ricalcolata
+      // EN: Activation changed: the constellation (star size) must be recomputed too
       if (found.size) { this.graphCache = null; this.scheduleGraph() }
       return { checked: found.size, stale }
     } catch (err) {
@@ -1593,12 +1845,12 @@ export class MicelioNode extends EventEmitter {
     }
   }
 
-  /** Ricordi del team con il codice citato cambiato, dai più cambiati. */
+  /** Ricordi del team con il codice citato cambiato, dai più cambiati. / EN: Team memories whose cited code changed, most changed first. */
   staleMemories (): RecallHit[] {
     return this.enrich(this.teamMemories()).filter((h) => h.stale).sort((a, b) => (b.stale!.commits + 5 * b.stale!.missing) - (a.stale!.commits + 5 * a.stale!.missing))
   }
 
-  /** Aggiunge ai risultati attivazione, voti, usi e pin. */
+  /** Aggiunge ai risultati attivazione, voti, usi e pin. / EN: Adds activation, votes, uses and pins to the results. */
   private enrich (hits: RecallHit[], signals = this.index.signals()): RecallHit[] {
     return hits.map((h) => {
       const s = signals.get(h.id)
@@ -1617,7 +1869,7 @@ export class MicelioNode extends EventEmitter {
     })
   }
 
-  /** Un ricordo DEL TEAM (le operazioni di team non valgono per i ricordi personali). */
+  /** Un ricordo DEL TEAM (le operazioni di team non valgono per i ricordi personali). / EN: A TEAM memory (team operations don't apply to personal memories). */
   private requireMemory (id: string): RecallHit {
     const rec = this.index.get(id)
     if (!rec) throw new UserError(`Nessun ricordo con id ${id}`, `No memory with id ${id}`)
@@ -1629,13 +1881,17 @@ export class MicelioNode extends EventEmitter {
    * Calcola in background i vettori dei ricordi che non ce l'hanno (nuovi, o di un altro
    * modello), a blocchi di 32. Alla fine notifica "memories": la costellazione si aggiorna con
    * i collegamenti semantici.
+   *
+   * EN: Computes in the background the vectors of memories that don't have one (new ones, or from another
+   * model), in blocks of 32. At the end it notifies "memories": the constellation updates with
+   * the semantic links.
    */
   private scheduleEmbedding (): void {
     const embedder = this.embedder
     if (!embedder) return
     this.embedding = this.embedding.catch(() => {}).then(async () => {
       let done = 0
-      /** Tanti ricordi nuovi in questo giro: i vicini si ricalcolano tutti alla fine (BULK_NEIGHBORS). */
+      /** Tanti ricordi nuovi in questo giro: i vicini si ricalcolano tutti alla fine (BULK_NEIGHBORS). / EN: Many new memories in this round: neighbors are all recomputed at the end (BULK_NEIGHBORS). */
       let bulk = false
       for (;;) {
         const batch = this.index.missingVectors(embedder.model, 32)
@@ -1645,6 +1901,8 @@ export class MicelioNode extends EventEmitter {
         done += batch.length
         // Vicini per significato: solo i ricordi nuovi contro gli altri, non tutte le coppie; salvati su disco.
         // Durante un ricalcolo completo in sottofondo si mettono da parte: si aggiungono alla fine
+        // EN: Semantic neighbors: only the new memories against the others, not all pairs; saved to disk.
+        //     During a full background recompute they're set aside and added at the end
         if (this.semantic.rebuilding) this.semanticPending.push(...batch.map((b) => b.id))
         else if (done > BULK_NEIGHBORS) bulk = true
         else if (this.semantic.model === embedder.model) {
@@ -1656,6 +1914,7 @@ export class MicelioNode extends EventEmitter {
       if (done > 0) {
         this.log(`embedding calcolati per ${done} ricordi`)
         // Nuovi collegamenti per significato: la costellazione va ricalcolata
+        // EN: New semantic links: the constellation must be recomputed
         this.scheduleGraph()
       }
     }).catch((err) => this.log(`embedding non calcolati: ${err.message}`))
@@ -1666,6 +1925,11 @@ export class MicelioNode extends EventEmitter {
    * simili sopra la soglia del modello. Peso: quanto la similarità supera la soglia.
    * Calcolo completo solo la prima volta, se cambia il modello o se troppe liste citano ricordi
    * non più attivi; per il resto le liste si aggiornano a ogni nuovo vettore (scheduleEmbedding).
+   *
+   * EN: Links by semantic affinity, for the constellation: for each memory the 2 most
+   * similar above the model's threshold. Weight: how far the similarity exceeds the threshold.
+   * Full computation only the first time, if the model changes or if too many lists mention memories
+   * that are no longer active; otherwise the lists update with every new vector (scheduleEmbedding).
    */
   private semanticLinks (): GraphLink[] {
     if (!this.embedder) return []
@@ -1673,12 +1937,15 @@ export class MicelioNode extends EventEmitter {
     const min = semanticThreshold(model)
     const present = new Set(this.index.all().map((m) => m.id))
     // All'avvio: le liste salvate su disco, se coprono (quasi) tutti i ricordi
+    // EN: At startup: the lists saved on disk, if they cover (almost) all memories
     if (this.semantic.model !== model && !this.semantic.rebuilding) {
       const saved = this.index.neighbors(model)
       if (saved.size && saved.size >= present.size * 0.9) this.semantic.load(model, saved)
     }
     // Altrimenti (primo avvio, modello cambiato, troppe liste vecchie): ricalcolo completo A BLOCCHI,
     // in sottofondo; intanto la costellazione usa ciò che c'è, e si ricalcola alla fine
+    // EN: Otherwise (first start, model changed, too many stale lists): full recompute IN BLOCKS,
+    //     in the background; meanwhile the constellation uses what's there, and is recomputed at the end
     if ((this.semantic.model !== model || this.semantic.staleShare(present) > 0.1) && !this.semantic.rebuilding) {
       this.startSemanticRebuild(model, min)
     }
@@ -1689,6 +1956,10 @@ export class MicelioNode extends EventEmitter {
    * Ricalcolo completo dei vicini per significato, A BLOCCHI e in sottofondo; alla fine si salvano e
    * si ricalcola la costellazione. Se ne è già in corso uno, se ne fa un altro alla fine (i vettori
    * nuovi non erano nella sua fotografia di partenza).
+   *
+   * EN: Full recompute of semantic neighbors, IN BLOCKS and in the background; at the end they're saved and
+   * the constellation is recomputed. If one is already running, another runs at the end (the new
+   * vectors weren't in its starting snapshot).
    */
   private startSemanticRebuild (model: string, min: number): void {
     if (this.semantic.rebuilding) { this.semanticRedo = true; return }
@@ -1696,6 +1967,7 @@ export class MicelioNode extends EventEmitter {
     const vectors = this.index.vectors(model)
     this.semantic.rebuildAsync(vectors, min, model).then(() => {
       // Vettori arrivati durante il ricalcolo: pochi si aggiungono uno per uno, tanti → un altro giro
+      // EN: Vectors that arrived during the recompute: a few are added one by one, many → another round
       const pending = this.semanticPending.splice(0)
       if (this.semanticRedo || pending.length > BULK_NEIGHBORS) {
         this.semanticRedo = false
@@ -1709,24 +1981,31 @@ export class MicelioNode extends EventEmitter {
     }).catch((err) => this.log(`vicini per significato non calcolati: ${err.message}`))
   }
 
-  /** Collegamenti creati dal dreaming, fra ricordi ancora attivi (peso fisso: sono "decisi"). */
+  /** Collegamenti creati dal dreaming, fra ricordi ancora attivi (peso fisso: sono "decisi"). / EN: Links created by dreaming, between still-active memories (fixed weight: they're "decided"). */
   private explicitLinks (): GraphLink[] {
     return this.dreamLinks.map((l) => ({ source: l.from, target: l.to, weight: 0.8, kind: 'dream' as const }))
   }
 
-  /** Ultimi ricordi arrivati nel team, dal più recente. */
+  /** Ultimi ricordi arrivati nel team, dal più recente. / EN: Latest memories that arrived in the team, newest first. */
   recent (limit = 20): RecallHit[] {
     return this.enrich(this.index.recent(limit))
   }
 
   // ═══════════════════════════ Contesto automatico (B4) ═══════════════════════════
+  // EN: Automatic context (B4)
 
   /**
    * Contesto da inserire nella conversazione di un agente (hook di Claude Code, vedi
    * src/context/agent-context.ts). Mai un errore: nel dubbio, nessun contesto.
+   *
+   * EN: Context to inject into an agent's conversation (Claude Code hook, see
+   * src/context/agent-context.ts). Never an error: when in doubt, no context.
    * @param o.event    "session-start" (Radici e ricordi del progetto) o "prompt" (pertinenti al testo)
+   *                   EN: "session-start" (the project's Roots and memories) or "prompt" (relevant to the text)
    * @param o.cwd      cartella di lavoro dell'agente: dà il progetto
+   *                   EN: the agent's working folder: it gives the project
    * @param o.sessionId per non ripetere nella stessa sessione ciò che è già stato mostrato
+   *                   EN: to avoid repeating in the same session what was already shown
    */
   async agentContext (o: { event: 'session-start' | 'prompt', cwd: string, sessionId?: string, prompt?: string }): Promise<string> {
     const cfg = this.config.context
@@ -1751,6 +2030,8 @@ export class MicelioNode extends EventEmitter {
         if (!cfg.prompt || !o.prompt || o.prompt.trim().length < CONTEXT_MIN_PROMPT) return ''
         // Ricordi e Radici con la STESSA soglia stretta: le Radici non passano più da relatedRoots,
         // che è volutamente larga (serve a recall) e su una frase libera portava Radici fuori tema
+        // EN: Memories and Roots with the SAME strict threshold: Roots no longer go through relatedRoots,
+        //     which is deliberately loose (it serves recall) and on free text brought in off-topic Roots
         const hits = (await this.relevantTo(o.prompt, CONTEXT_MEMORIES)).filter((h) => !seen.has(h.id))
         shown = [...hits.filter((h) => h.root), ...hits.filter((h) => !h.root)].slice(0, CONTEXT_PER_PROMPT)
         text = promptContext({ team, memories: shown, maxChars: cfg.maxChars })
@@ -1759,9 +2040,11 @@ export class MicelioNode extends EventEmitter {
         for (const h of shown) seen.add(h.id)
         this.injected.set(o.sessionId, seen)
         // Memoria limitata: le sessioni più vecchie si dimenticano
+        // EN: Bounded memory: the oldest sessions are forgotten
         if (this.injected.size > 200) this.injected.delete(this.injected.keys().next().value!)
       }
       // B11: la consultazione (anche senza risultati: è una domanda a cui Micelio non sapeva rispondere)
+      // EN: B11: the query (even with no results: it's a question Micelio couldn't answer)
       this.consulted(o.event, o.event === 'prompt' ? (o.prompt ?? null) : null, text ? shown.map((h) => h.id) : [], Date.now() - t0, { project: projectOf(o.cwd), session: o.sessionId ?? null })
       return text
     } catch (err) {
@@ -1773,6 +2056,9 @@ export class MicelioNode extends EventEmitter {
   /**
    * Radici di un progetto: quelle che citano il progetto (codice o tag) più quelle GENERALI
    * (best practice e policy senza progetto, che valgono ovunque). Per contesto e file degli agenti.
+   *
+   * EN: A project's Roots: those that mention the project (code or tags) plus the GENERAL ones
+   * (best practices and policies without a project, which apply everywhere). For agent context and files.
    */
   private async projectRoots (project: string): Promise<RecallHit[]> {
     const p = project.toLowerCase()
@@ -1783,11 +2069,16 @@ export class MicelioNode extends EventEmitter {
   }
 
   // ═══════════════════════ File per gli agenti e import (B4) ═══════════════════════
+  // EN: Agent files and import (B4)
 
   /**
    * Scrive le Radici del progetto nel file per gli agenti (CLAUDE.md, AGENTS.md o regole di
    * Cursor) della cartella. Con `keep` la cartella entra nell'elenco dei file tenuti aggiornati:
    * si riscrivono da soli quando le Radici cambiano.
+   *
+   * EN: Writes the project's Roots into the folder's agent file (CLAUDE.md, AGENTS.md or Cursor
+   * rules). With `keep` the folder joins the list of files kept up to date:
+   * they rewrite themselves when the Roots change.
    */
   async exportAgentFile (o: { dir: string, format: AgentFileFormat, project?: string, keep?: boolean }): Promise<{ file: string, changed: boolean }> {
     this.requireTeam()
@@ -1805,7 +2096,7 @@ export class MicelioNode extends EventEmitter {
     return r
   }
 
-  /** I file per gli agenti tenuti aggiornati, e se esistono. */
+  /** I file per gli agenti tenuti aggiornati, e se esistono. / EN: The agent files kept up to date, and whether they exist. */
   agentFiles (): { dir: string, format: AgentFileFormat, project: string, file: string, exists: boolean }[] {
     return this.config.agentFiles.map((f) => {
       const file = path.join(f.dir, AGENT_FILE_FORMATS[f.format])
@@ -1813,14 +2104,14 @@ export class MicelioNode extends EventEmitter {
     })
   }
 
-  /** Smette di aggiornare un file (il file resta com'è). */
+  /** Smette di aggiornare un file (il file resta com'è). / EN: Stops updating a file (the file stays as it is). */
   removeAgentFile (dir: string, format: AgentFileFormat): void {
     const d = canonicalPath(dir)
     this.config = updateConfig(this.paths, (c) => { c.agentFiles = c.agentFiles.filter((f) => !(canonicalPath(f.dir) === d && f.format === format)) })
     this.changed('settings')
   }
 
-  /** Riscrive i file tenuti aggiornati (solo quelli cambiati davvero). Dopo ogni aggiornamento della vista. */
+  /** Riscrive i file tenuti aggiornati (solo quelli cambiati davvero). Dopo ogni aggiornamento della vista. / EN: Rewrites the files kept up to date (only those that really changed). After every view update. */
   private async refreshAgentFiles (): Promise<void> {
     for (const f of this.config.agentFiles) {
       try {
@@ -1841,6 +2132,13 @@ export class MicelioNode extends EventEmitter {
    * Reimportare AGGIORNA: un file già importato (stessa chiave, o stesso nome per gli import
    * precedenti alle chiavi) con contenuto diverso sostituisce la versione precedente, che resta
    * nello storico (root.unset → memory.supersede → root.set, nello stesso ordine nel log).
+   *
+   * EN: Imports as Roots files the team already wrote (ADRs, sectioned CLAUDE.md / AGENTS.md, Markdown
+   * vaults), without an LLM: src/roots/import.ts. They go through the secret filter; blocked
+   * content (personal/HR) doesn't get in. A memory that's already there still becomes a Root.
+   * Reimporting UPDATES: an already imported file (same key, or same name for imports
+   * from before keys) with different content replaces the previous version, which stays
+   * in the history (root.unset → memory.supersede → root.set, in the same order in the log).
    */
   async importRoots (target: string, category?: RootCategory): Promise<{ imported: number, updated: number, duplicates: number, blocked: string[], ids: string[] }> {
     const team = this.requireTeam()
@@ -1851,6 +2149,7 @@ export class MicelioNode extends EventEmitter {
     const rules = await this.filterRules()
     const out = { imported: 0, updated: 0, duplicates: 0, blocked: [] as string[], ids: [] as string[] }
     // Ricordi già importati, per chiave (source.ref) e, per gli import precedenti, per nome del file
+    // EN: Memories already imported, by key (source.ref) and, for older imports, by file name
     const previous = this.teamMemories().filter((m) => m.source?.type === 'import')
     const findPrevious = (it: ImportItem) => previous.find((m) => m.source?.ref === it.key) ??
       (!it.key.includes('#') ? previous.find((m) => !m.source?.ref && m.source?.name === it.file) : undefined)
@@ -1859,12 +2158,14 @@ export class MicelioNode extends EventEmitter {
       if (fm.blocked) { out.blocked.push(`${it.file}: ${it.title}`); continue }
       const id = memoryId(fm.memory)
       // ADR → decisioni architetturali; il resto → best practice, salvo categoria indicata
+      // EN: ADR → architecture decisions; the rest → best practice, unless a category is given
       const old = findPrevious(it)
       let cat: RootCategory = category ?? (it.kind === 'decision' ? 'architecture' : 'practice')
       if (this.index.get(id)?.id === id) {
         out.duplicates++
       } else if (old && old.id !== id && !this.index.signals().get(old.id)?.pinned) {
         // Versione nuova di un file già importato: sostituisce la precedente (che resta nello storico)
+        // EN: New version of an already imported file: it replaces the previous one (which stays in the history)
         const oldRoot = this.rootsById.get(old.id)
         if (oldRoot) { cat = category ?? oldRoot.category; await team.append({ type: 'root.unset', id: old.id }) }
         await team.append({ type: 'memory.supersede', old: [old.id], memory: fm.memory, reason: 'reimportato: il file è cambiato' })
@@ -1886,6 +2187,11 @@ export class MicelioNode extends EventEmitter {
    * e sopra una soglia PIÙ ALTA di quella della ricerca (promptThreshold). Le sole parole chiave su
    * un testo lungo trovano troppo rumore. Senza embedding: nessun risultato. Non conta come uso
    * (l'agente potrebbe ignorarli).
+   *
+   * EN: Memories and Roots RELEVANT to free text (a user's request): by meaning only
+   * and above a HIGHER threshold than the search one (promptThreshold). Keywords alone on
+   * a long text find too much noise. Without embeddings: no results. It doesn't count as usage
+   * (the agent might ignore them).
    */
   private async relevantTo (text: string, n: number): Promise<RecallHit[]> {
     if (!this.embedder) return []
@@ -1897,8 +2203,9 @@ export class MicelioNode extends EventEmitter {
   }
 
   // ═══════════════════════ Lacune e riepilogo settimanale (B4) ═══════════════════════
+  // EN: Knowledge gaps and weekly digest (B4)
 
-  /** Registra una ricerca senza risultato, dopo la redazione dei segreti (src/insight/gaps.ts). */
+  /** Registra una ricerca senza risultato, dopo la redazione dei segreti (src/insight/gaps.ts). / EN: Records a search with no result, after secret redaction (src/insight/gaps.ts). */
   private async recordMiss (query: string): Promise<void> {
     const key = gapKey(query)
     if (!key) return
@@ -1914,6 +2221,9 @@ export class MicelioNode extends EventEmitter {
   /**
    * Le TUE ricerche senza risposta (solo su questo PC), dalle più frequenti. `answer` = un ricordo
    * arrivato nel frattempo che forse la colma (ricerca per parole chiave).
+   *
+   * EN: YOUR searches with no answer (only on this PC), most frequent first. `answer` = a memory
+   * that arrived in the meantime and may fill it (keyword search).
    */
   myGaps (): { key: string, query: string, count: number, first: number, last: number, answer: { id: string, title: string } | null }[] {
     return this.privateStore.searchMisses('open').map((m) => {
@@ -1923,13 +2233,13 @@ export class MicelioNode extends EventEmitter {
     })
   }
 
-  /** Ignora una tua lacuna (non riapparirà). */
+  /** Ignora una tua lacuna (non riapparirà). / EN: Ignores one of your knowledge gaps (it won't show up again). */
   dismissGap (key: string): void {
     this.privateStore.setSearchMissStatus(key, 'dismissed')
     this.changed('gaps')
   }
 
-  /** Segnala al team una tua lacuna: tutti la vedono e chi ha lo stesso bisogno si aggiunge. */
+  /** Segnala al team una tua lacuna: tutti la vedono e chi ha lo stesso bisogno si aggiunge. / EN: Reports one of your knowledge gaps to the team: everyone sees it and whoever has the same need joins in. */
   async reportGap (key: string, question?: string): Promise<GapView[]> {
     const team = this.requireTeam()
     const mine = this.privateStore.searchMisses('open', 1000).find((m) => m.key === key)
@@ -1944,7 +2254,7 @@ export class MicelioNode extends EventEmitter {
     return this.teamGaps()
   }
 
-  /** Lacune segnalate al team, aperte prima, con chi le condivide e un possibile ricordo che le colma. */
+  /** Lacune segnalate al team, aperte prima, con chi le condivide e un possibile ricordo che le colma. / EN: Knowledge gaps reported to the team, open ones first, with who shares them and a memory that may fill them. */
   async teamGaps (): Promise<GapView[]> {
     const team = this.requireTeam()
     const names = new Map((await team.members()).map((m) => [m.key, m.name]))
@@ -1955,7 +2265,7 @@ export class MicelioNode extends EventEmitter {
     }).sort((a, b) => (a.status === b.status ? b.askers.length - a.askers.length || b.ts - a.ts : a.status === 'open' ? -1 : 1))
   }
 
-  /** Chiude una lacuna del team, facoltativamente con il ricordo che la colma. */
+  /** Chiude una lacuna del team, facoltativamente con il ricordo che la colma. / EN: Closes a team knowledge gap, optionally with the memory that fills it. */
   async closeGap (id: string, memory?: string): Promise<GapView[]> {
     const team = this.requireTeam()
     const found = (await team.gaps()).find((g) => g.id === id || g.id.startsWith(id))
@@ -1967,7 +2277,7 @@ export class MicelioNode extends EventEmitter {
     return this.teamGaps()
   }
 
-  /** Riepilogo degli ultimi `days` giorni (src/insight/digest.ts). */
+  /** Riepilogo degli ultimi `days` giorni (src/insight/digest.ts). / EN: Digest of the last `days` days (src/insight/digest.ts). */
   async digest (days = 7, now = Date.now()): Promise<Digest> {
     const team = this.requireTeam()
     const signals = this.index.signals()
@@ -1986,20 +2296,21 @@ export class MicelioNode extends EventEmitter {
   }
 
   // ═══════════════════════════ Ricordi personali (B4) ═══════════════════════════
+  // EN: Personal memories (B4)
 
-  /** Campo `stale` di un risultato, se il codice citato è cambiato (le Radici hanno la revisione). */
+  /** Campo `stale` di un risultato, se il codice citato è cambiato (le Radici hanno la revisione). / EN: A result's `stale` field, if the cited code changed (Roots have the review instead). */
   private staleOf (id: string): { stale?: { commits: number, missing: number } } {
     const st = this.staleness.get(id)
     if (!st || (!st.commits && !st.missing) || this.rootsById.has(id)) return {}
     return { stale: { commits: st.commits, missing: st.missing } }
   }
 
-  /** Ricordi del TEAM nell'indice (senza i personali): per costellazione, dreaming, metriche, export. */
+  /** Ricordi del TEAM nell'indice (senza i personali): per costellazione, dreaming, metriche, export. / EN: TEAM memories in the index (without personal ones): for the constellation, dreaming, metrics, export. */
   private teamMemories (): RecallHit[] {
     return this.personalIds.size ? this.index.all().filter((m) => !this.personalIds.has(m.id)) : this.index.all()
   }
 
-  /** I ricordi personali come record dell'indice (autore = questo nodo). */
+  /** I ricordi personali come record dell'indice (autore = questo nodo). / EN: Personal memories as index records (author = this node). */
   private personalRecords (me: string): MemoryRecord[] {
     return this.privateStore.personal().map(({ id, memory, created }) => ({
       id, kind: memory.kind, title: memory.title, body: memory.body, tags: memory.tags, source: memory.source, author: me, ts: created, status: 'active' as const
@@ -2010,6 +2321,10 @@ export class MicelioNode extends EventEmitter {
    * Salva un ricordo PERSONALE: resta su questo PC e compare nelle ricerche (anche degli agenti)
    * insieme a quelli del team. Passa comunque dalla redazione dei segreti (agli agenti arriva il
    * testo); il blocco dei contenuti personali/HR non si applica, perché non lascia il PC.
+   *
+   * EN: Saves a PERSONAL memory: it stays on this PC and shows up in searches (agents' too)
+   * together with the team's. It still goes through secret redaction (agents receive the
+   * text); the personal/HR content block doesn't apply, because it doesn't leave the PC.
    */
   async rememberPersonal (input: MemoryInput): Promise<{ id: string, duplicate: boolean }> {
     this.requireTeam()
@@ -2022,7 +2337,7 @@ export class MicelioNode extends EventEmitter {
     return { id, duplicate: !added }
   }
 
-  /** I ricordi personali, dal più recente. */
+  /** I ricordi personali, dal più recente. / EN: Personal memories, newest first. */
   personal (): RecallHit[] {
     return this.enrich(this.index.getMany([...this.personalIds])).sort((a, b) => b.ts - a.ts)
   }
@@ -2030,6 +2345,9 @@ export class MicelioNode extends EventEmitter {
   /**
    * Condivide un ricordo personale con il team: esce dai personali e passa dalla stessa strada
    * di un salvataggio esplicito (filtro e classificazione, D6), quindi può finire in inbox.
+   *
+   * EN: Shares a personal memory with the team: it leaves the personal ones and goes the same way
+   * as an explicit save (filter and classification, D6), so it may end up in the Inbox.
    */
   async sharePersonal (id: string): Promise<ExplicitOutcome> {
     const p = this.privateStore.personal().find((x) => x.id === id || x.id.startsWith(id))
@@ -2040,7 +2358,7 @@ export class MicelioNode extends EventEmitter {
     return outcome
   }
 
-  /** Cancella un ricordo personale (non lascia tracce: non è mai stato nel log). */
+  /** Cancella un ricordo personale (non lascia tracce: non è mai stato nel log). / EN: Deletes a personal memory (it leaves no trace: it was never in the log). */
   async deletePersonal (id: string): Promise<void> {
     const p = this.privateStore.personal().find((x) => x.id === id || x.id.startsWith(id))
     if (!p) throw new UserError(`Nessun ricordo personale con id ${id}`, `No personal memory with id ${id}`)
@@ -2048,7 +2366,7 @@ export class MicelioNode extends EventEmitter {
     await this.materialize(true)
   }
 
-  /** Un elemento dell'inbox non va al team ma resta come ricordo personale. */
+  /** Un elemento dell'inbox non va al team ma resta come ricordo personale. / EN: An Inbox item doesn't go to the team but stays as a personal memory. */
   async keepPersonal (inboxId: string): Promise<{ id: string, duplicate: boolean }> {
     this.requireTeam()
     const memory = this.pipeline.keepPrivately(inboxId)
@@ -2058,7 +2376,7 @@ export class MicelioNode extends EventEmitter {
     return { id, duplicate: !added }
   }
 
-  /** Un ricordo per id (anche abbreviato). */
+  /** Un ricordo per id (anche abbreviato). / EN: A memory by id (short ids too). */
   get (id: string): RecallHit | null {
     return this.index.get(id)
   }
@@ -2066,14 +2384,20 @@ export class MicelioNode extends EventEmitter {
   /**
    * Pubblica un ricordo nel team SENZA filtri: usato dalla pipeline dopo che ha deciso.
    * Non esposto all'esterno: tutto ciò che arriva da fuori passa da `remember`.
+   *
+   * EN: Publishes a memory to the team WITHOUT filters: used by the pipeline once it has decided.
+   * Not exposed outside: everything coming from outside goes through `remember`.
    */
   private async publish (memory: MemoryData): Promise<{ id: string, duplicate: boolean, updated?: string }> {
     const team = this.requireTeam()
     const id = memoryId(memory)
     // Controllo locale dei duplicati: evita di scrivere nel log un evento che apply ignorerebbe.
     // Un ricordo personale con lo stesso contenuto non conta: è proprio quello che si sta condividendo
+    // EN: Local duplicate check: avoids writing to the log an event that apply would ignore.
+    //     A personal memory with the same content doesn't count: it's exactly the one being shared
     if (this.index.get(id)?.id === id && !this.personalIds.has(id)) return { id, duplicate: true }
     // B4: aggiornare invece di aggiungere (src/ingest/write-update.ts)
+    // EN: B4: update instead of add (src/ingest/write-update.ts)
     const d = await this.writeDecision(memory)
     if (d?.action === 'duplicate' && d.target) {
       this.log(`ricordo non aggiunto, duplica ${d.target.slice(0, 8)}: ${d.reason}`)
@@ -2095,6 +2419,10 @@ export class MicelioNode extends EventEmitter {
    * Decisione "aggiungi, duplicato o aggiorna" per un ricordo nuovo (B4). null = aggiungi e basta:
    * nessun ricordo simile, nessun LLM o budget finito, o disattivata dal team
    * (`memory.updateOnWrite` = false).
+   *
+   * EN: "Add, duplicate or update" decision for a new memory (B4). null = just add it:
+   * no similar memory, no LLM or budget used up, or turned off by the team
+   * (`memory.updateOnWrite` = false).
    */
   private async writeDecision (memory: MemoryData): Promise<WriteDecision | null> {
     if (!this.embedder || !this.llm?.hasBudget() || (await this.team?.config('memory.updateOnWrite')) === false) return null
@@ -2115,22 +2443,29 @@ export class MicelioNode extends EventEmitter {
       return checkDecision(d, candidates)
     } catch (err) {
       // Qualunque problema (modello, LLM, budget): si aggiunge come prima, nessun sapere va perso
+      // EN: Any problem (model, LLM, budget): add it as before, no knowledge is lost
       this.log(`controllo dei ricordi simili non riuscito: ${(err as Error).message}`)
       return null
     }
   }
 
   // ═══════════════════════════ Ingestione automatica ═══════════════════════════
+  // EN: Automatic ingestion
 
   /**
    * Riceve la notifica di fine sessione di Claude Code (dall'hook SessionEnd).
    * Accoda la sessione SOLO se la cartella di lavoro è opt-in (decisione D7).
+   *
+   * EN: Receives Claude Code's end-of-session notification (from the SessionEnd hook).
+   * Queues the session ONLY if the working folder is opt-in (decision D7).
    * @returns `queued: false` con il motivo se la sessione è stata ignorata
+   *          EN: `queued: false` with the reason if the session was ignored
    */
   ingestSession (payload: { sessionId: string, transcriptPath: string, cwd: string }): { queued: boolean, reason?: string, jobId?: number } {
     if (!this.team) return { queued: false, reason: 'nodo non configurato' }
     if (!isInsideWatched(payload.cwd, this.config.watch.sessions) || !this.ownsFolder(payload.cwd)) {
       // Riga di log volutamente presente: senza, una sessione ignorata sparisce senza lasciare traccia.
+      // EN: Log line on purpose: without it, an ignored session disappears without a trace.
       this.log(`sessione ${payload.sessionId.slice(0, 8)} ignorata: ${payload.cwd} non è una cartella abilitata`)
       return { queued: false, reason: 'cartella non abilitata (micelio watch add)' }
     }
@@ -2142,13 +2477,18 @@ export class MicelioNode extends EventEmitter {
   /**
    * Controlla le trascrizioni di Claude Code e accoda la parte nuova delle sessioni (in corso o
    * concluse) delle cartelle abilitate. Chiamato all'avvio, periodicamente e da `micelio ingest scan`.
+   *
+   * EN: Checks Claude Code transcripts and queues the new part of the sessions (running or
+   * finished) of the enabled folders. Called at startup, periodically and by `micelio ingest scan`.
    * @returns quante sessioni sono state accodate
+   *          EN: how many sessions were queued
    */
   scanSessions (): number {
     const s = this.config.watch.sessionScan
     if (!this.team || !s.enabled) return 0
     try {
       // Con più team si tengono solo le sessioni delle cartelle che appartengono a questo team
+      // EN: With several teams, keep only sessions from folders that belong to this team
       const found = this.scanner.scan({ projectsDir: claudeProjectsDir(), watched: this.config.watch.sessions, ...s }).filter((c) => this.ownsFolder(c.cwd))
       for (const c of found) this.pipeline.enqueueSession(c)
       if (found.length) this.log(`raccolta periodica: ${found.length} sessioni con parti nuove accodate`)
@@ -2159,15 +2499,16 @@ export class MicelioNode extends EventEmitter {
     }
   }
 
-  /** Cartelle opt-in per la raccolta dalle sessioni. */
+  /** Cartelle opt-in per la raccolta dalle sessioni. / EN: Opt-in folders for collecting from sessions. */
   watched (): string[] {
     return this.config.watch.sessions
   }
 
-  /** Abilita la raccolta automatica per una cartella (e sottocartelle). */
+  /** Abilita la raccolta automatica per una cartella (e sottocartelle). / EN: Enables automatic collection for a folder (and its subfolders). */
   watchAdd (dir: string): string[] {
     if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) throw new UserError(`Cartella inesistente: ${path.resolve(dir)}`, `Folder not found: ${path.resolve(dir)}`)
     // Salviamo la forma canonica (nome lungo, link risolti): è quella che si vede nell'elenco.
+    // EN: We save the canonical form (long name, links resolved): it's the one shown in the list.
     const abs = canonicalPath(dir)
     this.opts.claimFolder?.(abs, 'sessions')
     this.config = updateConfig(this.paths, (c) => {
@@ -2177,7 +2518,7 @@ export class MicelioNode extends EventEmitter {
     return this.config.watch.sessions
   }
 
-  /** Disabilita la raccolta automatica per una cartella. */
+  /** Disabilita la raccolta automatica per una cartella. / EN: Disables automatic collection for a folder. */
   watchRemove (dir: string): string[] {
     const abs = canonicalPath(dir)
     this.config = updateConfig(this.paths, (c) => {
@@ -2187,15 +2528,16 @@ export class MicelioNode extends EventEmitter {
     return this.config.watch.sessions
   }
 
-  /** Impostazioni locali correnti (per la schermata Impostazioni). */
+  /** Impostazioni locali correnti (per la schermata Impostazioni). / EN: Current local settings (for the Settings screen). */
   settings (): NodeSettings {
     const { adapter, command, classifyModel, distillModel, dailyBudget } = this.config.llm
     return { llm: { adapter, command, classifyModel, distillModel, dailyBudget }, watched: this.config.watch.sessions, documents: this.config.watch.documents, port: this.config.port, network: this.networkSettings(), context: { ...this.config.context }, efficacy: { ...this.config.efficacy } }
   }
 
   // ═══════════════════════════ Sicurezza (Fase 9) ═══════════════════════════
+  // EN: Security (Phase 9)
 
-  /** Regole in vigore: riconoscitori fissi, file sensibili di default e regole del team. */
+  /** Regole in vigore: riconoscitori fissi, file sensibili di default e regole del team. / EN: Rules in force: built-in detectors, default sensitive files and team rules. */
   async securityRules (): Promise<SecurityRules> {
     const team = this.team
     const patterns = await team?.config<unknown>('security.secretPatterns')
@@ -2217,6 +2559,10 @@ export class MicelioNode extends EventEmitter {
    * Aggiorna le regole del team (solo admin): pattern di segreti, eccezioni, file sensibili.
    * Vengono replicate a tutti i nodi e valgono subito. I pattern non validi vengono rifiutati qui,
    * con un messaggio leggibile, invece di essere ignorati in silenzio dalla pipeline.
+   *
+   * EN: Updates the team rules (admin only): secret patterns, exceptions, sensitive files.
+   * They're replicated to all nodes and apply right away. Invalid patterns are rejected here,
+   * with a readable message, instead of being silently ignored by the pipeline.
    */
   async setSecurityRules (patch: Partial<SecurityRules['team']>): Promise<SecurityRules> {
     if (patch.secretPatterns) {
@@ -2225,6 +2571,7 @@ export class MicelioNode extends EventEmitter {
         if (p.regex.length > 300) throw new UserError(`Pattern «${p.name}» troppo lungo (massimo 300 caratteri)`, `Pattern “${p.name}” is too long (300 characters at most)`)
         try { new RegExp(p.regex, 'g') } catch (e) { throw new UserError(`Pattern «${p.name}» non valido: ${(e as Error).message}`, `Pattern “${p.name}” is not valid: ${(e as Error).message}`) }
         // Un pattern che riconosce la stringa vuota redigerebbe ovunque
+        // EN: A pattern that matches the empty string would redact everywhere
         if (new RegExp(p.regex).test('')) throw new UserError(`Pattern «${p.name}» riconosce anche il testo vuoto: troppo generico`, `Pattern “${p.name}” also matches empty text: too generic`)
       }
       if (compileTeamPatterns(patch.secretPatterns).length !== patch.secretPatterns.length) throw new UserError('Alcuni pattern non sono validi', 'Some patterns are not valid')
@@ -2236,7 +2583,7 @@ export class MicelioNode extends EventEmitter {
     return this.securityRules()
   }
 
-  /** Banco di prova: cosa farebbe il filtro con un testo e/o un nome di file. Non salva nulla. */
+  /** Banco di prova: cosa farebbe il filtro con un testo e/o un nome di file. Non salva nulla. / EN: Test bench: what the filter would do with a text and/or a file name. Saves nothing. */
   async securityTest (text: string, file?: string): Promise<SecurityTestResult> {
     const rules = await this.filterRules()
     const r = applyFilter(text, rules)
@@ -2248,6 +2595,10 @@ export class MicelioNode extends EventEmitter {
    * Scansione retroattiva: i ricordi pubblicati che, con le regole ATTUALI, contengono segreti o
    * dati personali (es. pubblicati prima di una nuova regola). Solo segnalazione: la pulizia è
    * un'azione esplicita (securityClean).
+   *
+   * EN: Retroactive scan: published memories that, under the CURRENT rules, contain secrets or
+   * personal data (e.g. published before a new rule). Report only: the cleanup is
+   * an explicit action (securityClean).
    */
   async securityScan (): Promise<SecurityFinding[]> {
     const rules = await this.filterRules()
@@ -2264,7 +2615,13 @@ export class MicelioNode extends EventEmitter {
    * vista di tutti (memory.redact). Se era una Radice, la versione pulita lo resta.
    * Limite: chi aveva già letto o esportato l'originale ne conserva una copia, e i blocchi cifrati
    * restano nei log replicati (come per ogni redazione, DESIGN §10.3).
+   *
+   * EN: "Clean up" a memory (admin only): publishes the REDACTED version and removes the original from
+   * everyone's view (memory.redact). If it was a Root, the clean version stays one.
+   * Limit: whoever already read or exported the original keeps a copy, and the encrypted blocks
+   * stay in the replicated logs (as with every redaction, DESIGN §10.3).
    * @returns id della versione pulita
+   *          EN: id of the clean version
    */
   async securityClean (id: string): Promise<{ id: string }> {
     await this.requireAdmin()
@@ -2291,19 +2648,20 @@ export class MicelioNode extends EventEmitter {
     return { id: newId }
   }
 
-  /** Registro di sicurezza locale (cosa è stato tolto, da dove, di che tipo). */
+  /** Registro di sicurezza locale (cosa è stato tolto, da dove, di che tipo). / EN: Local security log (what was removed, from where, of which type). */
   securityLog (limit = 200): SecurityLogEntry[] {
     return this.privateStore.securityLog(limit)
   }
 
-  /** Regole del filtro in vigore (default + team): le stesse usate dalla pipeline. */
+  /** Regole del filtro in vigore (default + team): le stesse usate dalla pipeline. / EN: Filter rules in force (defaults + team): the same the pipeline uses. */
   private async filterRules () {
     return mergeRules(await this.team?.config('filter.blockKeywords'), await this.team?.config('security.secretPatterns'), await this.team?.config('security.allow'))
   }
 
   // ═══════════════════════════════ Rete ═══════════════════════════════
+  // EN: Network
 
-  /** Impostazioni di rete correnti (vedi NetworkSettings). */
+  /** Impostazioni di rete correnti (vedi NetworkSettings). / EN: Current network settings (see NetworkSettings). */
   networkSettings (): NetworkSettings {
     return {
       mode: networkMode(this.config.network),
@@ -2318,11 +2676,19 @@ export class MicelioNode extends EventEmitter {
    * in un team, chiude e riapre la rete con i nuovi nodi di avvio (i dati locali restano; dopo
    * pochi secondi il nodo ritrova i colleghi che usano la stessa DHT).
    * ATTENZIONE: tutti i membri devono usare la stessa DHT, altrimenti non si trovano.
+   *
+   * EN: Chooses the network (public DHT, private, or "local" = no network) and applies it RIGHT AWAY: it saves the team settings and, if the node is
+   * in a team, closes and reopens the network with the new bootstrap nodes (local data stays; after
+   * a few seconds the node finds the colleagues using the same DHT again).
+   * WARNING: all members must use the same DHT, otherwise they can't find each other.
    * @param bootstrap nodi "host:porta" della DHT privata; con "public" si possono omettere
    *                  (restano quelli salvati, per poter tornare alla privata)
+   *                  EN: "host:port" nodes of the private DHT; with "public" they can be omitted
+   *                  (the saved ones stay, so you can go back to the private one)
    */
   async setNetwork (mode: NetworkMode, bootstrap?: string[]): Promise<NetworkSettings> {
     // La modalità solo locale si può scegliere anche con la rete fissata dalla variabile (demo, test)
+    // EN: Local-only mode can be chosen even when the network is fixed by the variable (demo, tests)
     if (process.env.MICELIO_DHT_BOOTSTRAP && mode !== 'local' && !this.localOnly) throw new UserError('La rete è fissata dalla variabile MICELIO_DHT_BOOTSTRAP: toglila per sceglierla da qui', 'The network is set by the MICELIO_DHT_BOOTSTRAP variable: remove it to choose from here')
     if (mode !== 'public' && mode !== 'private' && mode !== 'local') throw new UserError('Rete: "public", "private" oppure "local"', 'Network: "public", "private" or "local"')
     const list = bootstrap?.map((b) => b.trim()).filter(Boolean)
@@ -2341,6 +2707,9 @@ export class MicelioNode extends EventEmitter {
   /**
    * Diagnosi di una DHT PRIMA di sceglierla (pulsante "Verifica" della UI): non cambia nulla.
    * Senza argomenti verifica la DHT in uso.
+   *
+   * EN: Diagnoses a DHT BEFORE choosing it (the UI's "Check" button): changes nothing.
+   * Without arguments it checks the DHT in use.
    */
   async checkNetwork (mode?: NetworkMode, bootstrap?: string[]): Promise<NetworkCheck> {
     if (mode === 'local' || (mode === undefined && this.localOnly)) throw new UserError('In modalità solo locale non c\'è nessuna rete da verificare', 'In local-only mode there is no network to check')
@@ -2354,6 +2723,9 @@ export class MicelioNode extends EventEmitter {
   /**
    * Chiude e riapre la connessione al team con i nodi di avvio attuali (dopo un cambio di DHT).
    * Il log locale non si tocca: la riapertura riparte dai dati su disco.
+   *
+   * EN: Closes and reopens the team connection with the current bootstrap nodes (after a DHT change).
+   * The local log isn't touched: reopening starts again from the data on disk.
    */
   private async reconnect (): Promise<void> {
     const state = loadState(this.paths)
@@ -2372,10 +2744,12 @@ export class MicelioNode extends EventEmitter {
   }
 
   // ═══════════════════════════ Spazio occupato ═══════════════════════════
+  // EN: Storage used
 
-  /** Spazio occupato dal sapere, su disco e per membro (vedi StorageReport). */
+  /** Spazio occupato dal sapere, su disco e per membro (vedi StorageReport). / EN: Space taken by the knowledge, on disk and per member (see StorageReport). */
   async storage (): Promise<StorageReport> {
     // I database SQLite in modalità WAL hanno due file accessori (-wal, -shm)
+    // EN: SQLite databases in WAL mode have two side files (-wal, -shm)
     const db = (base: string) => [base, base + '-wal', base + '-shm'].reduce((n, f) => n + fileSize(f), 0)
     const disk = {
       log: dirSize(this.paths.store),
@@ -2390,6 +2764,7 @@ export class MicelioNode extends EventEmitter {
     const members = this.team ? await this.members() : []
     const feeds = this.team ? await this.team.feedSizes(members.map((m) => m.key)) : {}
     // Ricordi attivi per autore, con la loro dimensione in testo
+    // EN: Active memories per author, with their text size
     const byAuthor = new Map<string, { n: number, bytes: number }>()
     for (const m of this.teamMemories()) {
       const a = byAuthor.get(m.author) ?? { n: 0, bytes: 0 }
@@ -2416,6 +2791,9 @@ export class MicelioNode extends EventEmitter {
   /**
    * Aggiorna modelli e budget LLM. Hanno effetto subito (vengono riletti a ogni chiamata).
    * Cambiare adapter o comando richiede invece un riavvio del daemon: qui non sono modificabili.
+   *
+   * EN: Updates LLM models and budget. They take effect right away (they're reread on every call).
+   * Changing the adapter or command needs a daemon restart instead: they can't be changed here.
    */
   updateLlmSettings (patch: { classifyModel?: string, distillModel?: string, dailyBudget?: number }): NodeSettings {
     if (patch.dailyBudget !== undefined && (!Number.isInteger(patch.dailyBudget) || patch.dailyBudget < 0)) {
@@ -2430,7 +2808,7 @@ export class MicelioNode extends EventEmitter {
     return this.settings()
   }
 
-  /** Contesto automatico per gli agenti (B4): cosa inseriscono gli hook. Vale per la macchina. */
+  /** Contesto automatico per gli agenti (B4): cosa inseriscono gli hook. Vale per la macchina. / EN: Automatic context for agents (B4): what the hooks inject. Applies to the whole machine. */
   updateContextSettings (patch: { sessionStart?: boolean, prompt?: boolean, maxChars?: number }): NodeSettings {
     this.config = updateConfig(this.paths, (c) => {
       if (patch.sessionStart !== undefined) c.context.sessionStart = patch.sessionStart
@@ -2442,11 +2820,16 @@ export class MicelioNode extends EventEmitter {
   }
 
   // ═══════════════════════════ Documenti (Fase 4) ═══════════════════════════
+  // EN: Documents (Phase 4)
 
   /**
    * Aggiunge una cartella di documenti sorvegliata.
+   *
+   * EN: Adds a watched document folder.
    * @param shareable se true, i colleghi possono scaricare gli originali su richiesta (D10)
+   *        EN: if true, colleagues can download the originals on request (D10)
    * @param roots se true, i ricordi distillati dai documenti della cartella diventano Radici (Fase 8)
+   *        EN: if true, memories distilled from the folder's documents become Roots (Phase 8)
    */
   async documentsAdd (dir: string, shareable: boolean, roots = false): Promise<NodeSettings['documents']> {
     if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) throw new UserError(`Cartella inesistente: ${path.resolve(dir)}`, `Folder not found: ${path.resolve(dir)}`)
@@ -2460,7 +2843,7 @@ export class MicelioNode extends EventEmitter {
     return this.config.watch.documents
   }
 
-  /** Smette di sorvegliare una cartella (i ricordi già distillati restano nel team). */
+  /** Smette di sorvegliare una cartella (i ricordi già distillati restano nel team). / EN: Stops watching a folder (memories already distilled stay in the team). */
   async documentsRemove (dir: string): Promise<NodeSettings['documents']> {
     const abs = canonicalPath(dir)
     this.config = updateConfig(this.paths, (c) => {
@@ -2471,7 +2854,7 @@ export class MicelioNode extends EventEmitter {
     return this.config.watch.documents
   }
 
-  /** Conteggi dei documenti per stato (in coda, elaborati, bloccati…). */
+  /** Conteggi dei documenti per stato (in coda, elaborati, bloccati…). / EN: Document counts by state (queued, processed, blocked…). */
   documentStats (): Record<string, number> {
     return this.privateStore.documentStats()
   }
@@ -2481,7 +2864,13 @@ export class MicelioNode extends EventEmitter {
    * - documento di questo nodo → il file locale;
    * - già scaricato → la copia in cache;
    * - altrimenti → richiesta P2P al proprietario (deve essere online, D11).
+   *
+   * EN: Gets the original document a memory was distilled from (DESIGN §12-bis).
+   * - document of this node → the local file;
+   * - already downloaded → the cached copy;
+   * - otherwise → P2P request to the owner (they must be online, D11).
    * @throws UserError se il ricordo non viene da un documento o il download non riesce
+   *         EN: if the memory doesn't come from a document or the download fails
    */
   async fetchSource (memoryId: string): Promise<SourceFile> {
     const rec = this.index.get(memoryId)
@@ -2490,6 +2879,7 @@ export class MicelioNode extends EventEmitter {
     if (src?.type !== 'document' || !src.ref) throw new UserError('Questo ricordo non viene da un documento: non c\'è un originale da scaricare', 'This memory does not come from a document: there is no original to download')
     const name = path.basename(src.name ?? 'documento')
     // Documento di questo nodo: nessun download.
+    // EN: Document of this node: no download.
     if (rec.author === this.team?.localKey) {
       const local = this.privateStore.documentsByHash(src.ref).find((d) => fs.existsSync(d.path))
       if (local) return { path: local.path, name, size: local.size, local: true }
@@ -2507,7 +2897,7 @@ export class MicelioNode extends EventEmitter {
     return { path: cached, name, size: r.data.length, local: false }
   }
 
-  /** Testo estratto da un file scaricato (per il tool MCP: l'agente può leggerlo subito). */
+  /** Testo estratto da un file scaricato (per il tool MCP: l'agente può leggerlo subito). / EN: Text extracted from a downloaded file (for the MCP tool: the agent can read it right away). */
   async sourceText (file: string, max = 20_000): Promise<string> {
     try {
       return (await extractText(file)).slice(0, max)
@@ -2519,6 +2909,9 @@ export class MicelioNode extends EventEmitter {
   /**
    * Lato proprietario: quale file locale servire per un hash, se condivisibile (D10).
    * Il file deve stare in una cartella sorvegliata CONDIVISIBILE, esistere ed essere invariato.
+   *
+   * EN: Owner side: which local file to serve for a hash, if shareable (D10).
+   * The file must be in a SHAREABLE watched folder, exist and be unchanged.
    */
   private async resolveSharedFile (hash: string): Promise<{ file: string, name: string, size: number } | { denied: string }> {
     const docs: DocumentRecord[] = this.privateStore.documentsByHash(hash)
@@ -2527,13 +2920,13 @@ export class MicelioNode extends EventEmitter {
       const folder = this.config.watch.documents.find((f) => canonicalPath(f.path) === canonicalPath(d.folder))
       if (!folder?.shareable) continue
       if (!fs.existsSync(d.path)) continue
-      if (await hashFile(d.path) !== hash) continue // modificato dopo l'elaborazione: non è più "quel" documento
+      if (await hashFile(d.path) !== hash) continue // modificato dopo l'elaborazione: non è più "quel" documento / EN: modified after processing: it's no longer "that" document
       return { file: d.path, name: path.basename(d.path), size: d.size }
     }
     return { denied: 'il proprietario non condivide gli originali di questa cartella' }
   }
 
-  /** Elimina dalla cache i documenti scaricati più di SOURCE_CACHE_DAYS giorni fa. */
+  /** Elimina dalla cache i documenti scaricati più di SOURCE_CACHE_DAYS giorni fa. / EN: Removes from the cache documents downloaded more than SOURCE_CACHE_DAYS days ago. */
   private sweepSourceCache (): void {
     const dir = path.join(this.paths.home, 'sources')
     if (!fs.existsSync(dir)) return
@@ -2544,7 +2937,7 @@ export class MicelioNode extends EventEmitter {
     }
   }
 
-  /** Stato dell'ingestione: LLM, budget, coda, inbox. */
+  /** Stato dell'ingestione: LLM, budget, coda, inbox. / EN: Ingestion status: LLM, budget, queue, Inbox. */
   async ingestStatus (): Promise<IngestStatus> {
     return {
       llm: this.llm ? { adapter: this.llm.adapter.name, available: await this.llm.available(), budget: this.llm.budget } : null,
@@ -2554,18 +2947,19 @@ export class MicelioNode extends EventEmitter {
     }
   }
 
-  /** Elabora subito un lavoro in coda (test e comando `micelio ingest run`). */
+  /** Elabora subito un lavoro in coda (test e comando `micelio ingest run`). / EN: Processes a queued job right away (tests and the `micelio ingest run` command). */
   processQueue (): Promise<boolean> {
     return this.pipeline.tick()
   }
 
   // ═══════════════════════════════ Inbox e privato ═════════════════════════════
+  // EN: Inbox and private
 
   inbox (): InboxItem[] {
     return this.pipeline.listInbox()
   }
 
-  /** Approva un elemento dell'inbox (con eventuali modifiche) e lo pubblica nel team. */
+  /** Approva un elemento dell'inbox (con eventuali modifiche) e lo pubblica nel team. / EN: Approves an Inbox item (with any edits) and publishes it to the team. */
   async approve (id: string, overrides: Partial<Pick<MemoryData, 'title' | 'body' | 'kind' | 'tags'>> = {}): Promise<{ id: string, duplicate: boolean, memory: MemoryData }> {
     this.requireTeam()
     try {
@@ -2575,7 +2969,7 @@ export class MicelioNode extends EventEmitter {
     }
   }
 
-  /** Rifiuta un elemento dell'inbox. */
+  /** Rifiuta un elemento dell'inbox. / EN: Rejects an Inbox item. */
   reject (id: string): void {
     try {
       this.pipeline.reject(id)
@@ -2584,12 +2978,13 @@ export class MicelioNode extends EventEmitter {
     }
   }
 
-  /** Registro di ciò che NON è andato al team (bloccato, privato, scartato, rifiutato, scaduto). */
+  /** Registro di ciò che NON è andato al team (bloccato, privato, scartato, rifiutato, scaduto). / EN: Log of what did NOT go to the team (blocked, private, discarded, rejected, expired). */
   decisions (limit = 50): Decision[] {
     return this.privateStore.listDecisions(limit)
   }
 
   // ═══════════════════════════════════ Stato ═══════════════════════════════════
+  // EN: Status
 
   async status (): Promise<NodeStatus> {
     const team = this.team
@@ -2614,19 +3009,20 @@ export class MicelioNode extends EventEmitter {
     }
   }
 
-  /** Scarica ciò che è disponibile dai peer e riallinea indice ed export. */
+  /** Scarica ciò che è disponibile dai peer e riallinea indice ed export. / EN: Downloads what's available from peers and brings the index and export back in line. */
   async sync (): Promise<void> {
     await this.requireTeam().update()
     await this.materialize()
   }
 
   // ═════════════════════════════════ Interni ═══════════════════════════════════
+  // EN: Internals
 
   private newTeamNode (): TeamNode {
     return new TeamNode({ storeDir: this.paths.store, bootstrap: this.opts.bootstrap, log: this.log, offline: this.localOnly })
   }
 
-  /** true se il team è in modalità solo locale (B4): nessuna rete. */
+  /** true se il team è in modalità solo locale (B4): nessuna rete. / EN: true if the team is in local-only mode (B4): no network. */
   get localOnly (): boolean {
     return networkMode(this.config.network) === 'local'
   }
@@ -2634,23 +3030,27 @@ export class MicelioNode extends EventEmitter {
   /**
    * Sceglie la rete PRIMA di creare il team (es. «Solo per me» nel primo avvio). Dopo la
    * creazione si usa setNetwork, che riconnette il nodo.
+   *
+   * EN: Chooses the network BEFORE creating the team (e.g. "Just for me" on first start). After
+   * creation, use setNetwork, which reconnects the node.
    */
   prepareNetwork (mode: NetworkMode): void {
     if (this.team) throw new UserError('Il team esiste già: cambia la rete dalle Impostazioni', 'The team already exists: change the network from Settings')
     this.config = updateConfig(this.paths, (c) => { c.network.mode = mode })
   }
 
-  /** Collega il TeamNode al nodo: ogni aggiornamento della vista programma una reindicizzazione. */
+  /** Collega il TeamNode al nodo: ogni aggiornamento della vista programma una reindicizzazione. / EN: Attaches the TeamNode to the node: every view update schedules a reindex. */
   private attach (team: TeamNode): void {
     this.team = team
     team.on('update', () => this.scheduleMaterialize())
     team.on('peers', () => this.changed('status'))
     // Canale di scambio documenti su ogni connessione, comprese quelle già aperte.
+    // EN: Document exchange channel on every connection, including those already open.
     team.on('connection', (conn: any) => this.files.attach(conn))
     for (const conn of team.connections) this.files.attach(conn)
   }
 
-  /** Emette un evento `change` per ciascun argomento (vedi ChangeTopic). */
+  /** Emette un evento `change` per ciascun argomento (vedi ChangeTopic). / EN: Emits a `change` event for each topic (see ChangeTopic). */
   private changed (...topics: ChangeTopic[]): void {
     for (const t of topics) this.emit('change', t)
   }
@@ -2658,9 +3058,13 @@ export class MicelioNode extends EventEmitter {
   /**
    * Accorpa gli aggiornamenti: durante una sincronizzazione Autobase emette molti 'update' di
    * fila, ma basta reindicizzare una volta alla fine della raffica.
+   *
+   * EN: Batches updates: during a sync Autobase emits many 'update' events in a
+   * row, but reindexing once at the end of the burst is enough.
    */
   private scheduleMaterialize (): void {
     // Ripristino in corso: si materializza una volta sola alla fine (vedi restoreBackup)
+    // EN: Restore in progress: materialize just once at the end (see restoreBackup)
     if (this.bulkWriting) { this.bulkPending = true; return }
     if (this.timer) return
     this.timer = setTimeout(() => {
@@ -2672,11 +3076,18 @@ export class MicelioNode extends EventEmitter {
   /**
    * Ricostruisce indice ed export dalla vista. Le chiamate sono serializzate sulla catena
    * `materializing`, così due ricostruzioni non si sovrappongono mai.
+   *
+   * EN: Rebuilds the index and export from the view. Calls are serialized on the
+   * `materializing` chain, so two rebuilds never overlap.
    */
   /**
    * Costellazione, galassie e grado dei nodi (serve all'attivazione), ricalcolati in sottofondo
    * dopo un aggiornamento, raggruppando le scritture ravvicinate: con migliaia di ricordi costano
    * e non devono rallentare la scrittura. Un grado vecchio di qualche secondo non cambia la ricerca.
+   *
+   * EN: Constellation, galaxies and node degrees (needed for activation), recomputed in the background
+   * after an update, grouping close writes: with thousands of memories they're costly
+   * and must not slow down writing. A degree a few seconds old doesn't change search.
    */
   private scheduleGraph (delayMs = DEGREES_DELAY_MS): void {
     if (this.degreesTimer) return
@@ -2684,6 +3095,7 @@ export class MicelioNode extends EventEmitter {
       this.degreesTimer = null
       if (!this.team) return
       // In un timer un'eccezione non gestita fermerebbe tutto il daemon: qui si registra e basta
+      // EN: In a timer an unhandled exception would stop the whole daemon: here we just log it
       try {
         const t0 = Date.now()
         this.computeGraph()
@@ -2696,16 +3108,19 @@ export class MicelioNode extends EventEmitter {
     this.degreesTimer.unref()
   }
 
-  /** @param force ricalcola anche se la versione della vista non è cambiata (ricordi personali, riconnessione) */
+  /** @param force ricalcola anche se la versione della vista non è cambiata (ricordi personali, riconnessione) / EN: recompute even if the view version didn't change (personal memories, reconnection) */
   private materialize (force = false): Promise<void> {
     this.materializing = this.materializing.catch(() => {}).then(async () => {
       const team = this.team
       if (!team) return
       // Una scrittura produce due richieste di aggiornamento (la sync esplicita e l'evento "vista
       // cambiata" di Autobase): la seconda non trova nulla di nuovo e si salta
+      // EN: A write produces two update requests (the explicit sync and Autobase's "view
+      //     changed" event): the second finds nothing new and is skipped
       if (!force && team.viewVersion === this.materializedVersion) return
       this.materializedVersion = team.viewVersion
       // Tempi per fase: finiscono nel log solo se l'aggiornamento è lento (vedi in fondo)
+      // EN: Per-phase timings: they go to the log only if the update is slow (see below)
       const lap = phaseTimer()
       const [all, members, votes, pins, usage, links, roots, useful] = await Promise.all([team.memories(), team.members(), team.votes(), team.pins(), team.usage(), team.links(), team.roots(), team.useful()])
       this.usefulCounts = useful
@@ -2715,12 +3130,17 @@ export class MicelioNode extends EventEmitter {
       // Solo i ricordi ATTIVI entrano in ricerca, costellazione ed export; gli altri sono storico.
       // Ricordi ripristinati da un backup (B7): contano con la data d'ORIGINE, così un ricordo
       // vecchio non torna "nuovo" (attivazione, ordinamenti, riepiloghi)
+      // EN: Only ACTIVE memories go into search, constellation and export; the others are history.
+      //     Memories restored from a backup (B7) count with their ORIGINAL date, so an old memory
+      //     doesn't become "new" again (activation, sorting, digests)
       for (let i = 0; i < all.length; i++) { const o = all[i].source?.origin?.ts; if (o) all[i] = { ...all[i], ts: o } }
       const memories = all.filter((m) => (m.status ?? 'active') === 'active')
       this.inactive = all.filter((m) => (m.status ?? 'active') !== 'active')
       this.dreamLinks = links
       // Nell'indice anche i ricordi personali (B4), così ricerca e agenti li trovano insieme a quelli
       // del team; restano fuori da export, costellazione, dreaming e metriche (vedi teamMemories).
+      // EN: Personal memories (B4) go into the index too, so search and agents find them together with the
+      //     team's; they stay out of export, constellation, dreaming and metrics (see teamMemories).
       const teamIds = new Set(memories.map((m) => m.id))
       const personal = this.personalRecords(team.localKey ?? '').filter((p) => !teamIds.has(p.id))
       this.personalIds = new Set(personal.map((p) => p.id))
@@ -2731,6 +3151,9 @@ export class MicelioNode extends EventEmitter {
       // Costellazione, galassie e collegamenti per ricordo: in sottofondo, fuori dalla scrittura.
       // Intanto graph() restituisce la versione precedente (vecchia di pochi secondi): la UI riceve
       // "memories" quando quella nuova è pronta e la ricarica.
+      // EN: Constellation, galaxies and per-memory links: in the background, outside the write.
+      //     Meanwhile graph() returns the previous version (a few seconds old): the UI receives
+      //     "memories" when the new one is ready and reloads it.
       this.graphStale = true
       this.scheduleGraph()
       const slow = lap.report(SLOW_MATERIALIZE_MS)
@@ -2738,12 +3161,13 @@ export class MicelioNode extends EventEmitter {
       this.scheduleEmbedding()
       this.changed('memories', 'members', 'status')
       // B4: i file per gli agenti seguono le Radici (si riscrivono solo se cambiano davvero)
+      // EN: B4: agent files follow the Roots (rewritten only if they really change)
       if (this.config.agentFiles.length) this.refreshAgentFiles().catch((err) => this.log(`file per gli agenti: ${err.message}`))
     })
     return this.materializing
   }
 
-  /** true se la cartella di lavoro va a questo team (vedi MicelioNodeOptions.owns). */
+  /** true se la cartella di lavoro va a questo team (vedi MicelioNodeOptions.owns). / EN: true if the working folder goes to this team (see MicelioNodeOptions.owns). */
   private ownsFolder (dir: string): boolean {
     return this.opts.owns ? this.opts.owns(dir) : true
   }
@@ -2752,6 +3176,10 @@ export class MicelioNode extends EventEmitter {
    * Lega il feed di questo nodo all'identità personale (B3), se non è già fatto: pubblica
    * `member.identity` con la firma. Serve anche ai team creati prima di B3, che al primo avvio
    * ricevono il legame. Errori solo nel log: il team funziona anche senza.
+   *
+   * EN: Binds this node's feed to the personal identity (B3), if not done already: publishes
+   * `member.identity` with the signature. It also serves teams created before B3, which get
+   * the binding at first start. Errors only in the log: the team works without it too.
    */
   private async linkIdentity (): Promise<void> {
     const identity = this.opts.identity?.()
@@ -2777,6 +3205,11 @@ export class MicelioNode extends EventEmitter {
    * permessi nell'ordine linearizzato, e un'azione emessa da un membro CONCORRENTEMENTE alla sua
    * promozione potrebbe essere ordinata dopo la promozione e quindi accettata (DESIGN §9).
    * Prima di decidere sincronizziamo, per avere il ruolo più aggiornato possibile.
+   *
+   * EN: Admin actions are rejected here already, as well as in apply. Reason: apply checks
+   * permissions in the linearized order, and an action issued by a member CONCURRENTLY with their
+   * promotion could be ordered after the promotion and therefore accepted (DESIGN §9).
+   * Before deciding we sync, to have the most up-to-date role possible.
    */
   private async requireAdmin (): Promise<void> {
     await this.sync()
@@ -2789,7 +3222,10 @@ export class MicelioNode extends EventEmitter {
 
   /**
    * Trova un membro attivo per nome esatto o per chiave (anche abbreviata, almeno 6 caratteri).
+   *
+   * EN: Finds an active member by exact name or by key (short keys too, at least 6 characters).
    * @throws UserError se nessuno o più di uno corrisponde
+   *         EN: if none or more than one matches
    */
   private async resolveMember (ref: string): Promise<MemberRecord> {
     const all = (await this.requireTeam().members()).filter((m) => !m.removed)
@@ -2802,7 +3238,7 @@ export class MicelioNode extends EventEmitter {
   }
 }
 
-/** Crea l'embedder indicato in configurazione; null se "none". Il modello è condiviso da tutti i nodi della macchina. */
+/** Crea l'embedder indicato in configurazione; null se "none". Il modello è condiviso da tutti i nodi della macchina. / EN: Creates the embedder set in the configuration; null if "none". The model is shared by all nodes on the machine. */
 export function createEmbedder (config: Config): Embedder | null {
   switch (config.embeddings.adapter) {
     case 'local': return new LocalEmbedder(config.embeddings.model, path.join(os.homedir(), '.cache', 'micelio-models'))
@@ -2811,7 +3247,7 @@ export function createEmbedder (config: Config): Embedder | null {
   }
 }
 
-/** Crea l'adapter LLM indicato in configurazione; null se "none". */
+/** Crea l'adapter LLM indicato in configurazione; null se "none". / EN: Creates the LLM adapter set in the configuration; null if "none". */
 export function createAdapter (config: Config): LlmAdapter | null {
   switch (config.llm.adapter) {
     case 'claude': return new ClaudeCliAdapter(config.llm.command)
@@ -2820,12 +3256,12 @@ export function createAdapter (config: Config): LlmAdapter | null {
   }
 }
 
-/** Dimensione di un file in byte (0 se non esiste). */
+/** Dimensione di un file in byte (0 se non esiste). / EN: Size of a file in bytes (0 if it doesn't exist). */
 function fileSize (file: string): number {
   try { return fs.statSync(file).size } catch { return 0 }
 }
 
-/** Dimensione totale di una cartella, ricorsiva (0 se non esiste). */
+/** Dimensione totale di una cartella, ricorsiva (0 se non esiste). / EN: Total size of a folder, recursive (0 if it doesn't exist). */
 function dirSize (dir: string): number {
   let n = 0
   let entries: fs.Dirent[]
@@ -2840,10 +3276,13 @@ function dirSize (dir: string): number {
 /**
  * Le Radici sono testi lunghi e generali: per "Radici pertinenti" la soglia semantica è più bassa
  * di quella delle ricerche normali (moltiplicata per questo fattore).
+ *
+ * EN: Roots are long, general texts: for "Relevant Roots" the semantic threshold is lower
+ * than for normal searches (multiplied by this factor).
  */
 const ROOT_SEMANTIC_FACTOR = 0.85
 
-/** Percorso di file confrontabile: barre "/", senza "./" iniziale, minuscolo. */
+/** Percorso di file confrontabile: barre "/", senza "./" iniziale, minuscolo. / EN: Comparable file path: "/" slashes, no leading "./", lowercase. */
 function normFile (f: string): string {
   return f.trim().replace(/\\/g, '/').replace(/^\.\//, '').toLowerCase()
 }

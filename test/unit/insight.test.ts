@@ -1,6 +1,9 @@
 /**
  * Lacune di conoscenza e riepilogo settimanale (B4): chiave di raggruppamento delle ricerche,
  * eventi gap.report / gap.close in apply (più persone, chiusura, riapertura), calcolo del riepilogo.
+ *
+ * EN: Knowledge gaps and weekly digest (B4): grouping key for searches,
+ * gap.report / gap.close events in apply (several people, closing, reopening), digest computation.
  */
 import { describe, expect, it } from 'vitest'
 import { envelope, type EventPayload } from '../../src/core/events'
@@ -75,7 +78,7 @@ describe('riepilogo settimanale', () => {
     expect(d.memories.byAuthor).toEqual([{ name: 'ada', count: 1 }, { name: 'bo', count: 2 }].sort((a, b) => b.count - a.count))
     expect(d.roots.added.map((r) => r.title)).toEqual(['R2'])
     expect(d.roots.toReview.map((r) => r.title)).toEqual(['R3'])
-    expect(d.mostUsed.map((m) => m.title)).toEqual(['R3']) // R4 usato 20 giorni fa: fuori periodo
+    expect(d.mostUsed.map((m) => m.title)).toEqual(['R3']) // R4 usato 20 giorni fa: fuori periodo / EN: R4 used 20 days ago: outside the period
     expect(d.gaps).toEqual([{ id: 'g1', title: 'Q1', detail: '2' }])
     expect(d.myMisses).toBe(1)
     expect(d.dreams).toEqual({ count: 1, lastSummary: 'Fusi 2 ricordi' })

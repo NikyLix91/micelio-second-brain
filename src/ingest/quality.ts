@@ -20,24 +20,46 @@
  * L'indicazione finale confronta le ultime posizioni consentite con le prime: se valgono quasi
  * quanto le prime e il limite viene toccato spesso, il limite sta tagliando sapere utile.
  * Funzione pura: testata in test/unit/quality.test.ts.
+ *
+ * EN: Distillation quality (Phase 10): data to decide HOW MANY memories to distill.
+ *
+ * EN: The memories-per-distillation limit (`distill.maxMemories`, default 5) is a team choice:
+ * with the subscription CLI, cost is not the problem, NOISE is. To raise (or lower) it
+ * sensibly you need measurements, not impressions. Each distilled memory carries in `source`:
+ * - `rank`:  its position in the distilled batch (1 = the first, usually the most important);
+ * - `batch`: how many memories the model proposed in that distillation.
+ * These are replicated metadata: the metrics are the same on every team PC.
+ *
+ * EN: For each position BAND (1st, 2nd, 3rd, 4th–5th, 6th–10th, beyond) we measure, on memories
+ * old enough to have had time to be used (MIN_AGE_DAYS):
+ * - useful:       upvoted or used at least once by the agents;
+ * - voted not useful: negative vote sum;
+ * - removed:      merged or archived by dreaming (duplicates or knowledge that was not needed);
+ * - never used:   active, no usage and no votes;
+ * - score = useful − voted not useful − removed (from −1 to +1).
+ * Plus SATURATION: how many distillations proposed at least as many memories as the limit.
+ *
+ * EN: The final advice compares the last allowed positions with the first ones: if they are worth
+ * almost as much as the first and the limit is hit often, the limit is cutting useful knowledge.
+ * Pure function: tested in test/unit/quality.test.ts.
  */
 
-/** Limite di default e limiti ammessi per `distill.maxMemories`. */
+/** Limite di default e limiti ammessi per `distill.maxMemories`. / EN: Default limit and allowed range for `distill.maxMemories`. */
 export const DEFAULT_MAX_MEMORIES = 5
 export const MAX_MEMORIES_RANGE = { min: 1, max: 20 } as const
 
-/** Età minima perché un ricordo conti nelle percentuali (prima non ha avuto modo di essere usato). */
+/** Età minima perché un ricordo conti nelle percentuali (prima non ha avuto modo di essere usato). / EN: Minimum age for a memory to count in the percentages (before that it had no chance to be used). */
 export const MIN_AGE_DAYS = 3
-/** Ricordi maturi minimi per dare un'indicazione. */
+/** Ricordi maturi minimi per dare un'indicazione. / EN: Minimum mature memories needed to give advice. */
 export const MIN_SAMPLE = 30
-/** Ricordi minimi nelle ultime posizioni per confrontarle con le prime. */
+/** Ricordi minimi nelle ultime posizioni per confrontarle con le prime. / EN: Minimum memories in the last positions to compare them with the first ones. */
 export const MIN_TAIL_SAMPLE = 10
-/** Soglie dell'indicazione (differenze di punteggio fra ultime e prime posizioni). */
+/** Soglie dell'indicazione (differenze di punteggio fra ultime e prime posizioni). / EN: Advice thresholds (score differences between last and first positions). */
 export const RAISE_MAX_GAP = 0.15
 export const LOWER_MIN_GAP = 0.35
 export const RAISE_MIN_SATURATION = 0.3
 
-/** I dati di un ricordo che servono alle metriche. */
+/** I dati di un ricordo che servono alle metriche. / EN: The memory data the metrics need. */
 export interface QualityInput {
   ts: number
   status: 'active' | 'superseded' | 'archived' | 'redacted'
@@ -50,9 +72,9 @@ export interface QualityBucket {
   label: string
   from: number
   to: number
-  /** Ricordi maturi in questa fascia (quelli contati nelle percentuali). */
+  /** Ricordi maturi in questa fascia (quelli contati nelle percentuali). / EN: Mature memories in this band (the ones counted in the percentages). */
   n: number
-  /** Ricordi troppo recenti per essere giudicati. */
+  /** Ricordi troppo recenti per essere giudicati. / EN: Memories too recent to be judged. */
   young: number
   useful: number
   notUseful: number
@@ -63,18 +85,18 @@ export interface QualityBucket {
 
 export interface DistillQuality {
   maxMemories: number
-  /** Ricordi distillati con posizione nota (maturi + recenti). */
+  /** Ricordi distillati con posizione nota (maturi + recenti). / EN: Distilled memories with a known position (mature + recent). */
   total: number
   buckets: QualityBucket[]
-  /** Distillazioni note e quante hanno proposto almeno `maxMemories` ricordi. */
+  /** Distillazioni note e quante hanno proposto almeno `maxMemories` ricordi. / EN: Known distillations and how many proposed at least `maxMemories` memories. */
   saturation: { batches: number, atLimit: number, rate: number }
   advice: {
     action: 'raise' | 'keep' | 'lower' | 'unknown'
-    /** Caso preciso, per comporre il testo nella lingua dell'utente (UI). */
+    /** Caso preciso, per comporre il testo nella lingua dell'utente (UI). / EN: Exact case, to build the text in the user's language (UI). */
     code: 'too-few' | 'tail-small' | 'lower' | 'raise' | 'keep-unsaturated' | 'keep-balanced'
-    /** Valori citati nel testo. */
+    /** Valori citati nel testo. / EN: Values quoted in the text. */
     params: { mature: number, minSample: number, minAgeDays: number, minTail: number, saturationRate: number, tailN?: number, headScore?: number, tailScore?: number, badShare?: number }
-    /** Testo in italiano (CLI). */
+    /** Testo in italiano (CLI). / EN: Text in Italian (CLI). */
     reason: string
   }
 }
@@ -88,7 +110,7 @@ const FASCE = [
   { label: 'oltre la 10ª', from: 11, to: 100 }
 ]
 
-/** Percentuali e punteggio di un insieme di ricordi maturi. */
+/** Percentuali e punteggio di un insieme di ricordi maturi. / EN: Percentages and score of a set of mature memories. */
 function measure (ms: QualityInput[]): Omit<QualityBucket, 'label' | 'from' | 'to' | 'young'> {
   const n = ms.length
   if (!n) return { n: 0, useful: 0, notUseful: 0, removed: 0, unused: 0, score: 0 }
@@ -103,8 +125,12 @@ function measure (ms: QualityInput[]): Omit<QualityBucket, 'label' | 'from' | 't
 
 /**
  * Calcola le metriche (vedi intestazione).
+ *
+ * EN: Computes the metrics (see header).
  * @param memories ricordi del team, ATTIVI E NO (fusi e archiviati contano come "rimossi")
+ *                 EN: team memories, ACTIVE AND NOT (merged and archived count as "removed")
  * @param maxMemories limite in vigore
+ *                    EN: limit currently in force
  */
 export function distillQuality (memories: QualityInput[], maxMemories: number, now = Date.now()): DistillQuality {
   const minTs = now - MIN_AGE_DAYS * 24 * 3600 * 1000
@@ -119,9 +145,11 @@ export function distillQuality (memories: QualityInput[], maxMemories: number, n
       young: ranked.filter((m) => m.ts > minTs && inRange(m, f.from, f.to)).length
     }))
     // Si mostrano le fasce entro il limite in vigore, e quelle oltre solo se hanno dati (limite cambiato)
+    // EN: Show the bands within the current limit, and those beyond only if they have data (limit changed)
     .filter((b) => b.from <= maxMemories || b.n + b.young > 0)
 
   // Saturazione: una distillazione = il suo ricordo in posizione 1
+  // EN: Saturation: one distillation = its memory in position 1
   const firsts = ranked.filter((m) => m.source!.rank === 1 && typeof m.source!.batch === 'number')
   const atLimit = firsts.filter((m) => m.source!.batch! >= maxMemories).length
   const saturation = { batches: firsts.length, atLimit, rate: firsts.length ? atLimit / firsts.length : 0 }
@@ -129,15 +157,18 @@ export function distillQuality (memories: QualityInput[], maxMemories: number, n
   return { maxMemories, total: ranked.length, buckets, saturation, advice: advise(mature, maxMemories, saturation.rate) }
 }
 
-/** Indicazione per l'admin: alzare, tenere, abbassare il limite, o "servono più dati". */
+/** Indicazione per l'admin: alzare, tenere, abbassare il limite, o "servono più dati". / EN: Advice for the admin: raise, keep, lower the limit, or "more data needed". */
 function advise (mature: QualityInput[], max: number, saturationRate: number): DistillQuality['advice'] {
   // Valori su cui si basa l'indicazione: restituiti insieme al testo, così la UI può comporre
   // la frase nella lingua scelta dall'utente (il testo `reason` è in italiano, per la CLI).
+  // EN: Values the advice is based on: returned with the text, so the UI can build
+  //     the sentence in the user's chosen language (the `reason` text is in Italian, for the CLI).
   const base = { mature: mature.length, minSample: MIN_SAMPLE, minAgeDays: MIN_AGE_DAYS, minTail: MIN_TAIL_SAMPLE, saturationRate }
   if (mature.length < MIN_SAMPLE) {
     return { action: 'unknown', code: 'too-few', params: base, reason: `Servono almeno ${MIN_SAMPLE} ricordi distillati da più di ${MIN_AGE_DAYS} giorni (ora ${mature.length}).` }
   }
   // Prime posizioni (1–3) contro le ultime consentite (le ultime due sotto il limite)
+  // EN: First positions (1–3) against the last allowed ones (the last two up to the limit)
   const head = measure(mature.filter((m) => m.source!.rank! <= Math.min(3, max)))
   const tailFrom = Math.max(1, max - 1)
   const tail = measure(mature.filter((m) => m.source!.rank! >= tailFrom && m.source!.rank! <= max))
@@ -158,7 +189,7 @@ function advise (mature: QualityInput[], max: number, saturationRate: number): D
     : { action: 'keep', code: 'keep-balanced', params, reason: `Le ultime posizioni valgono un po' meno delle prime (punteggio ${tail.score.toFixed(2)} contro ${head.score.toFixed(2)}): il limite attuale è equilibrato.` }
 }
 
-/** Legge e valida `distill.maxMemories` dalla configurazione di team (default se assente o non valido). */
+/** Legge e valida `distill.maxMemories` dalla configurazione di team (default se assente o non valido). / EN: Reads and validates `distill.maxMemories` from the team configuration (default if missing or invalid). */
 export function maxMemoriesOf (value: unknown): number {
   return typeof value === 'number' && Number.isInteger(value) && value >= MAX_MEMORIES_RANGE.min && value <= MAX_MEMORIES_RANGE.max ? value : DEFAULT_MAX_MEMORIES
 }

@@ -1,11 +1,19 @@
 /**
  * @file Client tipizzato dell'API locale del daemon (stesse rotte usate dalla CLI).
  *
+ * EN: Typed client for the daemon's local API (same routes the CLI uses).
+ *
  * I tipi dei dati sono importati direttamente dal codice del daemon (`import type`): vengono
  * cancellati in compilazione, quindi la UI non include codice del daemon, ma se una forma cambia
  * da una parte TypeScript lo segnala anche dall'altra.
  *
+ * EN: The data types are imported directly from the daemon code (`import type`): they are
+ * erased at compile time, so the UI includes no daemon code, but if a shape changes on one
+ * side TypeScript flags it on the other too.
+ *
  * Ogni funzione corrisponde a una rotta di src/daemon/api.controller.ts.
+ *
+ * EN: Each function maps to a route in src/daemon/api.controller.ts.
  */
 import type { CodeRefs, MemoryData } from '../../../src/core/events'
 import type { InviteRecord, MemberRecord, NodeStatus, RecallHit } from '../../../src/core/model'
@@ -28,35 +36,39 @@ import { currentLang } from '../i18n'
 export type { DistillQuality, Galaxy, Graph, GraphLink, GraphNode }
 export type { NetworkCheck, NetworkSettings, RootReviewResult, RootView, SecurityFinding, SecurityLogEntry, SecurityRules, SecurityTestResult, StorageReport }
 export type { BackupManifest, ChatMessage, ChatReply, ChatSummary, Digest, EfficacyReport, GapView }
-/** Mappa mentale della chat (B10). */
+/** Mappa mentale della chat (B10). / EN: Chat mind map (B10). */
 export type ChatMap = MindMap
 export type ChatMapMemory = MindMap['memories'][number]
 export type ChatMapLink = MapLink
-/** Esito di un ripristino (B7): ricordi nel backup, aggiunti, già presenti. */
+/** Esito di un ripristino (B7): ricordi nel backup, aggiunti, già presenti. / EN: Outcome of a restore (B7): memories in the backup, added, already present. */
 export interface RestoreReport { team: string, memories: number, added: number, existing: number, events: number, ms: number }
-/** Backup automatici del team (B7): la password non torna mai, solo se è impostata. */
+/** Backup automatici del team (B7): la password non torna mai, solo se è impostata. / EN: Automatic team backups (B7): the password is never returned, only whether it is set. */
 export interface BackupSettings { enabled: boolean, folder: string, keep: number, hasPassword: boolean, last: { at: number, file?: string, error?: string } | null }
 
-/** Rete di un team: DHT pubblica, privata, o nessuna rete (solo locale, B4). */
+/** Rete di un team: DHT pubblica, privata, o nessuna rete (solo locale, B4). / EN: Team network: public DHT, private DHT, or no network (local only, B4). */
 export type NetworkMode = NetworkSettings['mode']
-/** Formato dei file per gli agenti (B4). */
+/** Formato dei file per gli agenti (B4). / EN: Format of the agent files (B4). */
 export type AgentFileFormat = 'claude' | 'agents' | 'cursor'
-/** Una tua ricerca senza risposta (B4). */
+/** Una tua ricerca senza risposta (B4). / EN: One of your searches with no answer (B4). */
 export interface MyGap { key: string, query: string, count: number, first: number, last: number, answer: { id: string, title: string } | null }
 export type { CodeRefs, Decision, ExplicitOutcome, InboxItem, IngestStatus, InviteRecord, MemberRecord, MemoryData, NodeSettings, NodeStatus, RecallHit, TeamSummary }
 
-/** Elenco dei team del PC e identità personale (GET /api/teams, B3). */
+/** Elenco dei team del PC e identità personale (GET /api/teams, B3). / EN: List of the PC's teams and personal identity (GET /api/teams, B3). */
 export interface TeamsInfo { teams: TeamSummary[], identity: { name: string, publicKey: string } | null }
 
-/** Errore dell'API con il messaggio leggibile restituito dal daemon. */
+/** Errore dell'API con il messaggio leggibile restituito dal daemon. / EN: API error with the readable message returned by the daemon. */
 export class ApiError extends Error {
   constructor (message: string, readonly status: number) { super(message) }
 }
 
 /**
  * Chiamata generica all'API con il token, sul team scelto nel selettore (B3, vedi api/team.ts).
+ *
+ * EN: Generic API call with the token, on the team chosen in the selector (B3, see api/team.ts).
  * @param team team diverso da quello scelto (es. i membri degli altri team nella pagina Team)
+ *             EN: a team other than the chosen one (e.g. members of the other teams in the Team page)
  * @throws ApiError con il messaggio `{ error }` del daemon (es. "Operazione riservata agli admin")
+ *         EN: ApiError with the daemon's `{ error }` message (e.g. "Operazione riservata agli admin")
  */
 export async function call<T> (method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown, team?: string): Promise<T> {
   const res = await fetch(path, {
@@ -64,6 +76,7 @@ export async function call<T> (method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: 
     headers: {
       authorization: `Bearer ${getToken() ?? ''}`,
       // Lingua dei messaggi d'errore del daemon (vedi src/daemon/error.filter.ts)
+      // EN: Language of the daemon's error messages (see src/daemon/error.filter.ts)
       'x-micelio-lang': currentLang(),
       ...(team ? { [TEAM_HEADER]: team } : teamHeaders()),
       ...(body !== undefined ? { 'content-type': 'application/json' } : {})
@@ -75,6 +88,8 @@ export async function call<T> (method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: 
     const msg: string = data?.error ?? `Errore HTTP ${res.status}`
     // Rotta sconosciuta al daemon: l'interfaccia è più nuova del daemon in esecuzione (ricompilato
     // ma non riavviato). Al posto del "Cannot GET /api/…" di Express, diciamo cosa fare.
+    // EN: Route unknown to the daemon: the UI is newer than the running daemon (rebuilt
+    //     but not restarted). Instead of Express's "Cannot GET /api/…", we say what to do.
     if (res.status === 404 && /^Cannot (GET|POST|PUT|DELETE) \/api\//.test(msg)) {
       throw new ApiError(currentLang() === 'it'
         ? 'Questa funzione richiede un daemon aggiornato: il daemon in esecuzione è una versione precedente dell\'app. Riavvialo (micelio stop && micelio start; per il team demo: Ctrl+C e npm run demo).'
@@ -87,17 +102,21 @@ export async function call<T> (method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: 
 
 const enc = encodeURIComponent
 
-/** Tutte le operazioni disponibili, raggruppate come le schermate. */
+/** Tutte le operazioni disponibili, raggruppate come le schermate. / EN: All available operations, grouped like the screens. */
 export const api = {
   // Nodo e team
+  // EN: Node and team
   status: () => call<NodeStatus>('GET', '/api/status'),
   // Nome facoltativo dal secondo team in poi: il daemon usa quello dell'identità personale (B3)
+  // EN: Name optional from the second team on: the daemon uses the personal identity's one (B3)
   init: (team: string, name?: string, network?: 'public' | 'local') => call<NodeStatus & { teamId: string }>('POST', '/api/team/init', { team, name: name || undefined, network }),
   join: (code: string, name?: string) => call<NodeStatus & { teamId: string }>('POST', '/api/team/join', { code, name: name || undefined }),
 
   // Più team sullo stesso PC (B3)
+  // EN: Several teams on the same PC (B3)
   teams: () => call<TeamsInfo>('GET', '/api/teams'),
   // ── Backup e ripristino (B7): i file viaggiano in base64 ──
+  // EN: ── Backup and restore (B7): files travel as base64 ──
   createBackup: (password: string) => call<{ name: string, manifest: BackupManifest, data: string }>('POST', '/api/backup', { password }),
   backupManifest: (data: string) => call<BackupManifest>('POST', '/api/backup/manifest', { data }),
   restoreBackup: (data: string, password: string) => call<RestoreReport>('POST', '/api/backup/restore', { data, password }),
@@ -105,6 +124,7 @@ export const api = {
     call<{ id: string, report: RestoreReport }>('POST', '/api/teams/restore', { data, password, ...opts }),
   backupSettings: () => call<BackupSettings>('GET', '/api/settings/backup'),
   // ── Chat sulla memoria (B10) ──
+  // EN: ── Chat over the memory (B10) ──
   chatMap: (question: string) => call<ChatMap>('POST', '/api/chat/map', { question }),
   chatAsk: (question: string, chatId?: number) => call<ChatReply>('POST', '/api/chat/ask', { question, chatId }),
   chatExpand: (id: string) => call<{ memories: ChatMapMemory[], links: ChatMapLink[] }>('GET', `/api/chat/expand/${enc(id)}`),
@@ -114,14 +134,15 @@ export const api = {
   renameChat: (id: number, title: string) => call<{ ok: true }>('PUT', `/api/chats/${id}`, { title }),
   deleteChat: (id: number) => call<{ ok: true }>('DELETE', `/api/chats/${id}`),
   // ── Efficacia (B11) ──
+  // EN: ── Efficacy (B11) ──
   efficacy: (days: number, project?: string) => call<EfficacyReport>('GET', `/api/efficacy?days=${days}${project ? `&project=${enc(project)}` : ''}`),
   setEfficacyNotify: (notify: boolean) => call<{ notify: boolean }>('PUT', '/api/settings/efficacy', { notify }),
   setBackupSettings: (patch: { enabled?: boolean, folder?: string, keep?: number, password?: string }) => call<BackupSettings>('PUT', '/api/settings/backup', patch),
   setDefaultTeam: (id: string) => call<TeamSummary[]>('POST', `/api/teams/${enc(id)}/default`),
   leaveTeam: (id: string) => call<TeamSummary[]>('DELETE', `/api/teams/${enc(id)}`),
-  /** Membri di un team qualsiasi del PC (per riconoscere la stessa persona in più team). */
+  /** Membri di un team qualsiasi del PC (per riconoscere la stessa persona in più team). / EN: Members of any team on the PC (to recognize the same person across teams). */
   membersOf: (team: string) => call<MemberRecord[]>('GET', '/api/members', undefined, team),
-  /** Collega Claude Code avviato in una cartella al team scelto (MCP in ambito "local"). */
+  /** Collega Claude Code avviato in una cartella al team scelto (MCP in ambito "local"). / EN: Connects Claude Code started in a folder to the chosen team (MCP with "local" scope). */
   setupProject: (path: string) => call<{ dir: string, mcpUrl: string }>('POST', '/api/setup/project', { path }),
   teamConfig: () => call<{ language: string, blockKeywords: string[], maxMemories: number, updateOnWrite: boolean }>('GET', '/api/team/config'),
   distillQuality: () => call<DistillQuality>('GET', '/api/distill/quality'),
@@ -133,6 +154,7 @@ export const api = {
   invites: () => call<InviteRecord[]>('GET', '/api/invites'),
 
   // Ricordi
+  // EN: Memories
   graph: () => call<Graph>('GET', '/api/graph'),
   memory: (id: string) => call<RecallHit>('GET', `/api/memories/${enc(id)}`),
   recent: (limit = 30) => call<RecallHit[]>('GET', `/api/memories?limit=${limit}`),
@@ -140,6 +162,7 @@ export const api = {
   remember: (m: { title: string, body: string, kind?: string, tags?: string[] }) => call<ExplicitOutcome>('POST', '/api/memories', m),
 
   // Ricordi personali (B4): restano su questo PC
+  // EN: Personal memories (B4): they stay on this PC
   rememberPersonal: (m: { title: string, body: string, kind?: string, tags?: string[] }) => call<{ id: string, duplicate: boolean }>('POST', '/api/memories', { ...m, personal: true }),
   personal: () => call<RecallHit[]>('GET', '/api/personal'),
   sharePersonal: (id: string) => call<ExplicitOutcome>('POST', `/api/personal/${enc(id)}/share`),
@@ -147,10 +170,12 @@ export const api = {
   keepPersonal: (inboxId: string) => call<{ id: string, duplicate: boolean }>('POST', `/api/inbox/${enc(inboxId)}/keep`),
 
   // Ricordi con il codice cambiato (B4)
+  // EN: Memories whose code changed (B4)
   staleMemories: () => call<RecallHit[]>('GET', '/api/memories/stale'),
   checkStale: () => call<{ checked: number, stale: number }>('POST', '/api/memories/stale/check'),
 
   // Lacune e riepilogo (B4)
+  // EN: Knowledge gaps and digest (B4)
   myGaps: () => call<MyGap[]>('GET', '/api/gaps/mine'),
   dismissGap: (key: string) => call<{ ok: true }>('DELETE', `/api/gaps/mine/${enc(key)}`),
   reportGap: (key: string, question?: string) => call<GapView[]>('POST', '/api/gaps/report', { key, question }),
@@ -159,18 +184,21 @@ export const api = {
   digest: (days = 7) => call<Digest>('GET', `/api/digest?days=${days}`),
 
   // File per gli agenti e import di Radici (B4)
+  // EN: Agent files and Root import (B4)
   agentFiles: () => call<{ dir: string, format: AgentFileFormat, project: string, file: string, exists: boolean }[]>('GET', '/api/roots/agent-files'),
   exportAgentFile: (o: { dir: string, format: AgentFileFormat, project?: string, keep?: boolean }) => call<{ file: string, changed: boolean }>('POST', '/api/roots/agent-files', o),
   removeAgentFile: (dir: string, format: AgentFileFormat) => call<{ ok: true }>('DELETE', '/api/roots/agent-files', { dir, format }),
   importRoots: (path: string, category?: string) => call<{ imported: number, updated: number, duplicates: number, blocked: string[] }>('POST', '/api/roots/import', { path, category }),
 
   // Inbox e privato
+  // EN: Inbox and private
   inbox: () => call<InboxItem[]>('GET', '/api/inbox'),
   approve: (id: string, patch: { title?: string, body?: string } = {}) => call<{ id: string, memory: MemoryData }>('POST', `/api/inbox/${enc(id)}/approve`, patch),
   reject: (id: string) => call<{ ok: true }>('POST', `/api/inbox/${enc(id)}/reject`),
   decisions: (limit = 200) => call<Decision[]>('GET', `/api/decisions?limit=${limit}`),
 
   // Ingestione e impostazioni
+  // EN: Ingestion and settings
   ingestStatus: () => call<IngestStatus>('GET', '/api/ingest/status'),
   ingestRun: () => call<{ processed: boolean }>('POST', '/api/ingest/run'),
   settings: () => call<NodeSettings>('GET', '/api/settings'),
@@ -187,6 +215,7 @@ export const api = {
   updateContext: (patch: { sessionStart?: boolean, prompt?: boolean, maxChars?: number }) => call<NodeSettings>('PUT', '/api/settings/context', patch),
 
   // Sicurezza (Fase 9)
+  // EN: Security (Phase 9)
   securityRules: () => call<SecurityRules>('GET', '/api/security/rules'),
   setSecurityRules: (patch: Partial<SecurityRules['team']>) => call<SecurityRules>('PUT', '/api/security/rules', patch),
   securityTest: (text: string, file?: string) => call<SecurityTestResult>('POST', '/api/security/test', { text, file }),
@@ -195,6 +224,7 @@ export const api = {
   securityLog: (limit = 100) => call<SecurityLogEntry[]>('GET', `/api/security/log?limit=${limit}`),
 
   // Radici (Fase 8)
+  // EN: Roots (Phase 8)
   roots: (filter: { project?: string, category?: string, q?: string } = {}) => {
     const qs = new URLSearchParams(Object.entries(filter).filter(([, v]) => v) as [string, string][]).toString()
     return call<RootView[]>('GET', `/api/roots${qs ? '?' + qs : ''}`)
@@ -207,6 +237,7 @@ export const api = {
   dismissRootSuggestion: (id: string) => call<{ ok: true }>('DELETE', `/api/roots/suggestions/${enc(id)}`),
 
   // Rete P2P e spazio occupato
+  // EN: P2P network and disk usage
   network: () => call<NetworkSettings>('GET', '/api/network'),
   setNetwork: (mode: NetworkMode, bootstrap?: string[]) => call<NetworkSettings>('PUT', '/api/network', { mode, bootstrap }),
   checkNetwork: (mode?: NetworkMode, bootstrap?: string[]) => call<NetworkCheck>('POST', '/api/network/check', { mode, bootstrap }),

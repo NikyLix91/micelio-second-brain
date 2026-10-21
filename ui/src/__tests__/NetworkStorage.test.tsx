@@ -1,6 +1,9 @@
 /**
  * Impostazioni → Rete (scelta DHT pubblica/privata) e Stato del nodo → Spazio occupato.
  * fetch è finto: rispondiamo in base all'URL e controlliamo cosa la UI invia al daemon.
+ *
+ * EN: Settings → Network (public/private DHT choice) and Node status → Disk space. fetch is fake: we reply
+ * based on the URL and check what the UI sends to the daemon.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -12,7 +15,7 @@ import { NetworkCard } from '../pages/Settings'
 
 const wrap = (Comp: () => JSX.Element | null) => render(<QueryClientProvider client={new QueryClient()}><Comp /></QueryClientProvider>)
 
-/** fetch finto: `routes` associa "METODO /percorso" alla risposta JSON. */
+/** fetch finto: `routes` associa "METODO /percorso" alla risposta JSON. / EN: Fake fetch: `routes` maps "METHOD /path" to the JSON response. */
 function mockFetch (routes: Record<string, unknown>) {
   return vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
     const key = `${init?.method ?? 'GET'} ${String(url)}`
@@ -76,6 +79,7 @@ describe('StorageCard', () => {
     expect(screen.getByText('25%')).toBeTruthy()
     expect(screen.getByText('alice')).toBeTruthy()
     // un segmento della barra per membro, largo quanto la sua quota
+    // EN: one bar segment per member, as wide as their share
     const bar = screen.getByRole('img', { name: /Quota del log/ })
     expect([...bar.children].map((d) => (d as HTMLElement).style.width)).toEqual(['75%', '25%'])
   })

@@ -1,4 +1,5 @@
 // B7: backup del sapere di un team. Formato e cifratura del file, piano degli eventi di ripristino.
+// EN: B7: backup of a team's knowledge. File format and encryption, plan of the restore events.
 import { describe, expect, it } from 'vitest'
 import { memoryId, TeamEvent } from '../../src/core/events'
 import { type BackupContent, type BackupMemory, backupFileName, countsOf, decodeBackup, encodeBackup, readManifest } from '../../src/backup/archive'
@@ -6,7 +7,7 @@ import { planRestore } from '../../src/backup/restore-plan'
 
 const A = 'a'.repeat(64)
 
-/** Ricordo di prova con id coerente con il contenuto. */
+/** Ricordo di prova con id coerente con il contenuto. / EN: Test memory with an id consistent with its content. */
 function mem (title: string, extra: Partial<BackupMemory> = {}): BackupMemory {
   const base = { kind: 'fact' as const, title, body: `Corpo di ${title}` }
   return { id: memoryId(base), ...base, tags: ['prova'], source: { type: 'cli' }, author: A, authorName: 'ada', ts: 1_700_000_000_000, status: 'active', ...extra }
@@ -23,7 +24,7 @@ describe('file di backup', () => {
 
   it('si cifra e si decifra con la password; il manifesto si legge anche senza', () => {
     const file = encodeBackup(c, manifest(c), 'password-lunga')
-    expect(file.toString()).not.toContain('Retry di Kafka') // contenuto cifrato
+    expect(file.toString()).not.toContain('Retry di Kafka') // contenuto cifrato / EN: encrypted content
     expect(readManifest(file)).toMatchObject({ team: 'Ordini', counts: { memories: 2, active: 1 } })
     const out = decodeBackup(file, 'password-lunga')
     expect(out.content).toEqual(c)
@@ -33,6 +34,7 @@ describe('file di backup', () => {
     const file = encodeBackup(c, manifest(c), 'password-lunga')
     expect(() => decodeBackup(file, 'altra-password')).toThrow(/Password sbagliata/)
     // manifesto modificato (es. nome del team): è autenticato, quindi il file non si apre più
+    // EN: changed manifest (e.g. team name): it is authenticated, so the file no longer opens
     const f = JSON.parse(file.toString())
     f.manifest.team = 'Altro'
     expect(() => decodeBackup(Buffer.from(JSON.stringify(f)), 'password-lunga')).toThrow(/Password sbagliata/)
@@ -70,20 +72,24 @@ describe('piano di ripristino', () => {
     })
     const ev = planRestore(c, { sourceTeam: 'Ordini' })
     // ogni evento è valido per lo schema del log
+    // EN: every event is valid for the log schema
     for (const e of ev) expect(TeamEvent.safeParse({ ...e, v: 1, ts: 1 }).success).toBe(true)
     const types = ev.map((e) => e.type)
     expect(types[0]).toBe('team.config')
     // il redatto non torna; gli altri 5 sì, con l'origine
+    // EN: the redacted one does not come back; the other 5 do, with their origin
     const adds = ev.filter((e) => e.type === 'memory.add')
     expect(adds).toHaveLength(5)
     expect(adds[0]).toMatchObject({ memory: { title: 'Retry di Kafka', source: { type: 'cli', origin: { author: 'ada', key: A, ts: 1_700_000_000_000, team: 'Ordini' } } } })
     // i due sostituiti in UN supersede verso il successore, PRIMA di Radici e ricordi fissati
+    // EN: the two replaced ones in ONE supersede to the successor, BEFORE Roots and pinned memories
     const sup = ev.filter((e) => e.type === 'memory.supersede')
     expect(sup).toEqual([expect.objectContaining({ old: [old1.id, old2.id], reason: 'fusione' })])
     expect(types.indexOf('memory.supersede')).toBeLessThan(types.indexOf('root.set'))
     expect(types.indexOf('memory.archive')).toBeLessThan(types.indexOf('memory.pin'))
     expect(ev).toContainEqual({ type: 'root.flag', id: a.id, reason: 'codice cambiato', refs: ['abc1234'] })
     // collegamento verso il redatto scartato; voti con il segno della somma
+    // EN: link to the redacted one dropped; votes with the sign of the sum
     expect(ev.filter((e) => e.type === 'memory.link')).toHaveLength(1)
     expect(ev).toContainEqual({ type: 'memory.vote', id: b.id, delta: -1 })
     expect(ev).toContainEqual({ type: 'usage.report', counts: { [a.id]: { count: 7, last: 5 } } })

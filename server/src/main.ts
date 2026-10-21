@@ -2,26 +2,38 @@
 /**
  * @file Punto d'ingresso di `micelio-server`.
  *
+ * EN: Entry point of `micelio-server`.
+ *
  * Uso:
  *   micelio-server --host <IP pubblico> [--port 49737] [--bind 0.0.0.0] [--extra-nodes 0]
+ *
+ * EN: Usage:
+ *   micelio-server --host <public IP> [--port 49737] [--bind 0.0.0.0] [--extra-nodes 0]
  *
  * Ogni opzione si può dare anche con una variabile d'ambiente (è così che la passa il servizio
  * systemd, da /etc/default/micelio-server): MICELIO_SERVER_HOST, MICELIO_SERVER_PORT,
  * MICELIO_SERVER_BIND, MICELIO_SERVER_EXTRA_NODES. Gli argomenti vincono sulle variabili.
+ *
+ * EN: Each option can also be given as an environment variable (that's how the systemd service passes it,
+ * from /etc/default/micelio-server): MICELIO_SERVER_HOST, MICELIO_SERVER_PORT, MICELIO_SERVER_BIND,
+ * MICELIO_SERVER_EXTRA_NODES. Arguments win over variables.
  */
 import os from 'node:os'
 import { parseArgs } from 'node:util'
 import { DEFAULT_PORT, startServer } from './dht-server'
 
-/** Intervallo del messaggio di stato nel log (journalctl -u micelio-server). */
+/** Intervallo del messaggio di stato nel log (journalctl -u micelio-server). / EN: Interval of the status message in the log (journalctl -u micelio-server). */
 const STATUS_EVERY_MS = 15 * 60 * 1000
 
-/** Messaggio con data e ora: il log di systemd ha già la sua, ma lanciato a mano aiuta. */
+/** Messaggio con data e ora: il log di systemd ha già la sua, ma lanciato a mano aiuta. / EN: Message with date and time: the systemd log already has its own, but it helps when started by hand. */
 const log = (msg: string) => console.log(`${new Date().toISOString()} ${msg}`)
 
 /**
  * Primo IPv4 non interno della macchina. È l'indirizzo PUBBLICO solo se la macchina ne ha uno
  * diretto; dietro NAT (molte VM cloud e reti aziendali) l'IP pubblico va indicato con --host.
+ *
+ * EN: First non-internal IPv4 of the machine. It is the PUBLIC address only if the machine has a direct one;
+ * behind NAT (many cloud VMs and corporate networks) the public IP must be given with --host.
  */
 function guessHost (): string | null {
   for (const addrs of Object.values(os.networkInterfaces())) {
@@ -64,12 +76,17 @@ async function main (): Promise<void> {
   // Con 0 PC il problema è prima del server (indirizzo o porta UDP non raggiungibili, PC su
   // un'altra rete); con PC ma senza presentazioni, i PC non si cercano (team o rete diversi);
   // con presentazioni ma nessun peer sui PC, l'hole punching fallisce e serve il relay.
+  // EN: Periodic heartbeat: confirms the process is alive and says what happened in the interval. With 0 PCs
+  //     the problem is before the server (address or UDP port not reachable, PCs on another network); with PCs
+  //     but no handshakes, the PCs are not looking for each other (different team or network); with handshakes
+  //     but no peers on the PCs, hole punching fails and the relay is needed.
   const timer = setInterval(() => {
     const a = server.activity()
     log(`attivo; ultimi 15 min: ${a.clients} PC, ${a.announces} annunci, ${a.lookups} ricerche, ${a.handshakes} presentazioni, ${a.holepunches} hole punching; relay: ${a.relay.active} connessioni aperte (${a.relay.sessions} dall'avvio)`)
   }, STATUS_EVERY_MS)
 
   // Chiusura ordinata (systemctl stop invia SIGTERM; Ctrl+C invia SIGINT).
+  // EN: Orderly shutdown (systemctl stop sends SIGTERM; Ctrl+C sends SIGINT).
   const stop = async (signal: string) => {
     log(`${signal} ricevuto: chiusura`)
     clearInterval(timer)

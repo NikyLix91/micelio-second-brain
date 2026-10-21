@@ -6,6 +6,14 @@
  * - riferimenti al codice dei ricordi (source.code): progetto, remote senza credenziali, branch,
  *   file relativi, simboli, commit verificati;
  * - aggancio alla pipeline: il riassunto arriva al distillatore e i riferimenti ai ricordi pubblicati.
+ *
+ * EN: Change-aware distillation (src/ingest/git-changes.ts):
+ * - detection of declarations (classes, functions, endpoints) in the lines of a diff;
+ * - summary of a temporary git repository with DATED commits (inside and outside the chapter)
+ *   and uncommitted changes;
+ * - code references of memories (source.code): project, remote without credentials, branch,
+ *   relative files, symbols, verified commits;
+ * - pipeline hook: the summary reaches the distiller and the references reach the published memories.
  */
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
@@ -24,7 +32,7 @@ import { tmpHome } from '../helpers'
 
 const HOUR = 3600_000
 
-/** Esegue git nel repository di prova; `at` imposta la data del commit (autore e committer). */
+/** Esegue git nel repository di prova; `at` imposta la data del commit (autore e committer). / EN: Runs git in the test repository; `at` sets the commit date (author and committer). */
 function git (cwd: string, args: string[], at?: number): string {
   const date = at !== undefined ? new Date(at).toISOString() : undefined
   const r = spawnSync('git', ['-c', 'user.name=Test', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', ...args], {
@@ -34,7 +42,7 @@ function git (cwd: string, args: string[], at?: number): string {
   return r.stdout
 }
 
-/** Scrive un file nel repo e lo committa alla data indicata. */
+/** Scrive un file nel repo e lo committa alla data indicata. / EN: Writes a file in the repo and commits it at the given date. */
 function commit (repo: string, file: string, content: string, message: string, at: number): void {
   fs.mkdirSync(path.dirname(path.join(repo, file)), { recursive: true })
   fs.writeFileSync(path.join(repo, file), content)
@@ -45,6 +53,9 @@ function commit (repo: string, file: string, content: string, message: string, a
 /**
  * Repository con tre commit: uno VECCHIO (fuori dal capitolo) e due DENTRO l'intervallo
  * [now-2h, now-1h]. Restituisce il percorso e l'intervallo del capitolo.
+ *
+ * EN: Repository with three commits: one OLD (outside the chapter) and two INSIDE the range
+ * [now-2h, now-1h]. Returns the path and the chapter's range.
  */
 function makeRepo (): { repo: string, since: number, until: number } {
   const repo = tmpHome('git')
@@ -93,9 +104,10 @@ describe('summarizeChanges', () => {
     expect(s).toContain('"Aggiunge OrderService"')
     expect(s).toMatch(/src\/orders\/order\.service\.ts \(nuovo\): \+ class OrderService/)
     expect(s).toMatch(/orders\.controller\.ts \(nuovo\): \+ .*POST confirm/)
-    expect(s).not.toContain('legacy.ts') // commit di due giorni prima: fuori dal capitolo
+    expect(s).not.toContain('legacy.ts') // commit di due giorni prima: fuori dal capitolo / EN: commit from two days before: outside the chapter
     expect(s).not.toContain('non ancora committate')
     // l'hash breve del commit è citabile nei ricordi; quelli completi servono a validarli
+    // EN: the short commit hash can be cited in memories; the full ones are used to validate them
     const hash = git(repo, ['log', '-1', '--format=%H']).trim()
     expect(s).toContain(hash.slice(0, 8))
     expect(r.commits).toHaveLength(2)
@@ -137,11 +149,11 @@ describe('riferimenti al codice (source.code)', () => {
   it('codeRefs: commit verificati e completati, percorsi relativi, assoluti esterni scartati', () => {
     const { repo, since, until } = makeRepo()
     const summary = summarizeChanges(repo, since, until, false)!
-    const full = summary.commits[1] // commit "Aggiunge OrderService"
+    const full = summary.commits[1] // commit "Aggiunge OrderService" / EN: the "Aggiunge OrderService" commit
     const refs = codeRefs({
       files: [path.join(repo, 'src', 'orders', 'order.service.ts'), './src/orders/orders.controller.ts', 'C:/Users/mario/altro/segreto.ts', 'src\\orders\\order.service.ts'],
       symbols: ['class OrderService', ' POST confirm '],
-      commits: [full.slice(0, 8), 'deadbeef12'] // il secondo non esiste: inventato dal modello
+      commits: [full.slice(0, 8), 'deadbeef12'] // il secondo non esiste: inventato dal modello / EN: the second doesn't exist: made up by the model
     }, repo, summary.info, summary)!
     expect(refs.project).toBe(path.basename(repo))
     expect(refs.files).toEqual(['src/orders/order.service.ts', 'src/orders/orders.controller.ts'])
@@ -159,10 +171,10 @@ describe('riferimenti al codice (source.code)', () => {
 describe('pipeline: modifiche al distillatore e riferimenti ai ricordi', () => {
   const longTech = 'Abbiamo spostato la conferma degli ordini fuori dai controller per evitare duplicazioni. '.repeat(6)
 
-  /** Pipeline minima su un repository di prova; `gitChanges` riflette l'opzione `watch.gitChanges`. */
+  /** Pipeline minima su un repository di prova; `gitChanges` riflette l'opzione `watch.gitChanges`. / EN: Minimal pipeline on a test repository; `gitChanges` mirrors the `watch.gitChanges` option. */
   const run = async (gitChanges: boolean) => {
     const { repo, since } = makeRepo()
-    const hash = git(repo, ['log', '-1', '--format=%H', '--skip=1']).trim() // "Aggiunge OrderService"
+    const hash = git(repo, ['log', '-1', '--format=%H', '--skip=1']).trim() // "Aggiunge OrderService" / EN: "Aggiunge OrderService"
     const store = new PrivateStore(':memory:')
     const fake = new FakeAdapter()
     const published: MemoryData[] = []
@@ -179,6 +191,8 @@ describe('pipeline: modifiche al distillatore e riferimenti ai ricordi', () => {
     })
     // Trascrizione con timestamp a partire da `since`: la conversazione copre il primo commit,
     // che cade un minuto dopo. Il finto distillatore legge i riferimenti dopo "rif:".
+    // EN: Transcript with timestamps starting at `since`: the conversation covers the first commit,
+    //     which falls one minute later. The fake distiller reads the references after "rif:".
     const transcriptPath = writeTranscript(tmpHome('tr'), 's1', [
       { user: 'Centralizziamo la conferma degli ordini. ' + longTech },
       { assistant: `LEZIONE: OrderService centralizza la conferma | Introdotto in src/orders. | rif: src/orders/order.service.ts, class OrderService, ${hash.slice(0, 8)}` }

@@ -18,6 +18,22 @@
 # =============================================================================================
 set -euo pipefail
 
+# EN: Installs micelio-server on Linux (systemd service).
+#
+#   sudo ./install.sh --host <IP pubblico> [--port 49737] [--extra-nodes 0] [--prefix /opt/micelio-server]
+#                     [--no-systemd]
+#
+#     What it does, in order:
+#       1. checks Node.js (>= 20) and npm;
+#       2. copies the sources into --prefix, installs the dependencies, builds and removes the dev ones;
+#       3. creates the "micelio" system user (no shell, no home): the service does not run as root;
+#       4. writes the configuration to /etc/default/micelio-server;
+#       5. installs and starts the "micelio-server" systemd service (unless --no-systemd).
+#
+#     Running it again UPDATES the installation (new code, same configuration if no options are
+#     passed) and restarts the service. The firewall is NOT touched: at the end the script prints the
+#     commands to open the UDP port.
+
 PREFIX=/opt/micelio-server
 CONF=/etc/default/micelio-server
 UNIT=/etc/systemd/system/micelio-server.service
@@ -43,22 +59,26 @@ done
 [ "$(id -u)" -eq 0 ] || { echo "Serve root: sudo $0 $*" >&2; exit 1; }
 
 # --- 1. Prerequisiti ------------------------------------------------------------------------
+# EN: --- 1. Prerequisites
 command -v node >/dev/null || { echo "Node.js non trovato: installa Node.js 20 o successivo" >&2; exit 1; }
 command -v npm >/dev/null || { echo "npm non trovato" >&2; exit 1; }
 NODE_MAJOR=$(node -p 'process.versions.node.split(".")[0]')
 [ "$NODE_MAJOR" -ge 20 ] || { echo "Node.js $(node -v) troppo vecchio: serve la 20 o successiva" >&2; exit 1; }
 
 # --- 2. Codice: copia, dipendenze, compilazione ---------------------------------------------
+# EN: --- 2. Code: copy, dependencies, build
 SRC="$(cd "$(dirname "$0")" && pwd)"
 echo "» Installo in $PREFIX"
 mkdir -p "$PREFIX"
 # Si copiano solo i sorgenti: node_modules e dist si rigenerano sul server.
+# EN: Only the sources are copied: node_modules and dist are rebuilt on the server.
 cp "$SRC/package.json" "$SRC/package-lock.json" "$SRC/tsconfig.json" "$PREFIX/"
 rm -rf "$PREFIX/src" && cp -r "$SRC/src" "$PREFIX/src"
 cp "$SRC/README.md" "$PREFIX/" 2>/dev/null || true
 (cd "$PREFIX" && npm ci --no-audit --no-fund && npm run build && npm prune --omit=dev --no-audit --no-fund)
 
 # --- 3. Utente di servizio ------------------------------------------------------------------
+# EN: --- 3. Service user
 if ! id micelio >/dev/null 2>&1; then
   NOLOGIN=$(command -v nologin || echo /usr/sbin/nologin)
   useradd --system --no-create-home --shell "$NOLOGIN" micelio
@@ -66,7 +86,9 @@ if ! id micelio >/dev/null 2>&1; then
 fi
 
 # --- 4. Configurazione ----------------------------------------------------------------------
+# EN: --- 4. Configuration
 # Se il file esiste si aggiornano solo i valori passati; altrimenti si crea con i default.
+# EN: If the file exists only the passed values are updated; otherwise it is created with the defaults.
 if [ -f "$CONF" ]; then
   # shellcheck disable=SC1090
   . "$CONF"
@@ -76,6 +98,7 @@ PORT="${PORT:-${MICELIO_SERVER_PORT:-49737}}"
 EXTRA="${EXTRA:-${MICELIO_SERVER_EXTRA_NODES:-0}}"
 if [ -z "$HOST" ]; then
   # Primo indirizzo della macchina: è quello pubblico solo se non c'è NAT davanti.
+  # EN: First address of the machine: it is the public one only if there is no NAT in front.
   HOST=$(hostname -I 2>/dev/null | awk '{print $1}')
   echo "ATTENZIONE: --host non indicato, uso $HOST. Se la macchina è dietro NAT rilancia con --host <IP pubblico>."
 fi
@@ -94,6 +117,7 @@ EOF
 chmod 644 "$CONF"
 
 # --- 5. Servizio systemd --------------------------------------------------------------------
+# EN: --- 5. systemd service
 if [ "$SYSTEMD" -eq 1 ]; then
   cat > "$UNIT" <<EOF
 [Unit]
@@ -133,6 +157,7 @@ EOF
 fi
 
 # --- Fine: istruzioni ---------------------------------------------------------------------------
+# EN: --- End: instructions
 LAST=$((PORT + EXTRA))
 RANGE=$PORT; [ "$EXTRA" -gt 0 ] && RANGE="$PORT:$LAST"
 cat <<EOF

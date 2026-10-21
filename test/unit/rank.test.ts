@@ -1,4 +1,4 @@
-/** Fase 5: attivazione (src/rank/activation.ts), ricerca ibrida (src/rank/hybrid.ts), eventi di priorità in apply. */
+/** Fase 5: attivazione (src/rank/activation.ts), ricerca ibrida (src/rank/hybrid.ts), eventi di priorità in apply. / EN: Phase 5: activation (src/rank/activation.ts), hybrid search (src/rank/hybrid.ts), priority events in apply. */
 import { describe, expect, it } from 'vitest'
 import { envelope, type EventPayload } from '../../src/core/events'
 import { applyNodes, KEYS } from '../../src/net/apply'
@@ -104,8 +104,8 @@ describe('apply: voti, pin, uso', () => {
     await applyNodes([node({ type: 'team.init', name: 'T', founderName: 'a' })], view, host)
     await applyNodes([
       node({ type: 'usage.report', counts: { [MEM]: { count: 5, last: 100 } } }),
-      node({ type: 'usage.report', counts: { [MEM]: { count: 3, last: 50 } } }), // vecchio, arrivato dopo
-      node({ type: 'usage.report', counts: { [MEM]: { count: 5, last: 100 } } }) // duplicato
+      node({ type: 'usage.report', counts: { [MEM]: { count: 3, last: 50 } } }), // vecchio, arrivato dopo / EN: old, arrived later
+      node({ type: 'usage.report', counts: { [MEM]: { count: 5, last: 100 } } }) // duplicato / EN: duplicate
     ], view, host)
     expect(view.data.get(KEYS.usage(MEM, A))).toEqual({ count: 5, last: 100 })
   })

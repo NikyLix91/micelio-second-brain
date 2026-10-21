@@ -1,14 +1,25 @@
 /**
  * @file Valutazione dell'ingestione con il LLM VERO (Claude Code CLI).
  *
+ * EN: Ingestion evaluation with the REAL LLM (Claude Code CLI).
+ *
  * Esegue ogni caso di ingest-cases.ts nello stesso percorso della pipeline:
  * filtro deterministico → (se non bloccato) classificazione con Haiku → route().
  * Poi distilla con Sonnet due casi tecnici, per un controllo a occhio della fedeltà alla fonte.
  *
+ * EN: Runs every case of ingest-cases.ts through the same path as the pipeline:
+ * deterministic filter → (if not blocked) classification with Haiku → route().
+ * Then it distills two technical cases with Sonnet, for an eyeball check of faithfulness to the source.
+ *
  * Consuma l'abbonamento (circa 25 chiamate): per questo NON fa parte di `npm test`.
  * Uso: npm run eval:ingest   →   report in test/eval/report.md
  *
+ * EN: It uses up the subscription (about 25 calls): that's why it is NOT part of `npm test`.
+ * Usage: npm run eval:ingest   →   report in test/eval/report.md
+ *
  * Criteri (dal piano, Fase 2): ≥ 90% dei casi corretti, 100% dei casi sensibili fuori dal team.
+ *
+ * EN: Criteria (from the plan, Phase 2): ≥ 90% of cases correct, 100% of sensitive cases kept out of the team.
  */
 import fs from 'node:fs'
 import path from 'node:path'
@@ -36,6 +47,7 @@ describe('valutazione ingestione (Claude reale)', () => {
       let reason: string
       if (f.blocked) {
         // Il filtro locale manda in privato senza interpellare il LLM.
+        // EN: The local filter sends it to private without asking the LLM.
         got = 'private'
         via = 'filtro'
         reason = f.reasons.join(', ')

@@ -1,11 +1,12 @@
 // B11: efficacia. Cosa ha fornito Micelio in una trascrizione di Claude Code e se l'agente l'ha usato.
+// EN: B11: efficacy. What Micelio provided in a Claude Code transcript and whether the agent used it.
 import { describe, expect, it } from 'vitest'
 import { actionsAfter, distinctiveTokens, findDeliveries, judgeUse } from '../../src/insight/efficacy'
 
 const A = 'aaaaaaaaaaaa'
 const B = 'bbbbbbbbbbbb'
 
-/** Righe di trascrizione già interpretate (come le restituisce parseLines). */
+/** Righe di trascrizione già interpretate (come le restituisce parseLines). / EN: Transcript rows already parsed (as parseLines returns them). */
 const rows = [
   { type: 'user', message: { content: 'Il build di Angular va in out of memory' } },
   { type: 'attachment', attachment: { type: 'hook_additional_context', hookEvent: 'UserPromptSubmit', content: ['Micelio — dalla memoria del team, forse pertinente:\n- [gotcha] Build Angular OOM (id:' + A + ')'] } },
@@ -13,8 +14,10 @@ const rows = [
   { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: [{ type: 'text', text: '### Heap di Node in CI\n[howto] id:' + B + ' · ada' }] }] } },
   { type: 'assistant', message: { content: [{ type: 'text', text: 'Imposto la memoria come indicato.' }, { type: 'tool_use', id: 't2', name: 'Bash', input: { command: 'export NODE_OPTIONS=--max-old-space-size=6144 && npm run build' } }] } },
   // un altro recall: non deve contare come "uso" (ripete la domanda)
+  // EN: another recall: it must not count as a "use" (it repeats the question)
   { type: 'assistant', message: { content: [{ type: 'tool_use', id: 't3', name: 'mcp__micelio__recall', input: { query: 'NODE_OPTIONS max-old-space-size' } }] } },
   // sotto-agente: ignorato
+  // EN: sub-agent: ignored
   { type: 'assistant', isSidechain: true, message: { content: [{ type: 'text', text: 'pipeline.yml' }] } }
 ]
 
@@ -30,7 +33,7 @@ describe('cosa ha fornito Micelio', () => {
     const after = actionsAfter(rows, 3)
     expect(after).toContain('NODE_OPTIONS=--max-old-space-size=6144')
     expect(after).not.toContain('angular memoria')
-    expect(after.match(/max-old-space-size/g)).toHaveLength(1) // non dal secondo recall
+    expect(after.match(/max-old-space-size/g)).toHaveLength(1) // non dal secondo recall / EN: not from the second recall
     expect(after).not.toContain('pipeline.yml')
   })
 })
@@ -43,7 +46,7 @@ describe('l\'agente l\'ha usato? (euristica)', () => {
     expect(t.slice(0, 2)).toEqual(['ci/build.yml', 'BuildRunner'])
     expect(t).toContain('NODE_OPTIONS=--max-old-space-size=6144')
     expect(t).toContain('azure-pipelines.yml')
-    expect(t).not.toContain('build') // parola comune
+    expect(t).not.toContain('build') // parola comune / EN: common word
     expect(distinctiveTokens({ title: 'Usa `npm install`', body: 'Poi `true`.' })).toEqual([])
   })
 

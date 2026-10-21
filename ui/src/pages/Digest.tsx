@@ -1,12 +1,22 @@
 /**
  * @file Riepilogo (B4): cosa ha imparato il team negli ultimi giorni e cosa ancora non sa.
  *
+ * EN: Digest (B4): what the team learned in the last few days and what it still doesn't know.
+ *
  * - **La settimana del team**: ricordi nuovi per tipo e autore, Radici nuove e da rivedere, più
  *   usati, sogni, ricordi con il codice cambiato (src/insight/digest.ts). Il lunedì l'app desktop
  *   lo segnala con una notifica.
  * - **Lacune del team**: domande segnalate a cui la memoria non sa rispondere; chi scrive il
  *   ricordo che le colma le chiude (src/insight/gaps.ts).
  * - **Le tue ricerche senza risposta**: solo su questo PC; si segnalano al team o si ignorano.
+ *
+ * EN:
+ * - **The team's week**: new memories by kind and author, new Roots and Roots to review, most
+ *   used, dreams, memories whose code changed (src/insight/digest.ts). On Mondays the desktop app
+ *   announces it with a notification.
+ * - **Team knowledge gaps**: reported questions the memory can't answer; whoever writes the
+ *   memory that fills one closes it (src/insight/gaps.ts).
+ * - **Your searches with no answer**: only on this PC; you report them to the team or ignore them.
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
@@ -100,7 +110,7 @@ export function Digest () {
   )
 }
 
-/** Voci compatte del riepilogo. */
+/** Voci compatte del riepilogo. / EN: Compact digest entries. */
 function Items ({ items, detail }: { items: { id: string, title: string, detail?: string }[], detail?: (d: string) => string }) {
   return (
     <ul style={{ margin: '4px 0 10px', paddingLeft: 18 }}>

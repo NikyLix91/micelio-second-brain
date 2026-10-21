@@ -1,54 +1,61 @@
 /**
  * @file Riepilogo settimanale (B4): cosa ha imparato il team negli ultimi giorni.
  *
+ * EN: Weekly digest (B4): what the team learned in the last few days.
+ *
  * Rende visibile il valore di Micelio senza dover aprire ogni schermata: ricordi nuovi (per tipo e
  * per autore), nuove Radici e Radici da rivedere, ricordi più usati, lacune aperte, sogni, ricordi
  * con il codice cambiato. Si calcola al momento della richiesta dalla vista del team (uguale su
  * ogni PC) e da qualche segnale locale; non si salva da nessuna parte.
+ *
+ * EN: It makes Micelio's value visible without opening every screen: new memories (by kind and
+ * by author), new Roots and Roots to review, most used memories, open knowledge gaps, dreams, memories
+ * whose code changed. It is computed on request from the team view (the same on
+ * every PC) and from a few local signals; it is not saved anywhere.
  */
 import type { MemoryKind } from '../core/events'
 import type { RecallHit, RootRecord } from '../core/model'
 
-/** Una voce compatta del riepilogo. */
+/** Una voce compatta del riepilogo. / EN: A compact digest entry. */
 export interface DigestItem { id: string, title: string, detail?: string }
 
 export interface Digest {
-  /** Periodo coperto (ms). */
+  /** Periodo coperto (ms). / EN: Period covered (ms). */
   from: number
   to: number
   memories: {
-    /** Ricordi nuovi nel periodo (team, non personali). */
+    /** Ricordi nuovi nel periodo (team, non personali). / EN: New memories in the period (team, not personal). */
     added: number
     byKind: Partial<Record<MemoryKind, number>>
-    /** Chi ha contribuito, dal più attivo. */
+    /** Chi ha contribuito, dal più attivo. / EN: Who contributed, most active first. */
     byAuthor: { name: string, count: number }[]
-    /** I più recenti. */
+    /** I più recenti. / EN: The most recent ones. */
     latest: DigestItem[]
   }
   roots: {
-    /** Promossi a Radice nel periodo. */
+    /** Promossi a Radice nel periodo. / EN: Promoted to Root in the period. */
     added: DigestItem[]
-    /** Radici "da rivedere" (in questo momento). */
+    /** Radici "da rivedere" (in questo momento). / EN: Roots "to review" (right now). */
     toReview: DigestItem[]
   }
-  /** Ricordi usati nel periodo, dai più usati in totale. */
+  /** Ricordi usati nel periodo, dai più usati in totale. / EN: Memories used in the period, most used overall first. */
   mostUsed: DigestItem[]
-  /** Lacune del team ancora aperte, dalle più condivise. */
+  /** Lacune del team ancora aperte, dalle più condivise. / EN: The team's knowledge gaps still open, most shared first. */
   gaps: DigestItem[]
-  /** Tue ricerche senza risposta nel periodo (solo su questo PC). */
+  /** Tue ricerche senza risposta nel periodo (solo su questo PC). / EN: Your unanswered searches in the period (this PC only). */
   myMisses: number
   dreams: { count: number, lastSummary: string | null }
-  /** Ricordi con il codice citato cambiato (repository di questo PC). */
+  /** Ricordi con il codice citato cambiato (repository di questo PC). / EN: Memories whose cited code changed (repositories on this PC). */
   stale: number
 }
 
 export interface DigestInput {
   now: number
   days: number
-  /** Ricordi attivi del team, già con i segnali (uses, root, stale). */
+  /** Ricordi attivi del team, già con i segnali (uses, root, stale). / EN: The team's active memories, already with signals (uses, root, stale). */
   memories: RecallHit[]
   roots: RootRecord[]
-  /** Ultimo uso di ogni ricordo nel team (ms). */
+  /** Ultimo uso di ogni ricordo nel team (ms). / EN: Last use of each memory in the team (ms). */
   lastUsed: Map<string, number>
   gaps: { id: string, question: string, askers: string[], status: string }[]
   myMisses: { last: number }[]
@@ -58,7 +65,7 @@ export interface DigestInput {
 const DAY = 24 * 60 * 60 * 1000
 const item = (h: RecallHit, detail?: string): DigestItem => ({ id: h.id, title: h.title, ...(detail ? { detail } : {}) })
 
-/** Calcola il riepilogo degli ultimi `days` giorni. */
+/** Calcola il riepilogo degli ultimi `days` giorni. / EN: Computes the digest of the last `days` days. */
 export function computeDigest (d: DigestInput): Digest {
   const from = d.now - d.days * DAY
   const added = d.memories.filter((m) => m.ts >= from).sort((a, b) => b.ts - a.ts)

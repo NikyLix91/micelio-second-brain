@@ -1,6 +1,8 @@
 /**
  * @file Avvio automatico del daemon all'accesso al PC (`micelio autostart on|off|status`).
  *
+ * EN: Automatic daemon start at PC login (`micelio autostart on|off|status`).
+ *
  * In attesa degli installer (Fase 7, decisione D16) usiamo il meccanismo nativo di ogni sistema,
  * sempre a livello UTENTE (nessun privilegio di amministratore):
  * - Windows: uno script nella cartella "Esecuzione automatica" dell'utente
@@ -9,7 +11,17 @@
  * - macOS: un LaunchAgent in ~/Library/LaunchAgents (RunAtLoad);
  * - Linux: un servizio systemd dell'utente in ~/.config/systemd/user (WantedBy=default.target).
  *
+ * EN: Until the installers arrive (Phase 7, decision D16) we use each system's native mechanism,
+ * always at USER level (no administrator privileges):
+ * - Windows: a script in the user's "Startup" folder
+ *   (%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup). It is a .vbs that runs
+ *   `micelio start` WITHOUT opening console windows;
+ * - macOS: a LaunchAgent in ~/Library/LaunchAgents (RunAtLoad);
+ * - Linux: a user systemd service in ~/.config/systemd/user (WantedBy=default.target).
+ *
  * MICELIO_AUTOSTART_DIR sostituisce la cartella di destinazione (test).
+ *
+ * EN: MICELIO_AUTOSTART_DIR overrides the target folder (tests).
  */
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
@@ -17,18 +29,23 @@ import os from 'node:os'
 import path from 'node:path'
 
 export interface AutostartTarget {
-  /** File che abilita l'avvio automatico. */
+  /** File che abilita l'avvio automatico. / EN: File that enables the automatic start. */
   file: string
-  /** Contenuto del file. */
+  /** Contenuto del file. / EN: File content. */
   content: string
-  /** Comandi da eseguire dopo la scrittura/rimozione (es. systemctl), se servono. */
+  /** Comandi da eseguire dopo la scrittura/rimozione (es. systemctl), se servono. / EN: Commands to run after writing/removing (e.g. systemctl), if needed. */
   after?: { on: string[][], off: string[][] }
 }
 
 /**
  * File e contenuto per il sistema corrente.
+ *
+ * EN: File and content for the current system.
+ *
  * @param cliMain percorso di dist/cli/main.js
+ *                EN: path of dist/cli/main.js
  * @param home    cartella dati del nodo (MICELIO_HOME)
+ *                EN: node data folder (MICELIO_HOME)
  */
 export function autostartTarget (cliMain: string, home: string, platform = process.platform): AutostartTarget {
   const node = process.execPath
@@ -37,6 +54,8 @@ export function autostartTarget (cliMain: string, home: string, platform = proce
     const dir = override ?? path.join(process.env.APPDATA ?? path.join(os.homedir(), 'AppData', 'Roaming'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup')
     // VBScript: Run(comando, 0 = finestra nascosta, False = non attendere). Le virgolette nel
     // comando vanno raddoppiate dentro la stringa VBScript.
+    // EN: VBScript: Run(command, 0 = hidden window, False = don't wait). Quotes in the command
+    //     must be doubled inside the VBScript string.
     const cmd = `"${node}" "${cliMain}" --home "${home}" start`.replace(/"/g, '""')
     return { file: path.join(dir, 'micelio-start.vbs'), content: `' Avvio automatico di Micelio (creato da \`micelio autostart on\`)\r\nCreateObject("WScript.Shell").Run "${cmd}", 0, False\r\n` }
   }
@@ -77,7 +96,7 @@ WantedBy=default.target
   return { file, content, after: { on: [['systemctl', '--user', 'enable', '--now', 'micelio.service']], off: [['systemctl', '--user', 'disable', '--now', 'micelio.service']] } }
 }
 
-/** Abilita l'avvio automatico. @returns il file creato */
+/** Abilita l'avvio automatico. @returns il file creato / EN: Enables the automatic start. Returns the created file */
 export function autostartOn (cliMain: string, home: string): string {
   const t = autostartTarget(cliMain, home)
   fs.mkdirSync(path.dirname(t.file), { recursive: true })
@@ -87,7 +106,7 @@ export function autostartOn (cliMain: string, home: string): string {
   return t.file
 }
 
-/** Disabilita l'avvio automatico. @returns true se era abilitato */
+/** Disabilita l'avvio automatico. @returns true se era abilitato / EN: Disables the automatic start. Returns true if it was enabled */
 export function autostartOff (cliMain: string, home: string): boolean {
   const t = autostartTarget(cliMain, home)
   if (!fs.existsSync(t.file)) return false
@@ -96,7 +115,7 @@ export function autostartOff (cliMain: string, home: string): boolean {
   return true
 }
 
-/** File dell'avvio automatico se abilitato, altrimenti null. */
+/** File dell'avvio automatico se abilitato, altrimenti null. / EN: The automatic start file if enabled, otherwise null. */
 export function autostartStatus (cliMain: string, home: string): string | null {
   const t = autostartTarget(cliMain, home)
   return fs.existsSync(t.file) ? t.file : null

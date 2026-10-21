@@ -1,6 +1,9 @@
 /**
  * @file Privato: registro di ciò che NON è andato al team e perché (attività 3.8).
  * Solo locale: bloccato dal filtro, privato, scartato, rifiutato, scaduto.
+ *
+ * EN: Private: log of what did NOT go to the team and why (task 3.8).
+ * Local only: blocked by the filter, private, discarded, rejected, expired.
  */
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/client'
@@ -13,7 +16,7 @@ const S = defineStrings({
   en: { title: 'Private log', subtitle: 'What did not reach the team, and why. It stays on this PC only.', empty: 'The log is empty.', when: 'When', outcome: 'Outcome', content: 'Content and reason' }
 })
 
-/** Colore del badge per esito: i blocchi del filtro sono quelli che proteggono di più. */
+/** Colore del badge per esito: i blocchi del filtro sono quelli che proteggono di più. / EN: Badge color per outcome: filter blocks are the ones that protect the most. */
 const OUTCOME_CLASS: Record<string, string> = { blocked: 'danger', private: 'warn', discarded: '', rejected: '', expired: '' }
 
 export function Private () {

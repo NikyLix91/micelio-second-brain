@@ -1,6 +1,8 @@
 /**
  * @file Dreaming (DESIGN §10, Fase 6): il consolidamento periodico del sapere del team.
  *
+ * EN: Dreaming (DESIGN §10, Phase 6): the periodic consolidation of the team's knowledge.
+ *
  * Come il sonno per la memoria umana: periodicamente UN nodo del team rilegge il sapere e
  * 1. FONDE i ricordi quasi duplicati in uno solo (memory.supersede; i vecchi restano come storico);
  * 2. ARCHIVIA quelli resi obsoleti da ricordi più recenti (memory.archive, con il motivo);
@@ -8,14 +10,30 @@
  * 4. lascia DECADERE i ricordi che nessuno usa più da tempo (archiviazione reversibile);
  * 5. scrive un DIARIO di cosa ha fatto (dream.complete), visibile a tutti.
  *
+ * EN: Like sleep for human memory: periodically ONE team node rereads the knowledge and
+ * 1. MERGES near-duplicate memories into one (memory.supersede; the old ones stay as history);
+ * 2. ARCHIVES those made obsolete by newer memories (memory.archive, with the reason);
+ * 3. LINKS related ones (memory.link), enriching the constellation;
+ * 4. lets memories nobody has used for a long time DECAY (reversible archiving);
+ * 5. writes a LOG of what it did (dream.complete), visible to everyone.
+ *
  * Coordinamento (§10.1): ogni "epoca" (un giorno) ha un solo sognatore. L'ordine dei candidati è
  * deterministico (hash di epoca + chiave), quindi ogni nodo sa quando tocca a lui: il primo dopo
  * l'ora di inizio, il secondo 30 minuti dopo se il primo non ha rivendicato l'epoca, e così via.
  * Se due nodi rivendicano comunque in parallelo, vince la prima rivendicazione nell'ordine
  * linearizzato (apply) e l'altro si ferma.
  *
+ * EN: Coordination (§10.1): each "epoch" (one day) has a single dreamer. The candidate order is
+ * deterministic (hash of epoch + key), so every node knows when its turn comes: the first right
+ * after the start time, the second 30 minutes later if the first has not claimed the epoch, and so on.
+ * If two nodes still claim in parallel, the first claim in the linearized order (apply) wins and
+ * the other stops.
+ *
  * Guardrail (§10.3): il dreaming non cancella mai (archivia o sostituisce, tutto ripristinabile),
  * non tocca i ricordi fissati, ha un budget massimo di chiamate LLM per sogno.
+ *
+ * EN: Guardrails (§10.3): dreaming never deletes (it archives or supersedes, all restorable),
+ * does not touch pinned memories, and has a maximum budget of LLM calls per dream.
  */
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
@@ -24,20 +42,20 @@ import type { RecallHit } from '../core/model'
 import { cosine } from '../rank/hybrid'
 import type { LlmRunner } from '../llm/runner'
 
-/** Chiamate LLM massime per sogno (oltre al budget giornaliero del nodo). */
+/** Chiamate LLM massime per sogno (oltre al budget giornaliero del nodo). / EN: Maximum LLM calls per dream (on top of the node's daily budget). */
 export const MAX_CALLS_PER_DREAM = 30
-/** Gruppi di duplicati esaminati al massimo per sogno. */
+/** Gruppi di duplicati esaminati al massimo per sogno. / EN: Maximum duplicate groups examined per dream. */
 const MAX_GROUPS = 12
-/** Ricordi per gruppo al massimo. */
+/** Ricordi per gruppo al massimo. / EN: Maximum memories per group. */
 const MAX_GROUP_SIZE = 5
-/** Decadimento: attivazione sotto questa soglia… */
+/** Decadimento: attivazione sotto questa soglia… / EN: Decay: activation below this threshold… */
 export const DECAY_ACTIVATION = 0.15
-/** …e più vecchio di così (giorni) → archiviato. */
+/** …e più vecchio di così (giorni) → archiviato. / EN: …and older than this (days) → archived. */
 export const DECAY_MIN_AGE_DAYS = 90
-/** Archiviazioni per decadimento al massimo per sogno (prudenza). */
+/** Archiviazioni per decadimento al massimo per sogno (prudenza). / EN: Maximum decay archivings per dream (caution). */
 const MAX_DECAY = 20
 
-/** Esito di un sogno, mostrato nel diario. */
+/** Esito di un sogno, mostrato nel diario. / EN: Outcome of a dream, shown in the log. */
 export interface DreamReport {
   epoch: string
   examined: number
@@ -49,12 +67,12 @@ export interface DreamReport {
   summary: string
 }
 
-/** Decisione del modello su un gruppo di ricordi simili. */
+/** Decisione del modello su un gruppo di ricordi simili. / EN: The model's decision on a group of similar memories. */
 export const Consolidation = z.object({
   action: z.enum(['merge', 'obsolete', 'link', 'none']),
-  /** Per "merge": il ricordo che sostituisce tutto il gruppo. */
+  /** Per "merge": il ricordo che sostituisce tutto il gruppo. / EN: For "merge": the memory that replaces the whole group. */
   merged: z.object({ kind: z.enum(MEMORY_KINDS), title: z.string(), body: z.string(), tags: z.array(z.string()) }).optional(),
-  /** Per "obsolete": gli id (anche abbreviati) dei ricordi superati da altri del gruppo. */
+  /** Per "obsolete": gli id (anche abbreviati) dei ricordi superati da altri del gruppo. / EN: For "obsolete": the ids (possibly shortened) of memories superseded by others in the group. */
   obsolete: z.array(z.string()).optional(),
   reason: z.string()
 })
@@ -72,13 +90,13 @@ Nel dubbio scegli "link" o "none": fondere o archiviare per errore è peggio che
 Scrivi nella stessa lingua dei ricordi. "reason" spiega la scelta in una frase.`
 
 export interface DreamDeps {
-  /** Chiave del nodo locale (funzione: è nota solo quando il team è aperto). */
+  /** Chiave del nodo locale (funzione: è nota solo quando il team è aperto). / EN: Local node key (a function: it is known only once the team is open). */
   me: () => string
   llm: LlmRunner | null
   model: () => string
-  /** Ricordi attivi, con attivazione e pin. */
+  /** Ricordi attivi, con attivazione e pin. / EN: Active memories, with activation and pin. */
   memories: () => RecallHit[]
-  /** Vettori di significato (id → vettore) e soglia "quasi duplicato" del modello. */
+  /** Vettori di significato (id → vettore) e soglia "quasi duplicato" del modello. / EN: Meaning vectors (id → vector) and the model's "near duplicate" threshold. */
   vectors: () => { map: Map<string, Float32Array>, duplicate: number }
   append: (p: EventPayload) => Promise<void>
   sync: () => Promise<void>
@@ -87,12 +105,16 @@ export interface DreamDeps {
    * Attesa dopo la rivendicazione, perché eventuali rivendicazioni concorrenti di altri nodi si
    * replichino prima di ricontrollare chi ha vinto. Riduce i sogni doppi (la correttezza finale
    * è comunque garantita da apply: vince la prima rivendicazione, il diario dell'altro è scartato).
+   *
+   * EN: Wait after claiming, so that any concurrent claims from other nodes replicate before we
+   * check again who won. It reduces double dreams (final correctness is guaranteed by apply anyway:
+   * the first claim wins, the other node's log is discarded).
    */
   settleMs?: number
   log: (m: string) => void
 }
 
-/** Epoca corrente: il giorno (UTC), es. "2026-10-17". */
+/** Epoca corrente: il giorno (UTC), es. "2026-10-17". / EN: Current epoch: the day (UTC), e.g. "2026-10-17". */
 export function currentEpoch (now = Date.now()): string {
   return new Date(now).toISOString().slice(0, 10)
 }
@@ -100,6 +122,9 @@ export function currentEpoch (now = Date.now()): string {
 /**
  * Posizione di ogni membro nella "turnazione" dell'epoca: ordinamento deterministico per
  * hash(epoca + chiave). Tutti i nodi calcolano la stessa sequenza senza parlarsi.
+ *
+ * EN: Position of each member in the epoch "rotation": deterministic ordering by
+ * hash(epoch + key). All nodes compute the same sequence without talking to each other.
  */
 export function dreamOrder (epoch: string, members: string[]): string[] {
   const h = (k: string) => createHash('sha256').update(`${epoch}|${k}`).digest('hex')
@@ -109,9 +134,13 @@ export function dreamOrder (epoch: string, members: string[]): string[] {
 /**
  * Gruppi di ricordi quasi duplicati: coppie con similarità ≥ soglia, unite per transitività
  * (union-find). Esclusi i ricordi fissati. Al massimo MAX_GROUPS gruppi da MAX_GROUP_SIZE.
+ *
+ * EN: Groups of near-duplicate memories: pairs with similarity ≥ threshold, joined transitively
+ * (union-find). Pinned memories are excluded. At most MAX_GROUPS groups of MAX_GROUP_SIZE.
  */
 export function duplicateGroups (memories: RecallHit[], vectors: Map<string, Float32Array>, threshold: number): string[][] {
   // Ricordi fissati e Radici sono esclusi: il dreaming non li fonde mai (apply lo impedirebbe comunque).
+  // EN: Pinned memories and Roots are excluded: dreaming never merges them (apply would block it anyway).
   const ids = memories.filter((m) => !m.pinned && !m.root && vectors.has(m.id)).map((m) => m.id)
   const parent = new Map(ids.map((id) => [id, id]))
   const find = (x: string): string => { while (parent.get(x) !== x) x = parent.get(x)!; return x }
@@ -125,7 +154,7 @@ export function duplicateGroups (memories: RecallHit[], vectors: Map<string, Flo
   return [...groups.values()].filter((g) => g.length >= 2).map((g) => g.slice(0, MAX_GROUP_SIZE)).slice(0, MAX_GROUPS)
 }
 
-/** Ricordi da far decadere: poco attivi, vecchi, non fissati. */
+/** Ricordi da far decadere: poco attivi, vecchi, non fissati. / EN: Memories to let decay: low activation, old, not pinned. */
 export function decayCandidates (memories: RecallHit[], now = Date.now()): RecallHit[] {
   const minAge = DECAY_MIN_AGE_DAYS * 24 * 3600 * 1000
   return memories
@@ -143,20 +172,23 @@ export class Dreamer {
 
   /**
    * Sogna per un'epoca. Rivendica l'epoca e procede solo se la rivendicazione "vince".
+   *
+   * EN: Dreams for an epoch. Claims the epoch and goes on only if the claim "wins".
    * @returns il resoconto, o null se un altro nodo ha già (o ha vinto) quest'epoca
+   *          EN: the report, or null if another node already has (or won) this epoch
    */
   async dream (epoch: string): Promise<DreamReport | null> {
     if (this.running) return null
     this.running = true
     try {
       const { deps } = this
-      if (await deps.claimOf(epoch)) return null // già rivendicata da qualcuno
+      if (await deps.claimOf(epoch)) return null // già rivendicata da qualcuno / EN: already claimed by someone
       await deps.append({ type: 'dream.claim', epoch })
       await deps.sync()
-      if (await deps.claimOf(epoch) !== deps.me()) return null // un altro nodo è arrivato prima
+      if (await deps.claimOf(epoch) !== deps.me()) return null // un altro nodo è arrivato prima / EN: another node got there first
       await new Promise((r) => setTimeout(r, deps.settleMs ?? 5000))
       await deps.sync()
-      if (await deps.claimOf(epoch) !== deps.me()) return null // una rivendicazione concorrente ha vinto
+      if (await deps.claimOf(epoch) !== deps.me()) return null // una rivendicazione concorrente ha vinto / EN: a concurrent claim won
       deps.log(`sogno dell'epoca ${epoch} iniziato`)
       return await this.run(epoch)
     } finally {
@@ -172,6 +204,7 @@ export class Dreamer {
     const lines: string[] = []
 
     // 1-3) Gruppi di quasi duplicati → decisione del modello
+    // EN: 1-3) Groups of near duplicates → model decision
     const { map, duplicate } = deps.vectors()
     for (const group of duplicateGroups(memories, map, duplicate)) {
       if (!deps.llm || r.calls >= MAX_CALLS_PER_DREAM || !deps.llm.hasBudget(1)) break
@@ -206,6 +239,7 @@ export class Dreamer {
     }
 
     // 4) Decadimento: niente LLM, regola deterministica e prudente
+    // EN: 4) Decay: no LLM, a deterministic and cautious rule
     for (const m of decayCandidates(memories)) {
       await deps.append({ type: 'memory.archive', id: m.id, reason: `decaduto: attivazione ${Math.round((m.activation ?? 0) * 100)}%, nessun uso recente` })
       r.decayed++
@@ -213,6 +247,7 @@ export class Dreamer {
     if (r.decayed) lines.push(`Archiviati per decadimento ${r.decayed} ricordi non più usati`)
 
     // 5) Diario
+    // EN: 5) Log
     r.summary = lines.length ? lines.join('\n') : 'Nessuna modifica: il sapere del team è già in ordine.'
     await deps.append({ type: 'dream.complete', epoch, summary: r.summary, stats: { examined: r.examined, merged: r.merged, obsolete: r.obsolete, linked: r.linked, decayed: r.decayed, calls: r.calls } })
     await deps.sync()

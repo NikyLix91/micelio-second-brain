@@ -2,6 +2,10 @@
 // d'incontro creano il team, si invitano e si scambiano un ricordo. Verifica anche la diagnosi
 // di `micelio network check` contro lo stesso server.
 // Tutto su 127.0.0.1: prova il funzionamento della DHT privata, NON l'attraversamento dei NAT reali.
+// EN: Team server (server/): two Micelio nodes that use ONLY the private bootstrap node as meeting
+//     point create the team, invite each other and exchange a memory. It also checks the diagnosis
+//     of `micelio network check` against the same server.
+//     All on 127.0.0.1: it tests how the private DHT works, NOT traversal of real NATs.
 import { randomBytes } from 'node:crypto'
 import dgram from 'node:dgram'
 import Hyperswarm from 'hyperswarm'
@@ -12,7 +16,7 @@ import type { MicelioNode } from '../../src/node/micelio-node'
 import { startServer, type RunningServer } from '../../server/src/dht-server'
 import { eventually, localDht, makeNode } from '../helpers'
 
-/** Una porta UDP libera (il nodo di avvio ha bisogno di una porta fissa). */
+/** Una porta UDP libera (il nodo di avvio ha bisogno di una porta fissa). / EN: A free UDP port (the bootstrap node needs a fixed port). */
 async function freeUdpPort (): Promise<number> {
   const s = dgram.createSocket('udp4')
   await new Promise<void>((resolve) => s.bind(0, '127.0.0.1', resolve))
@@ -74,12 +78,14 @@ describe('server del team: DHT privata', () => {
     expect(a.announces).toBeGreaterThan(0)
     expect(a.lookups).toBeGreaterThan(0)
     // i contatori ripartono da zero a ogni lettura (un intervallo del log)
+    // EN: the counters restart from zero on every read (one log interval)
     expect(server.activity().announces).toBeLessThan(a.announces)
   })
 
   it('due PC che non si raggiungono direttamente si collegano tramite il relay (B8)', async () => {
     const before = server.activity().relay.sessions
     // relayThrough che restituisce SEMPRE la chiave: simula un hole punching impossibile
+    // EN: relayThrough that ALWAYS returns the key: simulates hole punching that cannot succeed
     const key = relayKeyFor('127.0.0.1', bootstrap[0].port)
     const mk = () => new Hyperswarm({ bootstrap, relayThrough: () => key })
     const a = mk()
@@ -115,6 +121,7 @@ describe('cambio di rete a caldo e spazio occupato', () => {
 
   beforeAll(async () => {
     // Si parte da una DHT di test (A); il server del team (B) è un'altra DHT.
+    // EN: We start from a test DHT (A); the team server (B) is another DHT.
     dht = await localDht()
     server = await startServer({ publicHost: '127.0.0.1', bindHost: '127.0.0.1', port: await freeUdpPort() })
     alice = makeNode('net-alice', dht.bootstrap).node
@@ -147,6 +154,7 @@ describe('cambio di rete a caldo e spazio occupato', () => {
 
   it('passando alla pubblica i nodi privati restano salvati (si torna indietro senza riscriverli)', () => {
     // Solo la configurazione: non apriamo davvero la DHT pubblica nei test.
+    // EN: Configuration only: we do not really open the public DHT in tests.
     expect(alice.settings().network.bootstrap).toEqual([server.bootstrap])
   })
 

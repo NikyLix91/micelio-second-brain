@@ -1,6 +1,9 @@
 /**
  * Schermata Inbox: approvazione con correzione e rifiuto chiamano le API giuste.
  * fetch è finto: controlliamo le richieste che la UI invia al daemon.
+ *
+ * EN: Inbox screen: approve with correction and reject call the right APIs.
+ * fetch is mocked: we check the requests the UI sends to the daemon.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'

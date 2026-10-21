@@ -1,6 +1,9 @@
 // Sicurezza dei segreti (Fase 9) su un nodo vero: regole del team (solo admin, validate),
 // banco di prova, scansione retroattiva dei ricordi, "ripulisci" (una Radice resta Radice),
 // registro locale, e riassunto git che non riporta il diff dei file sensibili.
+// EN: Secret security (Phase 9) on a real node: team rules (admin only, validated),
+//     test bench, retroactive scan of memories, "clean up" (a Root stays a Root),
+//     local log, and a git summary that doesn't include the diff of sensitive files.
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -20,6 +23,7 @@ describe('sicurezza dei segreti', () => {
     await node.start()
     await node.init('Team Sicurezza', 'admin')
     // Un ricordo pubblicato quando la regola del team non esisteva ancora: contiene un "codice cliente"
+    // EN: A memory published when the team rule didn't exist yet: it contains a "customer code"
     leaky = published(await node.remember({ kind: 'howto', title: 'Ambiente di test del gestionale', body: 'Usare il tenant CLI-482913 per le prove di integrazione.' })).id
     await node.rootSet(leaky, 'practice')
   })
@@ -58,6 +62,7 @@ describe('sicurezza dei segreti', () => {
     expect(await node.securityScan()).toEqual([])
     await expect(node.securityClean(id)).rejects.toThrow(/non contiene segreti/)
     // Il registro locale annota la pulizia (tipo), senza il valore
+    // EN: The local log records the cleanup (type), without the value
     const log = node.securityLog()
     expect(log[0]).toMatchObject({ source: { type: 'clean', ref: leaky } })
     expect(JSON.stringify(log)).not.toContain('482913')

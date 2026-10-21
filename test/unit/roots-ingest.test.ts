@@ -4,6 +4,12 @@
  * - il distillatore SUGGERISCE una Radice (decide l'utente);
  * - i documenti di una cartella "di Radici" diventano Radici da soli.
  * LLM finto: "LEZIONE: titolo | corpo | rif: radice=<categoria>" = suggerimento di Radice.
+ *
+ * EN: Roots in ingestion (Phase 8, 8.4):
+ * - text from diagrams: draw.io (plain and compressed), SVG, Mermaid/PlantUML;
+ * - the distiller SUGGESTS a Root (the user decides);
+ * - documents in a "Roots" folder become Roots on their own.
+ * Fake LLM: "LEZIONE: titolo | corpo | rif: radice=<categoria>" = Root suggestion.
  */
 import fs from 'node:fs'
 import path from 'node:path'
@@ -57,7 +63,7 @@ describe('testo dai diagrammi', () => {
 describe('pipeline: suggerimenti e cartelle di Radici', () => {
   const longTech = 'Il gestionale ordini è organizzato a eventi: ogni servizio pubblica eventi di dominio sul bus. '.repeat(6)
 
-  /** Pipeline con callback che registrano suggerimenti e promozioni. */
+  /** Pipeline con callback che registrano suggerimenti e promozioni. / EN: Pipeline with callbacks that record suggestions and promotions. */
   const make = (rootFolders: string[] = []) => {
     const store = new PrivateStore(':memory:')
     const suggested: { id: string, category: RootCategory }[] = []

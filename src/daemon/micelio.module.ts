@@ -1,8 +1,13 @@
 /**
  * @file Modulo NestJS del daemon.
  *
+ * EN: NestJS module of the daemon.
+ *
  * È un "dynamic module": `forRoot(options)` riceve percorsi, configurazione e bootstrap DHT al
  * momento dell'avvio (src/daemon/main.ts) e li rende iniettabili con il token DAEMON_OPTIONS.
+ *
+ * EN: It is a "dynamic module": `forRoot(options)` receives paths, configuration and DHT bootstrap at
+ * startup (src/daemon/main.ts) and makes them injectable with the DAEMON_OPTIONS token.
  *
  * Registra globalmente:
  * - TokenGuard  (APP_GUARD):  ogni rotta dei controller richiede il token, salvo quelle marcate
@@ -10,8 +15,17 @@
  *   (contengono solo codice dell'interfaccia, nessun dato);
  * - ErrorFilter (APP_FILTER): errori → JSON `{ error }` con lo status giusto.
  *
+ * EN: It registers globally:
+ * - TokenGuard  (APP_GUARD):  every controller route requires the token, except those marked
+ *   PUBLIC_ROUTE. Note: the UI static files do not go through the controllers, so they are public
+ *   (they contain only interface code, no data);
+ * - ErrorFilter (APP_FILTER): errors → JSON `{ error }` with the right status.
+ *
  * La UI compilata (dist/ui, prodotta da `npm run build -w ui`) viene servita su /ui se esiste.
  * Nei test e nelle esecuzioni da sorgente la cartella non c'è e il modulo statico non si carica.
+ *
+ * EN: The built UI (dist/ui, produced by `npm run build -w ui`) is served on /ui if it exists.
+ * In tests and when running from source the folder is missing and the static module is not loaded.
  */
 import fs from 'node:fs'
 import path from 'node:path'
@@ -31,23 +45,26 @@ import { DAEMON_OPTIONS } from './tokens'
 import { UiController } from './ui.controller'
 import { UiLinkService } from './ui-link.service'
 
-/** Parametri di avvio del daemon. */
+/** Parametri di avvio del daemon. / EN: Daemon startup parameters. */
 export interface DaemonOptions {
   paths: NodePaths
   config: Config
   /**
    * Nodi bootstrap DHT per TUTTI i team (test). Assente = ognuno usa la rete scelta nelle sue
    * impostazioni (o MICELIO_DHT_BOOTSTRAP).
+   *
+   * EN: DHT bootstrap nodes for ALL teams (tests). Missing = each team uses the network chosen in its
+   * settings (or MICELIO_DHT_BOOTSTRAP).
    */
   bootstrap?: { host: string, port: number }[]
 }
 
-/** Cartella della UI compilata: dist/ui, accanto a dist/daemon. */
+/** Cartella della UI compilata: dist/ui, accanto a dist/daemon. / EN: Folder of the built UI: dist/ui, next to dist/daemon. */
 export const UI_DIR = path.join(__dirname, '..', 'ui')
 
 @Module({})
 export class MicelioModule implements NestModule {
-  /** Team della richiesta (intestazione x-micelio-team) per tutte le rotte: vedi team-context.ts. */
+  /** Team della richiesta (intestazione x-micelio-team) per tutte le rotte: vedi team-context.ts. / EN: Request team (x-micelio-team header) for all routes: see team-context.ts. */
   configure (consumer: MiddlewareConsumer): void {
     consumer.apply(teamMiddleware).forRoutes('*')
   }

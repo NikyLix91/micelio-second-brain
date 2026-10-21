@@ -1,11 +1,19 @@
 /**
  * @file Documento originale su richiesta (DESIGN §12-bis, decisioni D10–D11).
  *
+ * EN: Original document on request (DESIGN §12-bis, decisions D10–D11).
+ *
  * Protocollo `micelio/file/v1`, un canale `protomux` sulle connessioni Hyperswarm già aperte
  * (quindi già cifrate con Noise). Tre messaggi JSON:
  *   request  { id, hash, writer, signer, sig }  chi chiede → tutti i peer connessi
  *   response { id, ok, reason?, name?, size? }  ogni peer risponde (sì / no / non ce l'ho)
  *   chunk    { id, seq, data(base64), done }    il proprietario invia il file a pezzi
+ *
+ * EN: Protocol `micelio/file/v1`, a `protomux` channel over the Hyperswarm connections already
+ * open (so already encrypted with Noise). Three JSON messages:
+ *   request  { id, hash, writer, signer, sig }  requester → all connected peers
+ *   response { id, ok, reason?, name?, size? }  each peer answers (yes / no / I don't have it)
+ *   chunk    { id, seq, data(base64), done }    the owner sends the file in pieces
  *
  * Chi può chiedere: solo un MEMBRO ATTIVO del team. Il richiedente dimostra la propria identità
  * firmando, con la chiave segreta del suo feed (writer), l'hash della sessione Noise di QUESTA
@@ -14,12 +22,26 @@
  * team) e la chiave che firma (`signer`) sono diverse: il proprietario verifica che `signer` sia
  * davvero la chiave di firma del feed `writer` (dal suo manifest).
  *
+ * EN: Who can ask: only an ACTIVE MEMBER of the team. The requester proves their identity by
+ * signing, with the secret key of their feed (writer), the Noise session hash of THIS connection
+ * plus the file hash. The signature is valid only on this connection: it can't be intercepted
+ * and reused elsewhere. In Hypercore 11 the feed key (`writer`, the identity in the team) and the
+ * signing key (`signer`) are different: the owner checks that `signer` really is the signing
+ * key of the `writer` feed (from its manifest).
+ *
  * Chi risponde "sì": solo il nodo PROPRIETARIO, e solo se il file sta in una cartella
  * condivisibile, esiste ancora e ha ancora lo stesso contenuto (D10). Le copie scaricate da altri
  * nodi non vengono mai ri-servite (D11): se il proprietario è offline, il file non è disponibile.
  *
+ * EN: Who answers "yes": only the OWNER node, and only if the file is in a shareable folder,
+ * still exists and still has the same content (D10). Copies downloaded by other nodes are never
+ * served again (D11): if the owner is offline, the file is not available.
+ *
  * All'arrivo il file viene verificato con il suo hash SHA-256: un peer non può spacciare un
  * contenuto diverso.
+ *
+ * EN: On arrival the file is checked against its SHA-256 hash: a peer can't pass off different
+ * content.
  */
 import { createHash, randomBytes } from 'node:crypto'
 import fs from 'node:fs'
@@ -29,17 +51,17 @@ import crypto from 'hypercore-crypto'
 import b4a from 'b4a'
 
 const PROTOCOL = 'micelio/file/v1'
-/** Dimensione dei pezzi inviati: 64 KB (in base64 circa 87 KB per messaggio). */
+/** Dimensione dei pezzi inviati: 64 KB (in base64 circa 87 KB per messaggio). / EN: Size of the pieces sent: 64 KB (about 87 KB per message in base64). */
 const CHUNK_BYTES = 64 * 1024
-/** Tempo massimo per ricevere un file. */
+/** Tempo massimo per ricevere un file. / EN: Maximum time to receive a file. */
 const FETCH_TIMEOUT_MS = 60_000
 
 export interface FileShareDeps {
-  /** true se  è un membro attivo e  è la chiave di firma del suo feed. */
+  /** true se `writerKeyHex` è un membro attivo e `signerHex` è la chiave di firma del suo feed. / EN: true if `writerKeyHex` is an active member and `signerHex` is the signing key of their feed. */
   isMember: (writerKeyHex: string, signerHex: string) => Promise<boolean>
-  /** Il file locale da servire per un hash, oppure il motivo del rifiuto. */
+  /** Il file locale da servire per un hash, oppure il motivo del rifiuto. / EN: The local file to serve for a hash, or the reason for refusing. */
   resolve: (hash: string) => Promise<{ file: string, name: string, size: number } | { denied: string }>
-  /** Chiave pubblica e segreta del feed locale (per firmare le richieste); null se non writer. */
+  /** Chiave pubblica e segreta del feed locale (per firmare le richieste); null se non writer. / EN: Public and secret key of the local feed (to sign requests); null if not a writer. */
   localWriter: () => { memberKey: Uint8Array, publicKey: Uint8Array, secretKey: Uint8Array } | null
   log: (m: string) => void
 }
@@ -50,18 +72,18 @@ interface Pending {
   hash: string
   resolve: (r: { data: Buffer, name: string }) => void
   reject: (e: Error) => void
-  /** Risposte ricevute (per capire quando tutti hanno detto no). */
+  /** Risposte ricevute (per capire quando tutti hanno detto no). / EN: Answers received (to know when everyone said no). */
   answers: number
   asked: number
   denials: string[]
-  /** Peer scelto (il primo che ha detto sì) e pezzi ricevuti. */
+  /** Peer scelto (il primo che ha detto sì) e pezzi ricevuti. / EN: Chosen peer (the first that said yes) and pieces received. */
   from: any | null
   name: string
   parts: Buffer[]
   timer: NodeJS.Timeout
 }
 
-/** Messaggio da firmare: hash della sessione Noise + hash del file. */
+/** Messaggio da firmare: hash della sessione Noise + hash del file. / EN: Message to sign: Noise session hash + file hash. */
 const signedPayload = (handshakeHash: Uint8Array, hash: string) => b4a.concat([handshakeHash, b4a.from(hash, 'hex')])
 
 export class FileShare {
@@ -73,11 +95,19 @@ export class FileShare {
   /**
    * Prepara il protocollo su una nuova connessione (chiamato per ogni peer connesso).
    *
+   * EN: Sets up the protocol on a new connection (called for each connected peer).
+   *
    * Due cose, entrambe necessarie (bug trovato nei test della Fase 4):
    * - `pair`: se il peer apre il canale per primo, lo creiamo noi in risposta;
    * - `open`: proviamo comunque ad aprirlo subito.
    * Senza `pair`, se un lato apriva il canale quando l'altro non era ancora pronto, l'apertura
    * veniva rifiutata e il canale si chiudeva su entrambi i lati: nessun download possibile.
+   *
+   * EN: Two things, both required (bug found in the Phase 4 tests):
+   * - `pair`: if the peer opens the channel first, we create it in response;
+   * - `open`: we try to open it right away anyway.
+   * Without `pair`, if one side opened the channel when the other wasn't ready yet, the open was
+   * rejected and the channel closed on both sides: no download possible.
    */
   attach (conn: any): void {
     const mux = Protomux.from(conn)
@@ -89,11 +119,11 @@ export class FileShare {
     this.open(conn)
   }
 
-  /** Crea e apre il canale su una connessione, se non esiste già. */
+  /** Crea e apre il canale su una connessione, se non esiste già. / EN: Creates and opens the channel on a connection, if it doesn't exist yet. */
   private open (conn: any): void {
     const mux = Protomux.from(conn)
     const ch = mux.createChannel({ protocol: PROTOCOL, unique: true, onclose: () => this.channels.delete(entry) })
-    if (!ch) return // canale già esistente su questa connessione
+    if (!ch) return // canale già esistente su questa connessione / EN: channel already exists on this connection
     const entry: Channel = {
       ch,
       conn,
@@ -106,17 +136,21 @@ export class FileShare {
   }
 
   // ═══════════════════════════════ Lato proprietario ═══════════════════════════════
+  // EN: ═══ Owner side ═══
 
-  /** Gestisce una richiesta: verifica identità, appartenenza al team e disponibilità del file. */
+  /** Gestisce una richiesta: verifica identità, appartenenza al team e disponibilità del file. / EN: Handles a request: checks identity, team membership and file availability. */
   private async onRequest (entry: Channel, m: { id: string, hash: string, writer: string, signer: string, sig: string }): Promise<void> {
     const deny = (reason: string) => entry.response.send({ id: m.id, ok: false, reason })
     // 1) Firma valida su QUESTA connessione: il richiedente possiede davvero la chiave che dichiara.
+    // EN: 1) Valid signature on THIS connection: the requester really owns the key it claims.
     const valid = typeof m.writer === 'string' && typeof m.signer === 'string' && typeof m.sig === 'string' &&
       crypto.verify(signedPayload(entry.conn.handshakeHash, m.hash), b4a.from(m.sig, 'hex'), b4a.from(m.signer, 'hex'))
     if (!valid) return deny('firma non valida')
     // 2) È un membro attivo del team, e la chiave di firma è proprio quella del suo feed.
+    // EN: 2) It's an active team member, and the signing key really is the one of its feed.
     if (!(await this.deps.isMember(m.writer, m.signer))) return deny('non sei un membro attivo del team')
     // 3) Il file c'è, è condivisibile ed è invariato.
+    // EN: 3) The file exists, is shareable and is unchanged.
     const r = await this.deps.resolve(m.hash)
     if ('denied' in r) return deny(r.denied)
     const data = fs.readFileSync(r.file)
@@ -129,10 +163,15 @@ export class FileShare {
   }
 
   // ═══════════════════════════════ Lato richiedente ═══════════════════════════════
+  // EN: ═══ Requester side ═══
 
   /**
    * Chiede un file a tutti i peer connessi e attende il primo che lo fornisce.
+   *
+   * EN: Asks all connected peers for a file and waits for the first one that provides it.
+   *
    * @throws Error con il motivo (nessun peer, rifiuto, timeout, contenuto non corrispondente)
+   *         EN: with the reason (no peers, refusal, timeout, mismatched content)
    */
   fetch (hash: string): Promise<{ data: Buffer, name: string }> {
     const me = this.deps.localWriter()
@@ -155,7 +194,7 @@ export class FileShare {
     if (!p) return
     p.answers++
     if (m.ok && !p.from) {
-      p.from = entry // il primo "sì" vince; gli altri vengono ignorati
+      p.from = entry // il primo "sì" vince; gli altri vengono ignorati / EN: the first "yes" wins; the others are ignored
       p.name = m.name ?? 'documento'
     } else if (!m.ok && m.reason) {
       p.denials.push(m.reason)
@@ -163,6 +202,8 @@ export class FileShare {
     if (!p.from && p.answers >= p.asked) {
       // Tutti hanno risposto e nessuno ha il file. "non trovato" è la risposta dei nodi che non
       // ne sono proprietari: se c'è un rifiuto più specifico, mostriamo quello.
+      // EN: Everyone answered and nobody has the file. "not found" is the answer of the nodes that
+      //     don't own it: if there's a more specific refusal, we show that one.
       const specific = p.denials.find((d) => d !== 'documento non disponibile su questo nodo')
       this.fail(m.id, new Error(specific ?? 'il proprietario del documento non è online (o il file non è più disponibile)'))
     }
@@ -175,6 +216,7 @@ export class FileShare {
     if (!m.done) return
     const data = Buffer.concat(p.parts)
     // Verifica di integrità: il contenuto deve corrispondere esattamente all'hash richiesto.
+    // EN: Integrity check: the content must match the requested hash exactly.
     if (createHash('sha256').update(data).digest('hex') !== p.hash) return this.fail(m.id, new Error('il file ricevuto non corrisponde all\'originale (hash diverso)'))
     clearTimeout(p.timer)
     this.pending.delete(m.id)

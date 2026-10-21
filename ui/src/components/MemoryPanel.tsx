@@ -1,6 +1,9 @@
 /**
  * @file Pannello di dettaglio di un ricordo, condiviso dalle viste a grafo (Nucleo 3D, Mappa 2D).
  * Il corpo si carica al momento dell'apertura (il grafo contiene solo titolo e metadati).
+ *
+ * EN: Detail panel of a memory, shared by the graph views (3D Nucleus, 2D Map).
+ * The body is loaded when the panel opens (the graph holds only title and metadata).
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
@@ -102,6 +105,9 @@ const S = defineStrings({
 /**
  * Riquadro "documento originale" (Fase 4): il ricordo è stato distillato da un documento, che si
  * può scaricare dal collega che lo possiede (deve essere online e condividere quella cartella).
+ *
+ * EN: "Original document" box (Phase 4): the memory was distilled from a document, which can be
+ * downloaded from the colleague who owns it (they must be online and share that folder).
  */
 function SourceBox ({ id, name, size }: { id: string, name: string, size?: number }) {
   const s = useStrings(S)
@@ -128,6 +134,10 @@ function SourceBox ({ id, name, size }: { id: string, name: string, size?: numbe
  * Riquadro "Radice" (Fase 8). Per una Radice: categoria, stato di revisione con i motivi, e le
  * azioni (confermare dopo averla rivista, cambiare categoria, togliere). Per un ricordo normale:
  * "Rendi Radice" con la scelta della categoria. Qualunque membro può farlo.
+ *
+ * EN: "Root" box (Phase 8). For a Root: category, review status with the reasons, and the
+ * actions (confirm after reviewing it, change category, remove). For a normal memory:
+ * "Make it a Root" with the category choice. Any member can do it.
  */
 function RootBox ({ id, root }: { id: string, root?: { category: string, status: 'ok' | 'review' } }) {
   const s = useStrings(S)
@@ -182,6 +192,9 @@ function RootBox ({ id, root }: { id: string, root?: { category: string, status:
 /**
  * Indirizzo web di un commit, se il remote è un URL https (GitHub, GitLab, Azure DevOps e Bitbucket
  * accettano tutti la forma `<repo>/commit/<hash>`); null per remote ssh o sconosciuti.
+ *
+ * EN: Web address of a commit, if the remote is an https URL (GitHub, GitLab, Azure DevOps and Bitbucket
+ * all accept the `<repo>/commit/<hash>` form); null for ssh or unknown remotes.
  */
 function commitUrl (repo: string | undefined, hash: string): string | null {
   if (!repo || !/^https?:\/\//.test(repo)) return null
@@ -192,6 +205,10 @@ function commitUrl (repo: string | undefined, hash: string): string | null {
  * Riquadro "riferimenti al codice": il ricordo è stato distillato da una sessione di sviluppo e dice
  * dove approfondire (progetto, branch, file, simboli, commit). I commit, se il repository è su un
  * server web, sono link alla pagina del commit.
+ *
+ * EN: "Code references" box: the memory was distilled from a development session and says
+ * where to dig deeper (project, branch, files, symbols, commits). Commits, if the repository is on a
+ * web server, link to the commit page.
  */
 function CodeBox ({ code }: { code: CodeRefs }) {
   const s = useStrings(S)
@@ -222,6 +239,9 @@ function CodeBox ({ code }: { code: CodeRefs }) {
 /**
  * Priorità del ricordo (Fase 5): attivazione, usi, voti e pin. I voti e il pin sono segnali per
  * tutto il team: i ricordi utili salgono nelle ricerche, quelli fissati non decadono mai.
+ *
+ * EN: Memory priority (Phase 5): activation, uses, votes and pin. Votes and pin are signals for
+ * the whole team: useful memories rise in searches, pinned ones never decay.
  */
 function Signals ({ id, activation, votes, uses, useful = 0, pinned }: { id: string, activation: number, votes: number, uses: number, useful?: number, pinned: boolean }) {
   const s = useStrings(S)
@@ -234,7 +254,7 @@ function Signals ({ id, activation, votes, uses, useful = 0, pinned }: { id: str
       <div className='row small'><span>{s.activation}</span><span className='spacer' /><span>{Math.round(activation * 100)}%</span></div>
       <Meter value={activation} max={1} />
       <div className='row small' style={{ marginTop: 8 }}>
-        {/* B11: utilità per gli agenti (confermata a fine sessione), sommata su tutto il team */}
+        {/* B11: utilità per gli agenti (confermata a fine sessione), sommata su tutto il team / EN: B11: usefulness to agents (confirmed at session end), summed over the whole team */}
         <span className='muted'>{s.usage(uses, `${votes > 0 ? '+' : ''}${votes}`)}{useful > 0 ? s.usefulTimes(useful) : ''}</span>
         <span className='spacer' />
         <button className='btn small' title={s.useful} onClick={() => vote.mutate(1)}>👍</button>
@@ -246,7 +266,7 @@ function Signals ({ id, activation, votes, uses, useful = 0, pinned }: { id: str
   )
 }
 
-/** Ricordo personale (B4): solo su questo PC; si condivide con il team o si cancella. */
+/** Ricordo personale (B4): solo su questo PC; si condivide con il team o si cancella. / EN: Personal memory (B4): only on this PC; it can be shared with the team or deleted. */
 function PersonalBox ({ id, onDone }: { id: string, onDone: () => void }) {
   const s = useStrings(S)
   const client = useQueryClient()
@@ -271,6 +291,8 @@ export function MemoryPanel ({ node, onClose }: { node: GraphNode, onClose: () =
   const full = useQuery({ queryKey: ['memories', 'one', node.id], queryFn: () => api.memory(node.id) })
   // I campi si prendono dal ricordo completo appena è caricato: aperto da un link (#/memoria?id=…)
   // il nodo di partenza ha solo l'id
+  // EN: Fields come from the full memory as soon as it loads: when opened from a link (#/memoria?id=…)
+  //     the starting node has only the id
   const m = full.data ?? node
   return (
     <Card title={m.title} actions={<button className='btn small' onClick={onClose} aria-label={s.close}>✕</button>}>

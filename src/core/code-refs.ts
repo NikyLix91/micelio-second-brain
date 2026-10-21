@@ -5,13 +5,20 @@
  * agenti), `micelio get`/`recall` da terminale ed export Markdown. Così chi legge vede sempre
  * nello stesso modo dove approfondire: progetto, repository, branch, file, simboli, commit.
  * L'app React ha un suo componente (ui/src/components/MemoryPanel.tsx) con lo stesso contenuto.
+ *
+ * EN: Text rendering of a memory's code references (`source.code`).
+ *
+ * EN: One format for every place where a memory is read as text: MCP results (for agents),
+ * `micelio get`/`recall` in the terminal, and Markdown export. This way readers always see where
+ * to dig deeper in the same way: project, repository, branch, files, symbols, commits.
+ * The React app has its own component (ui/src/components/MemoryPanel.tsx) with the same content.
  */
 import type { CodeRefs } from './events'
 
-/** Numero massimo di file/simboli/commit elencati nelle forme compatte (il resto è "+N"). */
+/** Numero massimo di file/simboli/commit elencati nelle forme compatte (il resto è "+N"). / EN: Maximum number of files/symbols/commits listed in compact forms (the rest is "+N"). */
 const COMPACT = 6
 
-/** Elenca al massimo `n` voci, segnalando quante ne restano fuori. */
+/** Elenca al massimo `n` voci, segnalando quante ne restano fuori. / EN: Lists at most `n` items, noting how many are left out. */
 function list (xs: string[], n: number, fmt: (x: string) => string = (x) => x): string {
   const shown = xs.slice(0, n).map(fmt).join(', ')
   return xs.length > n ? `${shown} (+${xs.length - n})` : shown
@@ -24,7 +31,11 @@ function list (xs: string[], n: number, fmt: (x: string) => string = (x) => x): 
  *   File: `src/orders/order.service.ts`, `src/orders/orders.controller.ts`
  *   Simboli: class OrderService, POST /orders/confirm
  *   Commit: 1a2b3c4d, 5e6f7a8b
+ *
+ * EN: Markdown lines with the code references, or [] if the memory has none.
+ * Example: see above.
  * @param full true = tutte le voci (dettaglio, export); false = forma compatta (risultati di ricerca)
+ *        EN: true = all items (detail, export); false = compact form (search results)
  */
 export function formatCodeRefs (code: CodeRefs | undefined, full = true): string[] {
   if (!code) return []

@@ -1,9 +1,15 @@
 /**
  * @file Galassie: i ricordi raggruppati in comunità, per le viste di un team grande.
  *
+ * EN: Galaxies: memories grouped into communities, for the views of a large team.
+ *
  * Con centinaia o migliaia di ricordi la costellazione diventa un campo indistinto. Le galassie
  * ne danno una vista d'insieme: da lontano una galassia per argomento, con nome e numero di
  * ricordi; entrandoci si vedono le sue stelle (ui/src/pages/nucleus, Constellation).
+ *
+ * EN: With hundreds or thousands of memories the constellation becomes a shapeless field. Galaxies
+ * give an overview of it: from afar, one galaxy per topic, with a name and a memory count;
+ * zooming in shows its stars (ui/src/pages/nucleus, Constellation).
  *
  * Algoritmo, deterministico (stessi ricordi → stesse galassie, su ogni PC):
  * 1. **Louvain** sui collegamenti della costellazione (tag in comune, significato, dreaming):
@@ -20,40 +26,57 @@
  * Il nome di una galassia sono i suoi tag più CARATTERISTICI: frequenti dentro, rari fuori
  * (frequenza × IDF), così due galassie non si chiamano entrambe con un tag usato ovunque.
  *
+ * EN: Deterministic algorithm (same memories → same galaxies, on every PC):
+ * 1. **Louvain** on the constellation links (shared tags, meaning, dreaming):
+ *    moves each memory into the community that increases modularity the most, then collapses each
+ *    community into a node and repeats. Nearly linear in the number of links. The RESOLUTION is
+ *    picked automatically (see RESOLUTIONS): the lowest one that doesn't produce giant galaxies.
+ *    Measured on 5,000 test memories: with label propagation (the first version) one galaxy
+ *    gathered 1,477 memories (topic purity 41%); with Louvain the largest has 383 (purity 65%),
+ *    in about 170 ms;
+ * 2. communities that are **too small** merge into the neighbor they are most strongly linked
+ *    to; memories without links go into the "other" galaxy (id -1);
+ * 3. if **too many** galaxies remain, the smallest ones merge until there are at most
+ *    MAX_GALAXIES (they must stay readable from afar).
+ * A galaxy's name is its most CHARACTERISTIC tags: frequent inside, rare outside
+ * (frequency × IDF), so two galaxies aren't both named after a tag used everywhere.
+ *
  * Funzione pura: nessun accesso a rete o disco.
+ *
+ * EN: Pure function: no network or disk access.
  */
 import type { GraphLink, GraphNode } from './constellation'
 
-/** Galassie al massimo nella vista d'insieme. */
+/** Galassie al massimo nella vista d'insieme. / EN: Maximum number of galaxies in the overview. */
 export const MAX_GALAXIES = 40
-/** Risoluzioni provate in ordine: più alta = galassie più piccole e numerose. */
+/** Risoluzioni provate in ordine: più alta = galassie più piccole e numerose. / EN: Resolutions tried in order: higher = smaller and more numerous galaxies. */
 const RESOLUTIONS = [1, 1.5, 2, 3, 4, 6, 8, 12, 16]
-/** Una galassia non dovrebbe superare questa quota dei ricordi (né, comunque, 150 ricordi). */
+/** Una galassia non dovrebbe superare questa quota dei ricordi (né, comunque, 150 ricordi). / EN: A galaxy shouldn't exceed this share of the memories (nor, in any case, 150 memories). */
 const MAX_GALAXY_SHARE = 0.1
-/** Galassie desiderate almeno (con abbastanza ricordi): poche galassie enormi non orientano. */
+/** Galassie desiderate almeno (con abbastanza ricordi): poche galassie enormi non orientano. / EN: Minimum desired galaxies (with enough memories): a few huge galaxies don't help orientation. */
 const MIN_GALAXIES = 8
-/** Id della galassia dei ricordi senza collegamenti. */
+/** Id della galassia dei ricordi senza collegamenti. / EN: Id of the galaxy of memories without links. */
 export const OTHER_GALAXY = -1
 
 export interface Galaxy {
   id: number
-  /** Nome: i 2 tag più caratteristici (vuoto per la galassia "altro"). */
+  /** Nome: i 2 tag più caratteristici (vuoto per la galassia "altro"). / EN: Name: the 2 most characteristic tags (empty for the "other" galaxy). */
   label: string
   tags: string[]
   size: number
-  /** Radici contenute. */
+  /** Radici contenute. / EN: Roots it contains. */
   roots: number
-  /** I ricordi più vivi (attivazione), per l'anteprima. */
+  /** I ricordi più vivi (attivazione), per l'anteprima. / EN: The most alive memories (activation), for the preview. */
   top: string[]
 }
 
 export interface Communities {
-  /** Galassia di ogni ricordo. */
+  /** Galassia di ogni ricordo. / EN: Galaxy of each memory. */
   of: Map<string, number>
   galaxies: Galaxy[]
 }
 
-/** Hash stabile di una stringa: ordine di visita deterministico ma non alfabetico. */
+/** Hash stabile di una stringa: ordine di visita deterministico ma non alfabetico. / EN: Stable string hash: deterministic but non-alphabetical visit order. */
 function hash (s: string): number {
   let h = 2166136261
   for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619) >>> 0
@@ -62,14 +85,21 @@ function hash (s: string): number {
 
 /**
  * Raggruppa i ricordi in galassie.
+ *
+ * EN: Groups memories into galaxies.
+ *
  * @param minSize comunità più piccole confluiscono nella vicina (default: 3, o 1/200 dei ricordi)
+ *                EN: smaller communities merge into their neighbor (default: 3, or 1/200 of the memories)
  */
 /**
  * @param sizing dimensioni desiderate, per usi diversi dalla vista d'insieme (es. i temi della chat,
  *               B10: pochi ricordi, gruppi piccoli): galassia più grande e quante almeno
+ *               EN: desired sizes, for uses other than the overview (e.g. the chat themes,
+ *               B10: few memories, small groups): largest galaxy and minimum count
  */
 export function detectCommunities (nodes: GraphNode[], links: GraphLink[], minSize = Math.max(3, Math.round(nodes.length / 200)), sizing: { maxSize?: number, minCount?: number } = {}): Communities {
   // Adiacenza pesata, in entrambe le direzioni
+  // EN: Weighted adjacency, in both directions
   const adj = new Map<string, Map<string, number>>()
   for (const n of nodes) adj.set(n.id, new Map())
   for (const l of links) {
@@ -80,6 +110,7 @@ export function detectCommunities (nodes: GraphNode[], links: GraphLink[], minSi
   }
 
   // 1. Louvain con la risoluzione più bassa che dà abbastanza galassie, nessuna gigante
+  // EN: 1. Louvain with the lowest resolution that gives enough galaxies, none of them giant
   const order = nodes.map((n) => n.id).sort((a, b) => hash(a) - hash(b))
   const maxSize = sizing.maxSize ?? Math.max(150, Math.ceil(nodes.length * MAX_GALAXY_SHARE))
   const minCount = sizing.minCount ?? Math.min(MIN_GALAXIES, Math.floor(nodes.length / 50))
@@ -92,6 +123,7 @@ export function detectCommunities (nodes: GraphNode[], links: GraphLink[], minSi
     let largest = 0
     for (const s of sizes.values()) if (s > largest) largest = s
     // conta solo le comunità che resteranno galassie (le piccole confluiscono nelle vicine)
+    // EN: count only the communities that will remain galaxies (small ones merge into their neighbors)
     let count = 0
     for (const s of sizes.values()) if (s >= minSize) count++
     if (largest < bestLargest) { label = candidate; bestLargest = largest }
@@ -99,14 +131,15 @@ export function detectCommunities (nodes: GraphNode[], links: GraphLink[], minSi
   }
 
   // Raggruppa per etichetta
+  // EN: Group by label
   const groups = new Map<number, Set<string>>()
   for (const [id, l] of label) {
-    if (!adj.get(id)!.size) continue // isolati: "altro"
+    if (!adj.get(id)!.size) continue // isolati: "altro" / EN: isolated: "other"
     if (!groups.has(l)) groups.set(l, new Set())
     groups.get(l)!.add(id)
   }
 
-  /** Fonde il gruppo `l` in quello vicino più legato; false se non ha vicini fuori da sé. */
+  /** Fonde il gruppo `l` in quello vicino più legato; false se non ha vicini fuori da sé. / EN: Merges group `l` into its most strongly linked neighbor; false if it has no neighbors outside itself. */
   const mergeIntoNeighbor = (l: number): boolean => {
     const members = groups.get(l)!
     const toward = new Map<number, number>()
@@ -124,6 +157,7 @@ export function detectCommunities (nodes: GraphNode[], links: GraphLink[], minSi
   }
 
   // 2. Comunità troppo piccole → nella vicina; 3. troppe galassie → le più piccole confluiscono
+  // EN: 2. Communities too small → into the neighbor; 3. too many galaxies → the smallest ones merge
   const bySize = () => [...groups].sort((a, b) => a[1].size - b[1].size || a[0] - b[0])
   for (const [l, members] of bySize()) if (groups.has(l) && members.size < minSize) mergeIntoNeighbor(l)
   while (groups.size > MAX_GALAXIES) {
@@ -132,12 +166,14 @@ export function detectCommunities (nodes: GraphNode[], links: GraphLink[], minSi
   }
 
   // Assegnazione finale: id compatti per dimensione (0 = la più grande)
+  // EN: Final assignment: compact ids by size (0 = the largest)
   const ranked = [...groups].sort((a, b) => b[1].size - a[1].size || a[0] - b[0])
   const of = new Map<string, number>()
   ranked.forEach(([, members], i) => { for (const id of members) of.set(id, i) })
   for (const n of nodes) if (!of.has(n.id)) of.set(n.id, OTHER_GALAXY)
 
   // Nomi: tag caratteristici (frequenza nella galassia × IDF sul team)
+  // EN: Names: characteristic tags (frequency in the galaxy × IDF over the team)
   const byId = new Map(nodes.map((n) => [n.id, n]))
   const df = new Map<string, number>()
   for (const n of nodes) for (const t of new Set(n.tags)) df.set(t, (df.get(t) ?? 0) + 1)
@@ -164,7 +200,14 @@ export function detectCommunities (nodes: GraphNode[], links: GraphLink[], minSi
  * Fase 1: ogni nodo passa alla comunità vicina con il guadagno di modularità più alto, finché
  * nessuno si sposta. Fase 2: ogni comunità diventa un nodo e si ricomincia. Si ferma quando una
  * passata non sposta più nulla.
+ *
+ * EN: Louvain (modularity with resolution), deterministic: nodes are visited in the given order.
+ * Phase 1: each node moves to the neighboring community with the highest modularity gain, until
+ * nobody moves. Phase 2: each community becomes a node and it starts over. It stops when a
+ * pass no longer moves anything.
+ *
  * @returns comunità di ogni nodo (numeri arbitrari ma stabili)
+ *          EN: community of each node (arbitrary but stable numbers)
  */
 function louvain (order: string[], adjacency: Map<string, Map<string, number>>, resolution: number): Map<string, number> {
   const index = new Map(order.map((id, i) => [id, i]))
@@ -174,7 +217,7 @@ function louvain (order: string[], adjacency: Map<string, Map<string, number>>, 
     for (const [nb, w] of adjacency.get(id)!) m.set(index.get(nb)!, w)
     return m
   })
-  let member = order.map((_, i) => i) // nodo originale → nodo del livello attuale
+  let member = order.map((_, i) => i) // nodo originale → nodo del livello attuale / EN: original node → node at the current level
   for (let pass = 0; pass < 10; pass++) {
     const k = adj.map((m) => { let s = 0; for (const w of m.values()) s += w; return s })
     let m2 = 0
@@ -202,6 +245,7 @@ function louvain (order: string[], adjacency: Map<string, Map<string, number>>, 
     }
     if (!any) break
     // Ogni comunità diventa un nodo del livello successivo
+    // EN: Each community becomes a node of the next level
     const relabel = new Map<number, number>()
     for (let i = 0; i < n; i++) if (!relabel.has(comm[i])) relabel.set(comm[i], relabel.size)
     const next: Map<number, number>[] = Array.from({ length: relabel.size }, () => new Map())
@@ -222,6 +266,9 @@ function louvain (order: string[], adjacency: Map<string, Map<string, number>>, 
 /**
  * Collegamenti fra galassie per la vista d'insieme: somma dei pesi dei collegamenti fra ricordi
  * di galassie diverse, normalizzata 0..1, tenendo per ogni galassia i 4 legami più forti.
+ *
+ * EN: Links between galaxies for the overview: sum of the weights of the links between memories
+ * of different galaxies, normalized to 0..1, keeping the 4 strongest links for each galaxy.
  */
 export function galaxyLinks (links: GraphLink[], of: Map<string, number>): { source: number, target: number, weight: number }[] {
   const sum = new Map<string, number>()

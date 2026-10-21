@@ -1,15 +1,27 @@
 /**
  * @file Ossatura della UI: barra laterale di navigazione + schermata corrente.
  *
+ * EN: UI skeleton: navigation sidebar + current screen.
+ *
  * Routing con HashRouter (URL del tipo /ui/#/inbox): funziona identico nel browser servito dal
  * daemon e nell'app Electron, senza configurare il server per le "rotte" della SPA.
+ *
+ * EN: Routing with HashRouter (URLs like /ui/#/inbox): it works the same in the browser served by
+ * the daemon and in the Electron app, without configuring the server for the SPA "routes".
  *
  * Se il nodo non appartiene ancora a un team, al posto delle schermate mostra l'Onboarding.
  * Con più team (B3) il selettore nella barra laterale sceglie su quale team lavorano le schermate
  * (vedi api/team.ts); /team/nuovo aggiunge un team.
  *
+ * EN: If the node does not belong to a team yet, it shows the Onboarding instead of the screens.
+ * With several teams (B3) the selector in the sidebar picks which team the screens work on
+ * (see api/team.ts); /team/nuovo adds a team.
+ *
  * Home = Nucleo 3D (vista "wow" e navigazione guidata). Le viste 2D servono a scopi specifici
  * (es. Mappa 2D con filtri per autore e tipo).
+ *
+ * EN: Home = 3D Nucleus ("wow" view and guided navigation). The 2D views serve specific purposes
+ * (e.g. 2D Map with filters by author and type).
  */
 import { useQuery } from '@tanstack/react-query'
 import { lazy, Suspense, useEffect } from 'react'
@@ -36,7 +48,7 @@ import { Digest } from './pages/Digest'
 import { Efficacy } from './pages/Efficacy'
 import { Ask } from './pages/Ask'
 
-/** Testi dell'ossatura (menu, stati di connessione) nelle due lingue. */
+/** Testi dell'ossatura (menu, stati di connessione) nelle due lingue. / EN: Skeleton texts (menu, connection states) in both languages. */
 const S = defineStrings({
   it: {
     connecting: 'Connessione al nodo…',
@@ -55,6 +67,7 @@ const S = defineStrings({
 })
 
 // Il Nucleo 3D porta con sé three.js: caricato solo quando serve (bundle separato).
+// EN: The 3D Nucleus brings three.js along: loaded only when needed (separate bundle).
 const Nucleus = lazy(() => import('./pages/nucleus/Nucleus'))
 
 export function App () {
@@ -65,6 +78,7 @@ export function App () {
   if (status.error) return <div className='centered'><ErrorBox error={status.error} /></div>
   if (!status.data) return <div className='centered muted'>{s.connecting}</div>
   // Primo avvio: la guida serve anche qui (pulsante «?» del modulo)
+  // EN: First start: the help is needed here too (the form's «?» button)
   if (!status.data.configured) return <HelpProvider><Onboarding /></HelpProvider>
 
   return (
@@ -95,14 +109,14 @@ export function App () {
   )
 }
 
-/** Argomento della guida per ogni pagina (F1). */
+/** Argomento della guida per ogni pagina (F1). / EN: Help topic for each page (F1). */
 export const PAGE_TOPIC: Record<string, string> = {
   '/': 'views#nucleus', '/mappa': 'views#map', '/memoria': 'memory', '/radici': 'roots', '/inbox': 'inbox',
   '/team': 'team', '/sogni': 'dreams', '/stato': 'status', '/privato': 'private', '/sicurezza': 'security',
   '/impostazioni': 'settings', '/guida': 'overview', '/team/nuovo': 'teams', '/riepilogo': 'digest', '/efficacia': 'efficacy', '/chiedi': 'ask'
 }
 
-/** Pagina "Aggiungi un team": a ingresso riuscito si torna alla home, già sul nuovo team. */
+/** Pagina "Aggiungi un team": a ingresso riuscito si torna alla home, già sul nuovo team. / EN: "Add a team" page: after a successful join it goes back home, already on the new team. */
 function AddTeam () {
   const navigate = useNavigate()
   return <Onboarding adding onDone={() => navigate('/')} />
@@ -111,11 +125,15 @@ function AddTeam () {
 /**
  * Guscio: barra laterale + area principale. Sul Nucleo l'area è a tutto schermo (senza
  * margini) e tutta l'app passa al tema "olografico" scuro, per non spezzare l'effetto.
+ *
+ * EN: Shell: sidebar + main area. On the Nucleus the area is full screen (no
+ * margins) and the whole app switches to the dark "holographic" theme, so the effect is not broken.
  */
 function Shell ({ children, live, team, node }: { children: React.ReactNode, live: boolean, team: string, node: string }) {
   const { pathname } = useLocation()
   const holo = pathname === '/'
   // F1: guida sull'argomento della pagina corrente
+  // EN: F1: help on the current page's topic
   const { open } = useHelp()
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -134,7 +152,7 @@ function Shell ({ children, live, team, node }: { children: React.ReactNode, liv
   )
 }
 
-/** Barra laterale: marchio, voci di navigazione (con il contatore dell'inbox), stato della connessione. */
+/** Barra laterale: marchio, voci di navigazione (con il contatore dell'inbox), stato della connessione. / EN: Sidebar: brand, navigation items (with the Inbox counter), connection status. */
 function Sidebar ({ live, team, node }: { live: boolean, team: string, node: string }) {
   const ingest = useQuery({ queryKey: ['ingest'], queryFn: api.ingestStatus })
   const inbox = ingest.data?.inbox ?? 0

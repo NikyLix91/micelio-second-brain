@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # =============================================================================================
 # Disinstallazione di micelio-server.
+# EN: Uninstalls micelio-server.
 #
 #   sudo ./uninstall.sh [--prefix /opt/micelio-server] [--purge]
 #
@@ -9,6 +10,11 @@
 # Il server non conserva dati: non c'è nient'altro da cancellare.
 # Ricorda di chiudere la porta UDP nel firewall e di riportare i PC del team su un'altra DHT
 # (`micelio network public` oppure un altro server).
+# EN: Stops and removes the systemd service and the installed code. With --purge it also removes the
+#     configuration (/etc/default/micelio-server) and the "micelio" system user.
+#     The server keeps no data: there is nothing else to delete.
+#     Remember to close the UDP port in the firewall and to move the team's PCs to another DHT
+#     (`micelio network public` or another server).
 # =============================================================================================
 set -euo pipefail
 

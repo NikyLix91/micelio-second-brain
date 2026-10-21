@@ -1,6 +1,8 @@
 /**
  * @file Sicurezza (Fase 9): come Micelio tiene fuori password, token, file `.env` e simili.
  *
+ * EN: Security (Phase 9): how Micelio keeps out passwords, tokens, `.env` files and the like.
+ *
  * - BANCO DI PROVA: incolli un testo (o scrivi un nome di file) e vedi cosa toglierebbe il filtro,
  *   con le regole del team in vigore. Non salva nulla.
  * - REGOLE: cosa viene riconosciuto sempre, quali file sono sensibili per default, e le regole del
@@ -10,8 +12,21 @@
  *   "ripulire" (versione redatta pubblicata, originale rimosso).
  * - REGISTRO: cosa il filtro ha tolto su QUESTO PC, da dove e di che tipo. Mai i valori.
  *
+ * EN:
+ * - TEST BENCH: paste a text (or type a file name) and see what the filter would remove,
+ *   with the team rules in force. It saves nothing.
+ * - RULES: what is always detected, which files are sensitive by default, and the TEAM rules
+ *   (secret patterns, exceptions for false positives, additional sensitive files). Team rules
+ *   apply to everyone and only an admin can change them.
+ * - MEMORIES TO CLEAN: scan of the already published memories with the current rules; an admin can
+ *   "clean" them (redacted version published, original removed).
+ * - LOG: what the filter removed on THIS PC, from where and of what kind. Never the values.
+ *
  * Le descrizioni dei riconoscitori fissi arrivano dal daemon in italiano: in inglese si mostra il
  * loro tipo tecnico (es. "github-token"), che è già comprensibile.
+ *
+ * EN: The descriptions of the built-in detectors come from the daemon in Italian: in English we
+ * show their technical type (e.g. "github-token"), which is already understandable.
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
@@ -20,7 +35,7 @@ import { Card, ConfirmButton, Empty, ErrorBox, PageHeader } from '../components/
 import { dateTime } from '../format'
 import { defineStrings, useLang, useStrings } from '../i18n'
 
-/** "github-token ×2, email" da un conteggio per tipo. */
+/** "github-token ×2, email" da un conteggio per tipo. / EN: "github-token ×2, email" from a per-kind count. */
 export function kindsText (k: Record<string, number>): string {
   return Object.entries(k).map(([t, n]) => `${t.replace('secret:', '')}${n > 1 ? ` ×${n}` : ''}`).join(', ')
 }
@@ -131,7 +146,7 @@ export function Security () {
   )
 }
 
-/** Banco di prova: testo e/o nome di file → cosa farebbe il filtro. */
+/** Banco di prova: testo e/o nome di file → cosa farebbe il filtro. / EN: Test bench: text and/or file name → what the filter would do. */
 function TestBench () {
   const s = useStrings(S)
   const [text, setText] = useState('')
@@ -173,10 +188,10 @@ function TestBench () {
   )
 }
 
-/** Elenco "una voce per riga" ↔ array. */
+/** Elenco "una voce per riga" ↔ array. / EN: "One entry per line" list ↔ array. */
 const lines = (x: string) => x.split('\n').map((l) => l.trim()).filter(Boolean)
 
-/** Regole: fisse (sola lettura) e del team (modificabili dall'admin). */
+/** Regole: fisse (sola lettura) e del team (modificabili dall'admin). / EN: Rules: built-in (read-only) and team ones (editable by the admin). */
 function RulesCard ({ isAdmin }: { isAdmin: boolean }) {
   const s = useStrings(S)
   const { lang } = useLang()
@@ -244,7 +259,7 @@ function RulesCard ({ isAdmin }: { isAdmin: boolean }) {
   )
 }
 
-/** Scansione dei ricordi pubblicati e pulizia (admin). */
+/** Scansione dei ricordi pubblicati e pulizia (admin). / EN: Scan of published memories and cleaning (admin). */
 function ScanCard ({ isAdmin }: { isAdmin: boolean }) {
   const s = useStrings(S)
   const client = useQueryClient()
@@ -272,7 +287,7 @@ function ScanCard ({ isAdmin }: { isAdmin: boolean }) {
   )
 }
 
-/** Registro locale: cosa è stato tolto, da dove, di che tipo. */
+/** Registro locale: cosa è stato tolto, da dove, di che tipo. / EN: Local log: what was removed, from where, of what kind. */
 function LogCard () {
   const s = useStrings(S)
   const log = useQuery({ queryKey: ['security', 'log'], queryFn: () => api.securityLog(100) })

@@ -1,5 +1,7 @@
 // Integrazione multi-nodo su DHT locale: creazione del team, ingresso via invito (blind-pairing),
 // convergenza dei ricordi, ingresso con chi ha invitato offline, permessi admin.
+// EN: Multi-node integration on a local DHT: team creation, joining via invite (blind-pairing),
+//     memory convergence, joining while the inviter is offline, admin permissions.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { MicelioNode } from '../../src/node/micelio-node'
 import { eventually, localDht, makeNode, published } from '../helpers'
@@ -68,7 +70,7 @@ describe('team multi-nodo', () => {
 
   it('chi ha invitato può essere offline: un altro membro accoglie il nuovo arrivato', async () => {
     const { code, replicated } = await bob.invite()
-    expect(replicated).toBe(true) // alice ha già l'invito: bob può andarsene
+    expect(replicated).toBe(true) // alice ha già l'invito: bob può andarsene / EN: alice already has the invite: bob can leave
     const bobIndex = nodes.indexOf(bob)
     await bob.stop()
     nodes.splice(bobIndex, 1)
@@ -77,12 +79,14 @@ describe('team multi-nodo', () => {
     await eventually(() => carol.recall('drizzle').length === 1, [carol])
     const carolRec = (await carol.members()).find((m) => m.name === 'carol')
     // accolta da alice, ma l'invito resta attribuito a bob che l'ha creato
+    // EN: accepted by alice, but the invite stays attributed to bob, who created it
     const bobKey = (await carol.members()).find((m) => m.name === 'bob')?.key
     expect(carolRec?.invitedBy).toBe(bobKey)
   })
 
   it('solo un admin può espellere; l\'admin può promuovere', async () => {
     // carol (membro) prova a espellere alice: rifiutato dal nodo stesso
+    // EN: carol (member) tries to remove alice: rejected by the node itself
     await expect(carol.removeMember('alice')).rejects.toThrow(/riservata agli admin/)
     await eventually(async () => (await alice.members()).some((m) => m.name === 'carol'), [alice])
     expect((await alice.members()).find((m) => m.name === 'alice')?.removed).toBe(false)
@@ -96,6 +100,7 @@ describe('team multi-nodo', () => {
     const id = alice.recall('drizzle')[0].id
     const before = carol.detail(id)!.activation!
     // carol usa il ricordo (ricerca ibrida), pubblica l'uso, lo vota e alice lo fissa.
+    // EN: carol uses the memory (hybrid search), publishes the usage, votes it and alice pins it.
     const hits = await carol.recallHybrid('orm nuovi servizi')
     expect(hits.map((h) => h.id)).toContain(id)
     await carol.flushUsage()
@@ -103,7 +108,7 @@ describe('team multi-nodo', () => {
     await eventually(() => (alice.detail(id)?.votes ?? 0) === 1 && (alice.detail(id)?.uses ?? 0) >= 1, [alice])
     await alice.pin(id, true)
     await eventually(() => carol.detail(id)?.pinned === true, [carol])
-    expect(carol.detail(id)!.activation).toBe(1) // fissato = attivazione massima
+    expect(carol.detail(id)!.activation).toBe(1) // fissato = attivazione massima / EN: pinned = maximum activation
     expect(carol.detail(id)!.activation!).toBeGreaterThan(before)
   })
 
