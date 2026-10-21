@@ -1,60 +1,62 @@
-# micelio-server — DHT privata del team
+[Italiano](README.it.md) | **English**
 
-Pacchetto **separato** dal resto di Micelio: si installa su una macchina Linux sempre accesa e
-raggiungibile da internet, e fa da **punto d'incontro privato** dei nodi del team. Ha una sola
-dipendenza (`hyperdht`) e non contiene dati.
+# micelio-server: the team's private DHT
 
-## A cosa serve
+A package **separate** from the rest of Micelio: it is installed on an always-on Linux machine
+reachable from the internet, and acts as the **private meeting point** for the team's nodes. It has
+a single dependency (`hyperdht`) and holds no data.
 
-I nodi Micelio si trovano su internet tramite una **DHT**, una tabella distribuita. Ogni nodo annuncia "per il team con impronta X rispondo io a questo indirizzo" e cerca gli altri con la stessa impronta. Per entrare nella DHT serve almeno un indirizzo noto: il **nodo di avvio** (bootstrap).
+## What it's for
 
-| | DHT pubblica (default) | DHT privata (questo server) |
+Micelio nodes find each other on the internet through a **DHT**, a distributed hash table. Each node announces "for the team with fingerprint X, I answer at this address" and looks for the others with the same fingerprint. To enter the DHT you need at least one known address: the **bootstrap node**.
+
+| | Public DHT (default) | Private DHT (this server) |
 |---|---|---|
-| Nodi di avvio | di Holepunch (`node1..3.hyperdht.org`) | il vostro server |
-| Chi vede l'impronta del team e gli IP dei membri | chiunque partecipi alla DHT pubblica | solo il vostro server |
-| Dipendenza da terzi | sì, per entrare | no |
-| Cosa chiedere all'IT | UDP in uscita verso internet | una porta UDP aperta su **una** macchina |
+| Bootstrap nodes | Holepunch's (`node1..3.hyperdht.org`) | your server |
+| Who sees the team fingerprint and the members' IPs | anyone taking part in the public DHT | only your server |
+| Third-party dependency | yes, to join | no |
+| What to ask IT for | outbound UDP to the internet | one UDP port open on **one** machine |
 
-Il server **non vede i contenuti**:
-- le connessioni fra i nodi sono cifrate (Noise);
-- i dati del team sono cifrati con la chiave del team, che il server non ha;
-- la connessione fra due PC, una volta stabilita, è **diretta**: il server fa solo da intermediario per l'*hole punching*.
+The server **doesn't see the content**:
+- connections between nodes are encrypted (Noise);
+- the team data is encrypted with the team key, which the server doesn't have;
+- once established, the connection between two PCs is **direct**: the server only acts as an intermediary for *hole punching*.
 
-Con l'hole punching i due PC, entrambi dietro un router, si contattano nello stesso istante, e così i router lasciano passare la connessione.
+With hole punching the two PCs, both behind a router, contact each other at the same instant, so the routers let the connection through.
 
-## Requisiti
+## Requirements
 
-- Linux con systemd, Node.js ≥ 20 e npm
-- Un **IPv4 pubblico** con la porta **UDP 49737** raggiungibile da internet (direttamente o con un port forwarding)
-- Risorse: minime (qualche decina di MB di RAM, traffico trascurabile)
+- Linux with systemd, Node.js ≥ 20 and npm
+- A **public IPv4** with port **UDP 49737** reachable from the internet (directly or through port forwarding)
+- Resources: minimal (a few tens of MB of RAM, negligible traffic)
 
-## Installazione
+## Installation
 
-Dalla cartella `server/` della repo (basta copiare questa cartella sulla macchina):
+From the repo's `server/` folder (copying just this folder to the machine is enough):
 
 ```bash
 sudo ./install.sh --host <IP pubblico>
 ```
 
-Lo script:
-1. copia i sorgenti in `/opt/micelio-server`, compila e lascia solo le dipendenze di esecuzione;
-2. crea l'utente di sistema `micelio`, senza shell e senza home;
-3. scrive la configurazione in `/etc/default/micelio-server`;
-4. installa e avvia il servizio systemd `micelio-server`, con isolamento: niente scrittura su disco e home degli utenti invisibili.
+The script:
+1. copies the sources to `/opt/micelio-server`, builds them and keeps only the runtime dependencies;
+2. creates the `micelio` system user, with no shell and no home;
+3. writes the configuration to `/etc/default/micelio-server`;
+4. installs and starts the `micelio-server` systemd service, with sandboxing: no disk writes and users' home directories invisible.
 
-Alla fine stampa i comandi per il firewall e per i PC del team.
+At the end it prints the commands for the firewall and for the team's PCs.
 
-Opzioni:
+Options:
 
-| Opzione | Default | Significato |
+| Option | Default | Meaning |
 |---|---|---|
-| `--host` | primo IP della macchina | IPv4 **pubblico** con cui i PC raggiungono il server. Se la macchina è dietro NAT (molte VM cloud) va indicato |
-| `--port` | 49737 | Porta UDP del nodo di avvio |
-| `--extra-nodes` | 0 | Nodi DHT aggiuntivi sulle porte successive (vedi sotto) |
-| `--prefix` | `/opt/micelio-server` | Cartella d'installazione |
-| `--no-systemd` | | Non installa il servizio (container, prove) |
+| `--host` | the machine's first IP | **Public** IPv4 the PCs use to reach the server. Required if the machine is behind NAT (many cloud VMs) |
+| `--port` | 49737 | UDP port of the bootstrap node |
+| `--extra-nodes` | 0 | Extra DHT nodes on the following ports (see below) |
+| `--prefix` | `/opt/micelio-server` | Installation folder |
+| `--no-systemd` | | Doesn't install the service (containers, testing) |
 
-**Aggiornamento:** rieseguire `sudo ./install.sh` con il codice nuovo. La configurazione resta, e cambia solo se si passano opzioni.
+**Upgrade:** run `sudo ./install.sh` again with the new code. The configuration is kept, and changes only if you pass options.
 
 ### Firewall
 
@@ -63,70 +65,70 @@ sudo ufw allow 49737/udp                                    # ufw
 sudo firewall-cmd --permanent --add-port=49737/udp && sudo firewall-cmd --reload   # firewalld
 ```
 
-In un cloud (security group) o dietro un router (port forwarding) va aperta anche lì la stessa porta UDP verso la macchina.
+In a cloud (security group) or behind a router (port forwarding) the same UDP port to the machine must be opened there too.
 
-### Nodi aggiuntivi (`--extra-nodes 2`)
+### Extra nodes (`--extra-nodes 2`)
 
-Avviano altri 2 nodi DHT sulle porte 49738 e 49739. Servono a due cose:
-- gli annunci dei team sono conservati da più di un nodo;
-- `micelio network check` diventa in grado di dire se un PC ha un NAT "simmetrico" (il caso difficile per l'hole punching), perché per capirlo servono risposte da almeno due nodi.
+They start 2 more DHT nodes on ports 49738 and 49739. They serve two purposes:
+- team announcements are stored by more than one node;
+- `micelio network check` becomes able to tell whether a PC has a "symmetric" NAT (the hard case for hole punching), because figuring that out needs replies from at least two nodes.
 
-Requisiti:
-- le porte aggiuntive vanno aperte nel firewall;
-- la macchina deve poter raggiungere **il proprio IP pubblico**. In alcune VM cloud non è possibile: in quel caso i nodi aggiuntivi non partono, e si torna a `0`.
+Requirements:
+- the extra ports must be opened in the firewall;
+- the machine must be able to reach **its own public IP**. On some cloud VMs this isn't possible: in that case the extra nodes don't start, and you go back to `0`.
 
-## Con Docker
+## With Docker
 
-In alternativa a `install.sh` il server gira in un container (`server/Dockerfile`: Node 22 su Debian slim, solo `hyperdht`, utente senza privilegi, nessun dato da conservare).
+As an alternative to `install.sh` the server runs in a container (`server/Dockerfile`: Node 22 on Debian slim, only `hyperdht`, unprivileged user, no data to keep).
 
 ```bash
-# costruzione (dalla cartella server/)
+# build (from the server/ folder)
 docker build -t <registry>/micelio-server:0.2.0 .
 
-# esecuzione sulla macchina del server
+# run on the server machine
 docker run -d --name micelio-server --restart unless-stopped --network host \
   -e MICELIO_SERVER_HOST=<IP pubblico della macchina> \
   <registry>/micelio-server:0.2.0
 
-docker logs -f micelio-server     # deve comparire "pronto. Sui PC del team: micelio network set <IP>:49737"
+docker logs -f micelio-server     # you should see "pronto. Sui PC del team: micelio network set <IP>:49737"
 ```
 
-- **Porta**: va aperta in ingresso **UDP 49737** (firewall della macchina e, se c'è, del router o del provider cloud). Niente TCP.
-- `--network host` (Linux) è la scelta più semplice per un nodo DHT: il container usa direttamente la porta della macchina. In alternativa: `-p 49737:49737/udp`.
-- Variabili: `MICELIO_SERVER_HOST` (obbligatoria: l'IP pubblico con cui i PC lo raggiungono), `MICELIO_SERVER_PORT` (default 49737), `MICELIO_SERVER_EXTRA_NODES` (nodi aggiuntivi sulle porte successive, da aprire anch'esse).
-- Base Debian e non Alpine: `udx-native` (il modulo di rete di hyperdht) non ha binari per musl e su Alpine il server non parte.
-- Registry senza HTTPS: la macchina che scarica l'immagine deve averlo fra gli `insecure-registries` di Docker (`/etc/docker/daemon.json`, poi `systemctl restart docker`); `localhost:<porta>` è consentito di default.
+- **Port**: inbound **UDP 49737** must be open (on the machine's firewall and, if present, the router's or the cloud provider's). No TCP.
+- `--network host` (Linux) is the simplest choice for a DHT node: the container uses the machine's port directly. Alternatively: `-p 49737:49737/udp`.
+- Variables: `MICELIO_SERVER_HOST` (required: the public IP the PCs use to reach it), `MICELIO_SERVER_PORT` (default 49737), `MICELIO_SERVER_EXTRA_NODES` (extra nodes on the following ports, which must be opened too).
+- Debian base and not Alpine: `udx-native` (hyperdht's network module) has no binaries for musl, and on Alpine the server doesn't start.
+- Registry without HTTPS: the machine pulling the image must have it among Docker's `insecure-registries` (`/etc/docker/daemon.json`, then `systemctl restart docker`); `localhost:<porta>` is allowed by default.
 
-## Sui PC del team
+## On the team's PCs
 
-Tutti i membri devono usare **lo stesso** server, altrimenti stanno in DHT diverse e non si trovano:
+All members must use **the same** server, otherwise they are in different DHTs and can't find each other:
 
 ```bash
-micelio network set <IP pubblico>:49737   # vale subito se il daemon è acceso
+micelio network set <IP pubblico>:49737   # takes effect immediately if the daemon is running
 micelio network check
 ```
 
-Oppure dall'app: Impostazioni, poi **Rete**, poi *DHT privata del team*. Lì *Verifica* prova la scelta prima di applicarla.
+Or from the app: Settings, then **Network**, then *Team private DHT*. There, *Check* tests the choice before applying it.
 
-Per tornare alla DHT pubblica: `micelio network public` (l'indirizzo del server resta salvato: `micelio network private` per riprenderlo).
+To go back to the public DHT: `micelio network public` (the server address stays saved: `micelio network private` to use it again).
 
-`micelio network check` dice:
-- se il PC entra nella DHT;
-- con quale IP pubblico si presenta;
-- se il router ha un NAT simmetrico (serve `--extra-nodes`).
+`micelio network check` tells you:
+- whether the PC enters the DHT;
+- which public IP it shows up with;
+- whether the router has a symmetric NAT (requires `--extra-nodes`).
 
-Se due colleghi hanno **entrambi** un NAT simmetrico, o reti aziendali che bloccano l'hole punching, la connessione diretta fra loro può non riuscire. Dalla versione 0.2.0 il server fa da **relay**, vedi sotto.
+If two colleagues **both** have a symmetric NAT, or corporate networks that block hole punching, the direct connection between them may fail. Since version 0.2.0 the server acts as a **relay**, see below.
 
-## Relay (dalla versione 0.2.0)
+## Relay (since version 0.2.0)
 
-Quando due PC non riescono a collegarsi direttamente, la connessione passa dal server.
-- **Cieco:** `blind-relay` di Holepunch inoltra pacchetti già cifrati fra i due PC (Noise); il server non può leggerli.
-- **Stessa porta UDP** del nodo di avvio: niente da aprire in più.
-- **Nessuna configurazione sui PC:** la chiave del relay si ricava dall'indirizzo del server (SHA-256 di `micelio-relay/v1` + `host:porta`, in `src/relay.ts` e, identica, in `src/net/relay-key.ts` della radice). Chi conosce l'indirizzo può calcolarla e avviare un finto relay, ma il traffico resta cifrato: al massimo non inoltra.
-- I PC lo usano **solo** dopo un hole punching fallito o con un NAT simmetrico, e solo se risponde (lo provano all'avvio e ogni 10 minuti).
-- `micelio network check` dice se il server offre il relay.
+When two PCs can't connect directly, the connection goes through the server.
+- **Blind:** Holepunch's `blind-relay` forwards packets that are already encrypted between the two PCs (Noise); the server can't read them.
+- **Same UDP port** as the bootstrap node: nothing more to open.
+- **No configuration on the PCs:** the relay key is derived from the server address (SHA-256 of `micelio-relay/v1` + `host:porta`, in `src/relay.ts` and, identical, in the root's `src/net/relay-key.ts`). Anyone who knows the address can compute it and start a fake relay, but the traffic stays encrypted: at worst it doesn't forward.
+- The PCs use it **only** after a failed hole punch or with a symmetric NAT, and only if it responds (they test it at startup and every 10 minutes).
+- `micelio network check` tells you whether the server offers the relay.
 
-**Aggiornare un server Docker alla 0.2.0:**
+**Upgrading a Docker server to 0.2.0:**
 
 ```bash
 docker pull <registry>/micelio-server:0.2.0
@@ -135,67 +137,67 @@ docker run -d --name micelio-server --restart unless-stopped --network host -e M
 docker logs -f micelio-server   # "relay attivo (chiave …)"
 ```
 
-I PC non vanno riconfigurati: indirizzo e porta restano gli stessi.
+The PCs don't need to be reconfigured: address and port stay the same.
 
-## Nodo del team sempre acceso (consigliato, sulla stessa macchina)
+## Always-on team node (recommended, on the same machine)
 
-Il server qui sopra fa solo da punto d'incontro. Conviene affiancargli un **nodo Micelio vero**, membro del team, sempre acceso. Serve a tre cose:
-- il sapere è disponibile anche quando tutti i PC sono spenti;
-- i nuovi membri possono entrare anche se chi li ha invitati è offline;
-- due colleghi che non riescono a collegarsi direttamente si sincronizzano entrambi con lui.
+The server above only acts as a meeting point. It's worth running a **real Micelio node** alongside it, a team member that is always on. It serves three purposes:
+- the knowledge is available even when all the PCs are off;
+- new members can join even if the one who invited them is offline;
+- two colleagues who can't connect directly both sync with it.
 
-Questo nodo usa la versione **senza interfaccia** di Micelio, dalla radice della repo:
+This node uses the **headless** version of Micelio, from the repo root:
 
 ```bash
-# come utente normale (non root), con la repo clonata
-npm ci --workspaces=false --omit=optional && npx tsc -p tsconfig.build.json   # niente UI/Electron né modello di embedding
-node dist/cli/main.js network set 127.0.0.1:49737        # stessa DHT, raggiunta in locale
+# as a normal user (not root), with the repo cloned
+npm ci --workspaces=false --omit=optional && npx tsc -p tsconfig.build.json   # no UI/Electron or embedding model
+node dist/cli/main.js network set 127.0.0.1:49737        # same DHT, reached locally
 node dist/cli/main.js start
-node dist/cli/main.js join <codice d'invito> --name server # invito creato da un membro del team
-node dist/cli/main.js autostart on                         # servizio systemd utente
-sudo loginctl enable-linger $USER                          # parte anche senza login
+node dist/cli/main.js join <codice d'invito> --name server # invite created by a team member
+node dist/cli/main.js autostart on                         # systemd user service
+sudo loginctl enable-linger $USER                          # starts even without a login
 ```
 
-Il nodo non ha Claude installato, quindi non distilla sessioni: replica e conserva il sapere. In alternativa c'è l'immagine Docker del nodo (`Dockerfile` nella radice della repo).
+The node doesn't have Claude installed, so it doesn't distill sessions: it replicates and keeps the knowledge. Alternatively there is the node's Docker image (`Dockerfile` in the repo root).
 
-## Gestione
+## Management
 
 ```bash
 systemctl status micelio-server
-journalctl -u micelio-server -f        # log: avvio e un battito ogni 15 minuti (vedi sotto)
-sudo systemctl restart micelio-server  # dopo aver modificato /etc/default/micelio-server
-sudo ./uninstall.sh [--purge]          # --purge rimuove anche configurazione e utente
+journalctl -u micelio-server -f        # log: startup and a heartbeat every 15 minutes (see below)
+sudo systemctl restart micelio-server  # after editing /etc/default/micelio-server
+sudo ./uninstall.sh [--purge]          # --purge also removes configuration and user
 ```
 
-### Cosa dice il log
+### What the log says
 
-Ogni 15 minuti il server scrive cosa è successo nell'intervallo, per esempio:
+Every 15 minutes the server writes what happened in the interval, for example:
 
 ```
 attivo; ultimi 15 min: 2 PC, 8 annunci, 14 ricerche, 3 presentazioni, 3 hole punching; relay: 1 connessioni aperte (4 dall'avvio)
 ```
 
-- **0 PC:** il server non viene contattato. Indirizzo sbagliato sui PC, porta UDP chiusa (firewall, cloud, router) o PC ancora sulla DHT pubblica.
-- **PC e annunci, ma nessuna presentazione:** i PC non si cercano a vicenda, probabilmente perché sono in team diversi o non sono tutti sulla DHT privata.
-- **Presentazioni e hole punching, ma 0 peer sui PC:** l'hole punching fallisce. Con la 0.2.0 interviene il relay, e il contatore del relay sale.
+- **0 PCs:** the server isn't being contacted. Wrong address on the PCs, UDP port closed (firewall, cloud, router) or PCs still on the public DHT.
+- **PCs and announcements, but no handshakes:** the PCs aren't looking for each other, probably because they are in different teams or not all on the private DHT.
+- **Handshakes and hole punches, but 0 peers on the PCs:** hole punching fails. With 0.2.0 the relay steps in, and the relay counter goes up.
 
-## Struttura
+## Structure
 
-| File | Contenuto |
+| File | Contents |
 |---|---|
-| `src/dht-server.ts` | Avvio del nodo di avvio e dei nodi aggiuntivi (`startServer`) |
-| `src/relay.ts` | Relay per le connessioni che l'hole punching non riesce a stabilire (B8) |
-| `src/main.ts` | Riga di comando e variabili d'ambiente, log periodico dell'attività, chiusura ordinata |
-| `src/hyperdht.d.ts` | Tipi minimi di `hyperdht` |
-| `install.sh` / `uninstall.sh` | Installazione come servizio systemd |
+| `src/dht-server.ts` | Startup of the bootstrap node and the extra nodes (`startServer`) |
+| `src/relay.ts` | Relay for the connections that hole punching can't establish (B8) |
+| `src/main.ts` | Command line and environment variables, periodic activity log, graceful shutdown |
+| `src/hyperdht.d.ts` | Minimal types for `hyperdht` |
+| `install.sh` / `uninstall.sh` | Installation as a systemd service |
 
-Test: `test/integration/dht-server.test.ts` nella radice della repo. Due nodi Micelio creano un team, si invitano e si scambiano un ricordo usando solo questo server. Lo stesso test verifica anche `checkNetwork`.
+Test: `test/integration/dht-server.test.ts` in the repo root. Two Micelio nodes create a team, invite each other and exchange a memory using only this server. The same test also verifies `checkNetwork`.
 
-## Cosa è verificato
+## What is verified
 
-- **Funzionamento della DHT privata:** test automatico su 127.0.0.1 con invito e replica dei ricordi; `network check` contro il server, anche con `--extra-nodes 2`.
-- **Relay:** test automatico con due client costretti a passare dal relay (si scambiano dati, il server conta le sessioni); diagnosi del relay in `network check`; chiave uguale su server e PC.
-- **`install.sh`:** provato in un container Debian (`node:24-bookworm-slim`) con `--no-systemd`. Ha compilato, creato l'utente e la configurazione; il server si è avviato e un client si è collegato. La reinstallazione ha mantenuto la configurazione.
-- **Ancora da provare su una macchina vera:**
-  - il servizio systemd;
-  - l'attraversamento dei NAT reali fra PC su reti diverse.
+- **Private DHT operation:** automated test on 127.0.0.1 with invite and memory replication; `network check` against the server, also with `--extra-nodes 2`.
+- **Relay:** automated test with two clients forced to go through the relay (they exchange data, the server counts the sessions); relay diagnosis in `network check`; same key on server and PCs.
+- **`install.sh`:** tried in a Debian container (`node:24-bookworm-slim`) with `--no-systemd`. It built, created the user and the configuration; the server started and a client connected. Reinstalling kept the configuration.
+- **Still to be tried on a real machine:**
+  - the systemd service;
+  - traversal of real NATs between PCs on different networks.
