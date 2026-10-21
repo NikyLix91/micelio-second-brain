@@ -121,23 +121,38 @@ export function installHooks (home: string, events: HookEvent[], cliMain = CLI_M
   return file
 }
 
-/** Argomenti di `claude mcp add` per registrare il server MCP del daemon. / EN: Arguments of `claude mcp add` to register the daemon's MCP server. */
-export function mcpAddArgs (mcpUrl: string, token: string): string[] {
-  return ['mcp', 'add', '--transport', 'http', '--scope', 'user', 'micelio', mcpUrl, '--header', `Authorization: Bearer ${token}`]
+/**
+ * Argomenti di `claude mcp add` per registrare Micelio in ambito utente. Si registra lo shim su
+ * stdio (`micelio mcp`), NON l'endpoint HTTP: Claude Code avvia lo shim nella cartella del
+ * progetto, lo shim la passa al daemon a ogni richiesta e il daemon sceglie il team che possiede
+ * quella cartella. Con l'endpoint HTTP il daemon non sa dove lavora l'agente e usava sempre il
+ * team predefinito: bug reale (2026-10-21), ricordi di un progetto del team A pubblicati nel
+ * team B. Il token non compare: lo shim lo legge da config.json.
+ *
+ * EN: Arguments of `claude mcp add` to register Micelio in user scope. We register the stdio shim
+ * (`micelio mcp`), NOT the HTTP endpoint: Claude Code starts the shim in the project folder, the
+ * shim passes it to the daemon on every request and the daemon picks the team that owns that
+ * folder. With the HTTP endpoint the daemon doesn't know where the agent works and always used the
+ * default team: real bug (2026-10-21), memories of a team A project published in team B. The
+ * token doesn't appear: the shim reads it from config.json.
+ */
+export function mcpAddArgs (home: string, cliMain = CLI_MAIN): string[] {
+  const slash = (p: string) => p.replace(/\\/g, '/')
+  return ['mcp', 'add', '--scope', 'user', 'micelio', '--', slash(process.execPath), slash(cliMain), '--home', slash(home), 'mcp']
 }
 
 /**
  * Registra Micelio come server MCP in Claude Code. Rimuove prima un'eventuale registrazione
- * vecchia (es. con un token o una porta diversi).
+ * vecchia (es. quella HTTP delle versioni precedenti, o con una porta diversa).
  *
  * EN: Registers Micelio as an MCP server in Claude Code. First removes any old registration
- * (e.g. with a different token or port).
+ * (e.g. the HTTP one of previous versions, or one with a different port).
  * @throws IntegrationError se `claude` non è disponibile o il comando fallisce
  *         EN: IntegrationError if `claude` is not available or the command fails
  */
-export function registerMcp (mcpUrl: string, token: string): void {
+export function registerMcp (home: string, cliMain = CLI_MAIN): void {
   spawnSync('claude', ['mcp', 'remove', '--scope', 'user', 'micelio'], { stdio: 'ignore', windowsHide: true })
-  const r = spawnSync('claude', mcpAddArgs(mcpUrl, token), { encoding: 'utf8', windowsHide: true })
+  const r = spawnSync('claude', mcpAddArgs(home, cliMain), { encoding: 'utf8', windowsHide: true })
   if (r.error || r.status !== 0) {
     const detail = (r.error?.message ?? r.stderr ?? '').toString().trim()
     throw new IntegrationError(`Registrazione MCP non riuscita: ${detail || 'claude non disponibile'}`, `MCP registration failed: ${detail || 'claude not available'}`)
@@ -159,7 +174,9 @@ export interface ClaudeCodeSetupResult {
  *        EN: true to also install the automatic collection hook
  */
 export function setupClaudeCode (opts: { mcpUrl: string, token: string, home: string, hook: boolean, context?: boolean }): ClaudeCodeSetupResult {
-  registerMcp(opts.mcpUrl, opts.token)
+  // mcpUrl e token restano nei parametri per compatibilità: lo shim li legge da config.json
+  // EN: mcpUrl and token stay in the parameters for compatibility: the shim reads them from config.json
+  registerMcp(opts.home)
   // Contesto automatico (B4): attivo salvo richiesta contraria
   // EN: Automatic context (B4): on unless asked otherwise
   const events: HookEvent[] = [...(opts.hook ? ['SessionEnd' as const] : []), ...(opts.context !== false ? ['SessionStart' as const, 'UserPromptSubmit' as const] : [])]

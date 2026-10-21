@@ -3,6 +3,8 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import type { NestExpressApplication } from '@nestjs/platform-express'
+import fs from 'node:fs'
+import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { nodePaths } from '../../src/core/paths'
 import { canonicalPath, loadConfig } from '../../src/node/config'
@@ -266,6 +268,38 @@ describe('daemon', () => {
     await client.close()
     expect((await api('GET', '/api/memories/search?q=venerdì demo')).data).toEqual([])
     expect((await api('POST', '/mcp/gamma', { jsonrpc: '2.0', id: 1, method: 'tools/list' })).status).toBe(404)
+
+    // `/mcp` con la cartella di lavoro (shim stdio): vale il team che la possiede, non il
+    // predefinito. Bug reale del 2026-10-21: ricordi del team A finiti nel predefinito.
+    // La cartella si abilita DOPO l'apertura della connessione: il team si sceglie a ogni chiamata.
+    // EN: `/mcp` with the working folder (stdio shim): the team that owns it wins, not the
+    //     default. Real bug of 2026-10-21: A team memories ended up in the default team.
+    //     The folder is enabled AFTER the connection is opened: the team is chosen on every call.
+    const project = path.join(home, 'progetto-secondo')
+    fs.mkdirSync(path.join(project, 'sub'), { recursive: true })
+    const viaShim = (cwd: string) => {
+      const c = new Client({ name: 'test-shim', version: '1.0.0' })
+      return c.connect(new StreamableHTTPClientTransport(new URL(`${base}/mcp`), {
+        requestInit: { headers: { authorization: `Bearer ${token}`, 'x-micelio-cwd': encodeURIComponent(cwd) } }
+      })).then(() => c)
+    }
+    // sottocartella, e su Windows con la lettera del disco minuscola come la passa VS Code
+    // EN: a subfolder, and on Windows with the lowercase drive letter as VS Code passes it
+    const sub = path.join(project, 'sub')
+    const shim = await viaShim(process.platform === 'win32' ? sub[0].toLowerCase() + sub.slice(1) : sub)
+    const watch = await fetch(`${base}/api/watch`, { method: 'POST', headers: { ...inTeam(second), 'content-type': 'application/json' }, body: JSON.stringify({ path: project }) })
+    expect(watch.status).toBe(200)
+    const saved = await shim.callTool({ name: 'remember', arguments: { title: 'Dalla cartella del secondo team', body: 'Il rilascio si fa con il tag vX.Y.Z.', kind: 'fact' } })
+    expect((saved.content as any)[0].text).toMatch(/team «Secondo»/)
+    await shim.close()
+    expect((await api('GET', '/api/memories/search?q=rilascio tag')).data).toEqual([])
+    const there = await fetch(`${base}/api/memories/search?q=rilascio tag`, { headers: inTeam(second) })
+    expect(((await there.json()) as any[]).map((m) => m.title)).toEqual(['Dalla cartella del secondo team'])
+    // una cartella che non appartiene a nessun team: il predefinito, come prima
+    // EN: a folder that belongs to no team: the default one, as before
+    const other = await viaShim(path.join(home, 'altrove'))
+    expect(((await other.callTool({ name: 'remember', arguments: { title: 'Da una cartella qualsiasi', body: 'Le build notturne partono alle 2.', kind: 'fact' } })).content as any)[0].text).toMatch(/team «Team Test»/)
+    await other.close()
 
     // il predefinito si cambia, poi si toglie il secondo team da questo PC
     // EN: change the default, then remove the second team from this PC

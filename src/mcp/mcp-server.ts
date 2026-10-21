@@ -115,6 +115,17 @@ const error = (t: string) => ({ content: [{ type: 'text' as const, text: t }], i
  * @param node il nodo locale: tutte le operazioni passano dai suoi metodi pubblici
  *             EN: the local node: every operation goes through its public methods
  */
+/**
+ * Nome del team fra virgolette, per le risposte di `remember`: l'utente vede subito DOVE è finito
+ * il ricordo e si accorge se è il team sbagliato (bug reale del 2026-10-21).
+ *
+ * EN: Team name in quotes, for `remember` replies: the user immediately sees WHERE the memory
+ * ended up and notices if it's the wrong team (real bug of 2026-10-21).
+ */
+function teamLabel (node: MicelioNode): string {
+  return node.teamName ? ` «${node.teamName}»` : ''
+}
+
 export function createMcpServer (node: MicelioNode): McpServer {
   const server = new McpServer({ name: 'micelio', version: VERSION }, { instructions: INSTRUCTIONS })
 
@@ -242,9 +253,9 @@ export function createMcpServer (node: MicelioNode): McpServer {
           // EN: B4: the new memory updated an existing one: show the version actually saved
           if (r.updated) {
             const saved = node.detail(r.id)
-            return text(`Aggiornato un ricordo esistente del team (id:${r.updated.slice(0, 12)} → id:${r.id.slice(0, 12)}): invece di un doppione c'è ora una versione unica. Testo salvato:\n\n### ${saved?.title ?? r.memory.title}\n${saved?.body ?? r.memory.body}`)
+            return text(`Aggiornato un ricordo esistente del team${teamLabel(node)} (id:${r.updated.slice(0, 12)} → id:${r.id.slice(0, 12)}): invece di un doppione c'è ora una versione unica. Testo salvato:\n\n### ${saved?.title ?? r.memory.title}\n${saved?.body ?? r.memory.body}`)
           }
-          return text(`${r.duplicate ? 'Già presente' : 'Pubblicato'} nella memoria del team (id:${r.id.slice(0, 12)}). Testo salvato:\n\n### ${r.memory.title}\n${r.memory.body}`)
+          return text(`${r.duplicate ? 'Già presente' : 'Pubblicato'} nella memoria del team${teamLabel(node)} (id:${r.id.slice(0, 12)}). Testo salvato:\n\n### ${r.memory.title}\n${r.memory.body}`)
         }
         case 'inbox':
           return text(`NON pubblicato subito: è nell'inbox dell'utente in attesa di verifica (id inbox: ${r.inboxId}).\nMotivo: ${r.reason}\nL'utente può approvarlo con "micelio inbox approve ${r.inboxId}" o chiedendoti di usare inbox_decide.`)

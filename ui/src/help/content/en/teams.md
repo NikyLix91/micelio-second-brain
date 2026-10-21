@@ -43,9 +43,11 @@ A session in a folder enabled in no team is ignored, as always.
 
 ## The agents of a project {#agents}
 
-The MCP registered with `micelio setup claude-code` applies to every folder and uses the **default team** (`/mcp`). For a project of another team press "Connect Claude Code" next to the folder, with that team selected (or use `micelio --team <team> setup claude-code --project <folder>`).
+The MCP registered with `micelio setup claude-code` (or with "Connect Claude Code" in Settings) applies to every folder and **picks the team from the folder Claude Code works in**: in an enabled folder of a team it uses that team, elsewhere the **default team**. The team is picked on every request, so it also works for a folder enabled while a session is already open. Every `remember` reply says which team the memory went to.
 
-Micelio then registers `/mcp/<team>` in Claude Code's **local** scope: it applies when Claude Code is started in that folder and takes precedence over the user registration. It lives in your personal configuration (`~/.claude.json`), not in the repository, so the token never ends up in a file that could be committed. Start Claude Code from the connected folder (usually the repository root).
+**How it works:** Claude Code starts `micelio mcp` (a small stdio process) in the project folder. The process sends the folder to the daemon on every request and the daemon matches it against the teams' enabled folders, as it does for session collection. Up to version 0.5.0 the MCP was registered over HTTP and the daemon didn't know which folder the agent was working in: a memory saved in a project of another team ended up in the default team. After updating, press "Connect Claude Code" in Settings again and restart any open Claude Code sessions.
+
+To force a team in a project, whatever the enabled folders say, press "Connect Claude Code" next to the folder with that team selected (or use `micelio --team <team> setup claude-code --project <folder>`). Micelio then registers `/mcp/<team>` in Claude Code's **local** scope: it applies when Claude Code is started in that folder and takes precedence over the user registration. It lives in your personal configuration (`~/.claude.json`), not in the repository, so the token never ends up in a file that could be committed. Start Claude Code from the connected folder (usually the repository root).
 
 ## Removing a team from this PC {#leave}
 

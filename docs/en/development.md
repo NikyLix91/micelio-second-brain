@@ -98,7 +98,7 @@ A PC can belong to several teams. The pieces:
 - **Request team** (`src/daemon/team-context.ts`): the middleware reads `x-micelio-team` and puts it in an `AsyncLocalStorage`; `MicelioService.node` returns the node of that team (or of the default one). Existing routes don't change. The exceptions are `team/init`, `team/join`, `teams/*` and `ingest/session`, which go through the host.
 - **Folders**: the host passes each node `owns(dir)` (the most specific enabled folder wins, `ownerOf`) and `claimFolder` (the same folder in two teams is forbidden; document folders nested across teams are forbidden).
 - **Identity** (`src/core/identity.ts`): `member.identity` signed with the feed key, verified in `apply`. `MicelioNode.linkIdentity` publishes it at startup if missing.
-- **MCP**: `/mcp` = default team, `/mcp/:team` = the given team (`mcp.controller.ts`). `registerProjectMcp` registers it with `claude mcp add --scope local` in the project folder.
+- **MCP**: `/mcp` = the team of the folder in `x-micelio-cwd` (sent by the `micelio mcp` shim, `src/mcp/stdio-proxy.ts`) or the default one, `/mcp/:team` = the given team (`mcp.controller.ts`, `nodeForRequest`). `registerMcp` registers the stdio shim in user scope. `registerProjectMcp` registers it with `claude mcp add --scope local` in the project folder.
 
 Tests: `test/integration/multi-team.test.ts` (migration, separate knowledge, routing, restart, leaving), the multi-team cases in `daemon.test.ts`, `member.identity` in `test/unit/apply.test.ts`, `ui/src/__tests__/Teams.test.tsx`.
 
