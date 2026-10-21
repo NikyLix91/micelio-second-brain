@@ -82,10 +82,11 @@ Clients that support MCP over HTTP can also connect directly to the daemon URL w
 
 With multiple teams (see the [user guide](user-guide.md#4-ter-several-teams-on-the-same-pc)):
 
-- `http://127.0.0.1:7337/mcp` works on the **default team** (`micelio teams default <team>`);
+- `micelio mcp` (the stdio shim, registered by `micelio setup claude-code` and by "Connect Claude Code") sends the daemon the project folder (`CLAUDE_PROJECT_DIR`, otherwise the working folder) in the `x-micelio-cwd` header, on every request. The daemon uses the team that enabled that folder (the most specific one), otherwise the default. Up to 0.5.0 the user-scope MCP was registered over HTTP and always worked on the default team: memories of a project of another team ended up in the wrong team (bug of 2026-10-21);
+- `http://127.0.0.1:7337/mcp` without the header works on the **default team** (`micelio teams default <team>`);
 - `http://127.0.0.1:7337/mcp/<team>` works on the given team, by local id or by name.
 
-To make Claude Code use a specific team in a project:
+To force a specific team in a project, regardless of the enabled folders:
 
 ```bash
 micelio --team "Cliente X" setup claude-code --project C:\progetti\cliente-x

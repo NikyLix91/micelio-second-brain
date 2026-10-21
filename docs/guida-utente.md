@@ -166,7 +166,7 @@ micelio teams leave "Cliente X" --yes        # toglie il team da questo PC
 
 - **Il tuo nome** è quello dell'identità personale creata al primo team: non serve ripeterlo. Accanto ai membri, nella pagina Team, vedi se un collega è con te anche in un altro team.
 - **Le cartelle** abilitate appartengono a un team solo. Se abiliti `C:\lavoro` nel team A e `C:\lavoro\clienteX` nel team B, le sessioni in `clienteX` vanno solo a B.
-- **Gli agenti** usano il team predefinito. Per un progetto di un altro team: `micelio --team "Cliente X" setup claude-code --project <cartella del progetto>`, oppure «Collega Claude Code» nelle Impostazioni.
+- **Gli agenti** usano il team che ha abilitato la cartella del progetto, altrimenti il predefinito (dalla 0.5.1: dopo l'aggiornamento premi di nuovo «Collega Claude Code» nelle Impostazioni). Per forzare un team in un progetto: `micelio --team "Cliente X" setup claude-code --project <cartella del progetto>`, oppure «Collega Claude Code» accanto alla cartella.
 - **LLM e budget** sono comuni a tutti i team: un solo abbonamento.
 
 Dalla versione con un solo team non serve fare nulla: al primo avvio i file vengono spostati in `~/.micelio/teams/<id>/` e il team diventa il predefinito.

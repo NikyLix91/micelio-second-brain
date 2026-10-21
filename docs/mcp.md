@@ -80,10 +80,11 @@ I client che supportano MCP su HTTP possono anche collegarsi direttamente all'UR
 
 Con più team (vedi [guida utente](guida-utente.md#4-ter-più-team-sullo-stesso-pc)):
 
-- `http://127.0.0.1:7337/mcp` lavora sul **team predefinito** (`micelio teams default <team>`);
+- `micelio mcp` (lo shim su stdio, registrato da `micelio setup claude-code` e da «Collega Claude Code») manda al daemon la cartella del progetto (`CLAUDE_PROJECT_DIR`, altrimenti la cartella di lavoro) nell'intestazione `x-micelio-cwd`, a ogni richiesta. Il daemon usa il team che ha abilitato quella cartella (la più specifica), altrimenti il predefinito. Fino alla 0.5.0 l'MCP utente era registrato via HTTP e lavorava sempre sul predefinito: ricordi di un progetto di un altro team finivano nel team sbagliato (bug del 2026-10-21);
+- `http://127.0.0.1:7337/mcp` senza intestazione lavora sul **team predefinito** (`micelio teams default <team>`);
 - `http://127.0.0.1:7337/mcp/<team>` lavora sul team indicato, per id locale o per nome.
 
-Per far usare a Claude Code un team preciso in un progetto:
+Per forzare un team preciso in un progetto, indipendentemente dalle cartelle abilitate:
 
 ```bash
 micelio --team "Cliente X" setup claude-code --project C:\progetti\cliente-x

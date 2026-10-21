@@ -1,6 +1,6 @@
 {
   "name": "@micelio/desktop",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "private": true,
   "description": "App desktop di Micelio (Electron): avvia il daemon, mostra la UI, notifiche e icona nell'area di notifica",
   "homepage": "https://github.com/salvatorestracquadanio86/micelio-brain",

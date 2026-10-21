@@ -43,9 +43,11 @@ Una sessione in una cartella non abilitata in nessun team viene ignorata, come s
 
 ## Gli agenti di un progetto {#agents}
 
-L'MCP registrato con `micelio setup claude-code` vale in tutte le cartelle e usa il **team predefinito** (`/mcp`). Per un progetto di un altro team premi «Collega Claude Code» accanto alla cartella, con quel team selezionato (o usa `micelio --team <team> setup claude-code --project <cartella>`).
+L'MCP registrato con `micelio setup claude-code` (o con «Collega Claude Code» nelle Impostazioni) vale in tutte le cartelle e **sceglie il team dalla cartella in cui lavora Claude Code**: in una cartella abilitata di un team usa quel team, altrove il **team predefinito**. Il team si sceglie a ogni richiesta, quindi vale anche per una cartella abilitata a sessione già aperta. Ogni risposta di `remember` dice in quale team è finito il ricordo.
 
-Micelio registra allora `/mcp/<team>` nell'ambito **local** di Claude Code: vale quando Claude Code viene avviato in quella cartella e prevale sulla registrazione utente. Sta nella tua configurazione personale (`~/.claude.json`), non nel repository, quindi il token non finisce mai in un file che si potrebbe committare. Avvia Claude Code dalla cartella collegata (di solito la radice del repository).
+**Come funziona:** Claude Code avvia `micelio mcp` (un piccolo processo su stdio) nella cartella del progetto. Il processo manda la cartella al daemon a ogni richiesta e il daemon la confronta con le cartelle abilitate dei team, come fa per la raccolta delle sessioni. Fino alla versione 0.5.0 l'MCP era registrato via HTTP e il daemon non sapeva in quale cartella lavorasse l'agente: un ricordo salvato in un progetto di un altro team finiva nel team predefinito. Dopo l'aggiornamento premi di nuovo «Collega Claude Code» nelle Impostazioni e riavvia le sessioni di Claude Code aperte.
+
+Per forzare un team in un progetto, qualunque cosa dicano le cartelle abilitate, premi «Collega Claude Code» accanto alla cartella con quel team selezionato (o usa `micelio --team <team> setup claude-code --project <cartella>`). Micelio registra allora `/mcp/<team>` nell'ambito **local** di Claude Code: vale quando Claude Code viene avviato in quella cartella e prevale sulla registrazione utente. Sta nella tua configurazione personale (`~/.claude.json`), non nel repository, quindi il token non finisce mai in un file che si potrebbe committare. Avvia Claude Code dalla cartella collegata (di solito la radice del repository).
 
 ## Togliere un team da questo PC {#leave}
 
