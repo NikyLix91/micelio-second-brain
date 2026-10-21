@@ -44,7 +44,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { isInsideWatched } from '../node/config'
 import type { PrivateStore } from '../store/private-store'
-import { extractTranscript } from './transcript'
+import { readTranscript } from './transcript-worker'
 
 export interface ScanOptions {
   /** Cartella delle trascrizioni di Claude Code. / EN: Folder of the Claude Code transcripts. */
@@ -100,6 +100,18 @@ export class SessionScanner {
   private readonly cwdCache = new Map<string, string | null>()
   /** Ultima dimensione vista per file: un file invariato non va riletto. / EN: Last size seen per file: an unchanged file does not need to be read again. */
   private readonly sizeSeen = new Map<string, number>()
+  /**
+   * Sessioni già misurate e trovate non ancora mature: dimensione e se erano già "vecchie".
+   * Si rimisurano solo se il file cresce o se nel frattempo diventano vecchie (la soglia di
+   * maturità per le sessioni vecchie è più bassa). Senza, una sessione enorme ferma si rileggeva
+   * a ogni scansione.
+   *
+   * EN: Sessions already measured and found not yet ripe: size and whether they were already
+   * "old". They are measured again only if the file grows or if they become old in the meantime
+   * (the ripeness threshold for old sessions is lower). Without this, a huge idle session was
+   * re-read on every scan.
+   */
+  private readonly unripe = new Map<string, string>()
 
   constructor (private readonly store: PrivateStore) {}
 
@@ -109,8 +121,14 @@ export class SessionScanner {
    *
    * EN: Finds the sessions with a new part ready to distill. It queues nothing: the caller (MicelioNode)
    * does, since it knows the pipeline.
+   *
+   * Asincrona: le trascrizioni si misurano in un worker thread (vedi transcript-worker), una alla
+   * volta, così anche una sessione di centinaia di MB non blocca il daemon.
+   *
+   * EN: Asynchronous: transcripts are measured in a worker thread (see transcript-worker), one at a
+   * time, so even a session of hundreds of MB doesn't block the daemon.
    */
-  scan (o: ScanOptions): SessionCandidate[] {
+  async scan (o: ScanOptions): Promise<SessionCandidate[]> {
     const now = o.now ?? Date.now()
     if (o.watched.length === 0 || !fs.existsSync(o.projectsDir)) return []
     const pending = this.store.pendingSessionIds()
@@ -136,12 +154,23 @@ export class SessionScanner {
         if (!this.cwdCache.has(file)) this.cwdCache.set(file, transcriptCwd(file))
         const cwd = this.cwdCache.get(file)
         if (!cwd || !isInsideWatched(cwd, o.watched)) { this.sizeSeen.set(file, st.size); continue }
-        // 4) Parte nuova abbastanza "matura"?
-        // EN: 4) Is the new part "ripe" enough?
-        const ex = extractTranscript(file, this.store.sessionLines(sessionId))
+        // 4) Parte nuova abbastanza "matura"? Già misurata e niente di cambiato: si salta.
+        // EN: 4) Is the new part "ripe" enough? Already measured and nothing changed: skip.
         const stale = idleMs >= o.staleHours * 3600_000
+        const fromLine = this.store.sessionLines(sessionId)
+        const key = `${st.size}:${stale}:${fromLine}`
+        if (this.unripe.get(file) === key) continue
+        // Solo misura: la ricerca dei file sensibili la fa la distillazione vera, non serve qui
+        // EN: Measure only: the sensitive-file search is done by the real distillation, not needed here
+        let ex
+        try {
+          ex = await readTranscript(file, fromLine, [], true)
+        } catch {
+          continue // file sparito o illeggibile: si riprova alla prossima scansione / EN: file gone or unreadable: retry at the next scan
+        }
         const enough = ex.userTurns >= o.minUserTurns || ex.text.length >= o.minChars
-        if (ex.userTurns === 0 || !(enough || (stale && ex.text.length >= MIN_STALE_CHARS))) continue
+        if (ex.userTurns === 0 || !(enough || (stale && ex.text.length >= MIN_STALE_CHARS))) { this.unripe.set(file, key); continue }
+        this.unripe.delete(file)
         this.sizeSeen.set(file, st.size)
         out.push({ sessionId, transcriptPath: file, cwd })
       }

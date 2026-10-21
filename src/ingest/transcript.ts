@@ -88,8 +88,14 @@ function blockText (block: any): string {
  *                 EN: number of lines already processed before: reading starts from there
  * @param sensitiveFiles pattern AGGIUNTIVI di file sensibili (quelli del team); i default valgono sempre
  *                       EN: ADDITIONAL sensitive file patterns (the team's); the defaults always apply
+ * @param measureOnly true quando serve solo sapere quanto è lunga la parte nuova (lo scanner delle
+ *                    sessioni): si salta la ricerca dei file sensibili su tutta la trascrizione, la
+ *                    parte più costosa. Il testo restituito NON va mandato all'LLM.
+ *                    EN: true when we only need to know how long the new part is (the session
+ *                    scanner): the sensitive-file search over the whole transcript, the most
+ *                    expensive part, is skipped. The returned text must NOT be sent to the LLM.
  */
-export function extractTranscript (file: string, fromLine = 0, sensitiveFiles: string[] = []): TranscriptExtract {
+export function extractTranscript (file: string, fromLine = 0, sensitiveFiles: string[] = [], measureOnly = false): TranscriptExtract {
   const all = fs.readFileSync(file, 'utf8').split('\n').filter((l) => l.trim())
   const parts: string[] = []
   let userTurns = 0
@@ -103,7 +109,7 @@ export function extractTranscript (file: string, fromLine = 0, sensitiveFiles: s
   //     (tool_use) and its outcome (tool_result) can fall in different chapters.
   //     Text prefilter: only lines containing tool calls are parsed.
   const sensitiveTools = new Map<string, string[]>() // id dello strumento → file sensibili / EN: tool id → sensitive files
-  for (const raw of all) {
+  for (const raw of measureOnly ? [] : all) {
     if (!raw.includes('"tool_use"')) continue
     let row: any
     try { row = JSON.parse(raw) } catch { continue }

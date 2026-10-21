@@ -77,6 +77,7 @@ References: [src/ingest/pipeline.ts](../../src/ingest/pipeline.ts), DESIGN §6.
 
 | Step | Where | Notes |
 |---|---|---|
+| Transcript reading | `ingest/transcript-worker.ts` | `extractTranscript` runs in a worker thread (`readTranscript`), both in the periodic scan (measure only, without the sensitive-file search) and in distillation: a 200 MB transcript takes ~6 s in the worker and blocks the main thread for less than 60 ms. The first scan starts 5 s after startup, not during it |
 | Git summary | `ingest/git-changes.ts` | Only sessions in a git repository: the chapter's commits (from the transcript `timestamp`s, ±2 min) and uncommitted work if the chapter ended less than 2 hours ago. Only file names, declarations and commit messages, max 4,000 characters. Appended to the conversation **before** the filter |
 | Deterministic filter | `privacy/filter.ts` | Runs **before** any LLM. Blocks HR topics and redacts secrets |
 | Classification | `ingest/prompts.ts` (Haiku) | Structured output validated with zod |

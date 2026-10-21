@@ -13,7 +13,8 @@ How everyday work becomes team knowledge, step by step, and where each piece end
 - **At the end of a session**, the `SessionEnd` hook installed in Claude Code notifies the daemon (if it is off, the hook starts it).
 - **During long sessions**, every 15 minutes the daemon looks at the transcripts: a session **idle for at least 10 minutes** with enough new material (4 of your messages or 6,000 characters) is processed in **chapters**. A session idle for more than 6 hours is taken anyway.
 - **No duplicates**: for each session `private.db` remembers how many lines were already read; only the new part is processed.
-- **Recovery**: sessions that ended while the daemon was off are collected at the first start.
+- **Recovery**: sessions that ended while the daemon was off are collected a few seconds after startup.
+- **Huge sessions**: a transcript can exceed 200 MB. Transcripts are read on a separate thread (worker), so the app and the agents get an answer right away even while Micelio is reading one; a session already measured and still too short isn't read again until it grows.
 
 From the transcript a compact text is built (questions, answers, tools used in short); the model's internal reasoning and sub-agents are excluded; the content of **sensitive files** read or written (`.env`, keys…) is removed entirely.
 

@@ -47,7 +47,7 @@ describe('raccolta delle sessioni in corso', () => {
   it('primo capitolo di una sessione ancora aperta → ricordo nel team', async () => {
     const file = writeTranscript(transcripts, 'sessione-lunga', chapter('Primo capitolo concluso') as any, false, project)
     pause(file)
-    expect(node.scanSessions()).toBe(1)
+    expect(await node.scanSessions()).toBe(1)
     await node.processQueue()
     expect(node.recall('primo capitolo').length).toBe(1)
   })
@@ -55,10 +55,10 @@ describe('raccolta delle sessioni in corso', () => {
   it('il giorno dopo la sessione continua: si distilla solo la parte nuova', async () => {
     const file = writeTranscript(transcripts, 'sessione-lunga', chapter('Secondo capitolo concluso') as any, true, project)
     pause(file)
-    expect(node.scanSessions()).toBe(1)
+    expect(await node.scanSessions()).toBe(1)
     await node.processQueue()
     expect(node.recall('secondo').map((h) => h.title)).toEqual(['Secondo capitolo concluso'])
     expect((await node.status()).memories).toBe(2) // il primo capitolo non è stato rielaborato / EN: the first chapter was not processed again
-    expect(node.scanSessions()).toBe(0) // niente di nuovo / EN: nothing new
+    expect(await node.scanSessions()).toBe(0) // niente di nuovo / EN: nothing new
   })
 })

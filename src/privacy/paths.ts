@@ -30,8 +30,35 @@ export const DEFAULT_BLOCKED_PATHS = [
   '**/private/**', '**/privato/**', '**/personal/**'
 ]
 
+/**
+ * Espressioni già compilate, per glob. I pattern sono poche decine e si ripetono sempre, mentre
+ * le chiamate sono milioni: il controllo dei file sensibili prova ogni pattern su ogni parola di
+ * ogni comando di una trascrizione. Senza cache una trascrizione da 200 MB richiedeva 36 s solo
+ * per ricompilare le stesse espressioni (avvio del daemon a 55 s, 2026-10-21).
+ *
+ * EN: Already compiled expressions, by glob. Patterns are a few dozen and always the same, while
+ * calls are millions: the sensitive-file check tries every pattern on every word of every command
+ * in a transcript. Without a cache a 200 MB transcript took 36 s just recompiling the same
+ * expressions (daemon startup at 55 s, 2026-10-21).
+ */
+const compiled = new Map<string, RegExp>()
+
 /** Converte un glob in espressione regolare (vedi intestazione per la sintassi). / EN: Converts a glob into a regular expression (see the header for the syntax). */
 export function globToRegExp (glob: string): RegExp {
+  const hit = compiled.get(glob)
+  if (hit) return hit
+  // Un'espressione con flag "i" e senza "g" non ha stato (lastIndex): si può condividere
+  // EN: An expression with the "i" flag and without "g" has no state (lastIndex): it can be shared
+  const re = compileGlob(glob)
+  // Limite di sicurezza: pattern del team scritti a mano, non generati, ma non si sa mai
+  // EN: Safety cap: team patterns are hand-written, not generated, but you never know
+  if (compiled.size > 1000) compiled.clear()
+  compiled.set(glob, re)
+  return re
+}
+
+/** Compila un glob, senza cache. / EN: Compiles a glob, without cache. */
+function compileGlob (glob: string): RegExp {
   let re = ''
   for (let i = 0; i < glob.length; i++) {
     const c = glob[i]

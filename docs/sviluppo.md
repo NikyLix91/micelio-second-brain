@@ -75,6 +75,7 @@ Riferimenti: [src/ingest/pipeline.ts](../src/ingest/pipeline.ts), DESIGN §6.
 
 | Passo | Dove | Note |
 |---|---|---|
+| Lettura della trascrizione | `ingest/transcript-worker.ts` | `extractTranscript` gira in un worker thread (`readTranscript`), sia nella scansione periodica (solo misura, senza ricerca dei file sensibili) sia nella distillazione: una trascrizione da 200 MB costa ~6 s nel worker e blocca il thread principale per meno di 60 ms. La prima scansione parte 5 s dopo l'avvio, non durante |
 | Riassunto git | `ingest/git-changes.ts` | Solo sessioni in un repository git: commit del capitolo (dai `timestamp` della trascrizione, ±2 min) e lavoro non committato se il capitolo è finito da meno di 2 ore. Solo nomi di file, dichiarazioni e messaggi di commit, max 4.000 caratteri. Si accoda alla conversazione **prima** del filtro |
 | Filtro deterministico | `privacy/filter.ts` | Gira **prima** di qualunque LLM. Blocca gli argomenti HR e redige i segreti |
 | Classificazione | `ingest/prompts.ts` (Haiku) | Output strutturato validato con zod |

@@ -13,7 +13,8 @@ Come il lavoro di tutti i giorni diventa sapere del team, passo per passo, e dov
 - **A fine sessione**, l'hook `SessionEnd` installato in Claude Code avvisa il daemon (se è spento, l'hook lo accende).
 - **Durante le sessioni lunghe**, ogni 15 minuti il daemon guarda le trascrizioni: una sessione **ferma da almeno 10 minuti** con abbastanza materiale nuovo (4 tuoi messaggi o 6.000 caratteri) viene elaborata a **capitoli**. Una sessione ferma da oltre 6 ore viene presa comunque.
 - **Niente doppioni**: per ogni sessione `private.db` ricorda quante righe sono già state lette; si elabora solo la parte nuova.
-- **Recupero**: le sessioni finite mentre il daemon era spento vengono raccolte al primo avvio.
+- **Recupero**: le sessioni finite mentre il daemon era spento vengono raccolte pochi secondi dopo l'avvio.
+- **Sessioni enormi**: una trascrizione può superare i 200 MB. Le trascrizioni si leggono in un thread separato (worker), quindi l'app e gli agenti ricevono risposta subito anche mentre Micelio ne legge una; una sessione già misurata e ancora troppo corta non viene riletta finché non cresce.
 
 Dalla trascrizione si ricava un testo compatto (domande, risposte, strumenti usati in breve); il ragionamento interno del modello e i sotto-agenti sono esclusi; il contenuto dei **file sensibili** letti o scritti (`.env`, chiavi…) viene tolto per intero.
 

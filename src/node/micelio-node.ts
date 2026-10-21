@@ -460,6 +460,9 @@ function projectOf (dir: string): string {
 
 /** Ricordi e codice (B4): primo controllo dopo l'avvio, poi ogni 6 ore. / EN: Memories and code (B4): first check after startup, then every 6 hours. */
 const STALE_FIRST_CHECK_MS = 60 * 1000
+
+/** Prima scansione delle sessioni: subito dopo l'avvio, non dentro. / EN: First session scan: right after startup, not inside it. */
+const FIRST_SCAN_DELAY_MS = 5 * 1000
 const STALE_CHECK_MS = 6 * 60 * 60 * 1000
 /** Ogni quanto si controlla se è ora del backup automatico (B7): uno al giorno. / EN: How often we check whether the automatic backup is due (B7): one per day. */
 const AUTO_BACKUP_CHECK_MS = 60 * 60 * 1000
@@ -663,7 +666,7 @@ export class MicelioNode extends EventEmitter {
     // Raccolta delle sessioni in corso e recupero di quelle finite mentre il daemon era spento.
     // EN: Collect running sessions and recover those that ended while the daemon was off.
     const scanEvery = this.config.watch.sessionScan.intervalMinutes * 60_000
-    this.scanTimer = setInterval(() => { this.scanSessions() }, scanEvery)
+    this.scanTimer = setInterval(() => { void this.scanSessions() }, scanEvery)
     this.scanTimer.unref()
     // Controllo periodico del turno di sogno (Fase 6).
     // EN: Periodic check of the dream turn (Phase 6).
@@ -697,8 +700,13 @@ export class MicelioNode extends EventEmitter {
     await this.linkIdentity()
     await this.documents.start(this.config.watch.documents)
     // Recupero: sessioni lavorate mentre il daemon era spento (o parti nuove di sessioni lunghe).
+    // Poco DOPO l'avvio, non durante: la scansione legge trascrizioni anche di centinaia di MB e
+    // l'app aspetta che il daemon risponda (bug del 2026-10-21: avvio a 55 s, oltre i 30 s dell'app).
     // EN: Recovery: sessions worked on while the daemon was off (or new parts of long sessions).
-    this.scanSessions()
+    //     Shortly AFTER startup, not during it: the scan reads transcripts of even hundreds of MB and
+    //     the app waits for the daemon to respond (bug of 2026-10-21: startup at 55 s, past the app's 30 s).
+    const firstScan = setTimeout(() => { void this.scanSessions() }, FIRST_SCAN_DELAY_MS)
+    firstScan.unref()
   }
 
   /** Ferma tutto in ordine: worker, indicizzazione in corso, rete, database. / EN: Stops everything in order: worker, running indexing, network, databases. */
@@ -2480,16 +2488,33 @@ export class MicelioNode extends EventEmitter {
    *
    * EN: Checks Claude Code transcripts and queues the new part of the sessions (running or
    * finished) of the enabled folders. Called at startup, periodically and by `micelio ingest scan`.
+   * Asincrona e in background: le trascrizioni si leggono in un worker thread, il daemon resta
+   * reattivo. Una scansione già in corso non se ne sovrappone un'altra: si restituisce la stessa.
+   *
+   * EN: Asynchronous and in the background: transcripts are read in a worker thread, the daemon
+   * stays responsive. A scan already running isn't overlapped by another: the same one is returned.
    * @returns quante sessioni sono state accodate
    *          EN: how many sessions were queued
    */
-  scanSessions (): number {
+  scanSessions (): Promise<number> {
+    this.scanning ??= this.runScan().finally(() => { this.scanning = null })
+    return this.scanning
+  }
+
+  /** Scansione in corso (null = nessuna). / EN: Running scan (null = none). */
+  private scanning: Promise<number> | null = null
+
+  /** Una scansione: vedi scanSessions. / EN: One scan: see scanSessions. */
+  private async runScan (): Promise<number> {
     const s = this.config.watch.sessionScan
     if (!this.team || !s.enabled) return 0
     try {
       // Con più team si tengono solo le sessioni delle cartelle che appartengono a questo team
       // EN: With several teams, keep only sessions from folders that belong to this team
-      const found = this.scanner.scan({ projectsDir: claudeProjectsDir(), watched: this.config.watch.sessions, ...s }).filter((c) => this.ownsFolder(c.cwd))
+      const found = (await this.scanner.scan({ projectsDir: claudeProjectsDir(), watched: this.config.watch.sessions, ...s })).filter((c) => this.ownsFolder(c.cwd))
+      // Il nodo può essersi fermato durante la lettura (chiusura del daemon)
+      // EN: The node may have stopped during the read (daemon shutdown)
+      if (!this.team) return 0
       for (const c of found) this.pipeline.enqueueSession(c)
       if (found.length) this.log(`raccolta periodica: ${found.length} sessioni con parti nuove accodate`)
       return found.length
