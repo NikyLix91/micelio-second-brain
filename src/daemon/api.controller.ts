@@ -680,8 +680,8 @@ export class ApiController {
   /** Controlla subito le trascrizioni (sessioni in corso o perse) e accoda le parti nuove. / EN: Checks the transcripts now (ongoing or lost sessions) and queues the new parts. */
   @Post('ingest/scan')
   @HttpCode(200)
-  ingestScan () {
-    return { queued: this.node.scanSessions() }
+  async ingestScan () {
+    return { queued: await this.node.scanSessions() }
   }
 
   /** Elabora subito il prossimo lavoro in coda (utile per provare senza aspettare il worker). / EN: Processes the next queued job now (handy for testing without waiting for the worker). */

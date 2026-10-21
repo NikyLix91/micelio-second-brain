@@ -41,42 +41,42 @@ describe('SessionScanner', () => {
     scanner = new SessionScanner(store)
   })
 
-  it('prende una sessione in pausa con abbastanza contenuto nuovo', () => {
+  it('prende una sessione in pausa con abbastanza contenuto nuovo', async () => {
     session('pausa', 5, 15)
-    expect(scanner.scan(opts()).map((c) => c.sessionId)).toEqual(['pausa'])
+    expect((await scanner.scan(opts())).map((c) => c.sessionId)).toEqual(['pausa'])
   })
 
-  it('non tocca una sessione ancora attiva (scritta da poco)', () => {
+  it('non tocca una sessione ancora attiva (scritta da poco)', async () => {
     session('attiva', 10, 2)
-    expect(scanner.scan(opts())).toEqual([])
+    expect(await scanner.scan(opts())).toEqual([])
   })
 
-  it('aspetta più contenuto se la parte nuova è piccola, ma la prende se la sessione è abbandonata', () => {
+  it('aspetta più contenuto se la parte nuova è piccola, ma la prende se la sessione è abbandonata', async () => {
     session('piccola', 2, 30)
-    expect(scanner.scan(opts())).toEqual([])
+    expect(await scanner.scan(opts())).toEqual([])
     session('abbandonata', 2, 8 * 60)
-    expect(scanner.scan(opts()).map((c) => c.sessionId)).toEqual(['abbandonata'])
+    expect((await scanner.scan(opts())).map((c) => c.sessionId)).toEqual(['abbandonata'])
   })
 
-  it('ignora le sessioni avviate fuori dalle cartelle abilitate', () => {
+  it('ignora le sessioni avviate fuori dalle cartelle abilitate', async () => {
     session('altrove', 6, 20, tmpHome('altro-progetto'))
-    expect(scanner.scan(opts())).toEqual([])
+    expect(await scanner.scan(opts())).toEqual([])
   })
 
-  it('niente di nuovo se le righe sono già state elaborate; di nuovo candidata quando la sessione cresce', () => {
+  it('niente di nuovo se le righe sono già state elaborate; di nuovo candidata quando la sessione cresce', async () => {
     const file = session('lunga', 5, 20)
-    expect(scanner.scan(opts())).toHaveLength(1)
+    expect(await scanner.scan(opts())).toHaveLength(1)
     store.setSessionLines('lunga', fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).length)
-    expect(scanner.scan({ ...opts(), now: NOW + MIN })).toEqual([])
+    expect(await scanner.scan({ ...opts(), now: NOW + MIN })).toEqual([])
     // La sessione continua (giorni dopo): nuova parte matura
     // EN: The session goes on (days later): a new part is ready
     session('lunga', 12, 15)
-    expect(scanner.scan({ ...opts(), now: NOW + 2 * MIN }).map((c) => c.sessionId)).toEqual(['lunga'])
+    expect((await scanner.scan({ ...opts(), now: NOW + 2 * MIN })).map((c) => c.sessionId)).toEqual(['lunga'])
   })
 
-  it('non accoda due volte una sessione con un lavoro già in coda', () => {
+  it('non accoda due volte una sessione con un lavoro già in coda', async () => {
     session('in-coda', 5, 20)
     store.enqueue('session', { sessionId: 'in-coda', transcriptPath: 'x', cwd: project })
-    expect(scanner.scan(opts())).toEqual([])
+    expect(await scanner.scan(opts())).toEqual([])
   })
 })

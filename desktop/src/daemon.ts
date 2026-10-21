@@ -98,10 +98,14 @@ function nodeRuntime (): { cmd: string, env: NodeJS.ProcessEnv } {
 }
 
 /**
- * Avvia il daemon in background se non è già attivo, e attende che risponda (max 30 s).
+ * Avvia il daemon in background se non è già attivo, e attende che risponda (max 90 s).
+ * L'avvio normale dura pochi secondi; il margine è per i PC lenti o molto carichi, perché
+ * un errore «daemon non attivo» quando il daemon sta solo partendo confonde l'utente.
  * Il processo è staccato dall'app: sopravvive alla sua chiusura, come con `micelio start`.
  *
- * EN: Starts the daemon in the background if it isn't already running, and waits until it responds (max 30 s).
+ * EN: Starts the daemon in the background if it isn't already running, and waits until it responds (max 90 s).
+ * A normal startup takes a few seconds; the margin is for slow or very busy PCs, because a
+ * "daemon not running" error while the daemon is only starting confuses the user.
  * The process is detached from the app: it survives the app closing, as with `micelio start`.
  */
 export async function ensureDaemon (info: DaemonInfo, log: (m: string) => void): Promise<void> {
@@ -117,11 +121,11 @@ export async function ensureDaemon (info: DaemonInfo, log: (m: string) => void):
     env: { ...process.env, ...env, MICELIO_HOME: info.home, NO_COLOR: '1' },
     windowsHide: true
   }).unref()
-  for (let i = 0; i < 60; i++) {
+  for (let i = 0; i < 180; i++) {
     if (await isUp(info)) return
     await new Promise((r) => setTimeout(r, 500))
   }
-  throw new Error(`Il daemon non è partito entro 30 secondi: controlla ${path.join(logs, 'daemon.log')}`)
+  throw new Error(`Il daemon non è partito entro 90 secondi: controlla ${path.join(logs, 'daemon.log')}`)
 }
 
 /** Chiamata GET all'API con il token. / EN: GET call to the API with the token. */
