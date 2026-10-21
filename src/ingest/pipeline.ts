@@ -60,7 +60,7 @@ import type { DocumentRecord, InboxItem, Job, PrivateStore, SourceRef } from '..
 import { CHUNK_CHARS, chunkText, extractText, MAX_CHUNKS, mimeOf } from './extract'
 import { CLASSIFY_SYSTEM, Classification, Distilled, distillSystem, MICELIO_DELIVERED_HEADER, MICELIO_JUDGE_RULE } from './prompts'
 import { type ChangeSummary, codeRefs, repoInfo, type RepoInfo, summarizeChanges } from './git-changes'
-import { extractTranscript } from './transcript'
+import { readTranscript } from './transcript-worker'
 
 /** Sotto questa soglia di confidenza il classificatore non decide da solo: si va in inbox. / EN: Below this confidence threshold the classifier does not decide on its own: it goes to the Inbox. */
 export const CONFIDENCE_THRESHOLD = 0.8
@@ -291,7 +291,9 @@ export class IngestPipeline {
 
     const sensitive = (await this.deps.sensitiveFiles?.()) ?? []
     const fromLine = store.sessionLines(sessionId)
-    const ex = extractTranscript(transcriptPath, fromLine, sensitive)
+    // In un worker thread: una trascrizione di centinaia di MB non blocca il daemon
+    // EN: In a worker thread: a transcript of hundreds of MB doesn't block the daemon
+    const ex = await readTranscript(transcriptPath, fromLine, sensitive)
     const source: SourceRef = { type: 'claude-code', ref: sessionId, cwd }
     // B11: cosa ha fornito Micelio in questa parte e se ne restano tracce (euristica, sempre:
     // anche le sessioni brevi o che non si distillano). Un errore qui non deve fermare la raccolta.
