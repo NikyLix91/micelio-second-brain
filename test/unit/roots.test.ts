@@ -5,6 +5,13 @@
  * - attivazione: mai sotto ROOT_FLOOR;
  * - dreaming: le Radici sono escluse da fusioni e decadimento;
  * - revisione: repository locali, commit successivi alla revisione, file scomparsi, documenti.
+ *
+ * EN: Roots (Phase 8), deterministic part:
+ * - apply: promotion, category, flags (without duplicates), confirmation, removal; Roots
+ *   are not merged and not archived;
+ * - activation: never below ROOT_FLOOR;
+ * - dreaming: Roots are excluded from merges and decay;
+ * - review: local repositories, commits after the review, missing files, documents.
  */
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
@@ -18,7 +25,7 @@ import { activation, ROOT_FLOOR } from '../../src/rank/activation'
 import { codeFindings, documentFinding, findRepo, localRepos } from '../../src/roots/review'
 import { tmpHome } from '../helpers'
 
-/** Vista finta in memoria con l'interfaccia minima di Hyperbee usata da apply. */
+/** Vista finta in memoria con l'interfaccia minima di Hyperbee usata da apply. / EN: Fake in-memory view with the minimal Hyperbee interface used by apply. */
 function fakeView () {
   const data = new Map<string, unknown>()
   return {
@@ -36,7 +43,7 @@ const MEM = { kind: 'decision' as const, title: 'Architettura a eventi per gli o
 const ID = memoryId(MEM)
 const OTHER = { kind: 'decision' as const, title: 'Architettura a eventi (copia)', body: 'Ogni servizio pubblica eventi.', tags: [], source: { type: 'cli' } }
 
-/** Team con un ricordo, poi gli eventi indicati. */
+/** Team con un ricordo, poi gli eventi indicati. / EN: Team with one memory, then the given events. */
 async function run (...events: ReturnType<typeof node>[]) {
   const view = fakeView()
   await applyNodes([node({ type: 'team.init', name: 'T', founderName: 'alice' }), node({ type: 'memory.add', memory: MEM }), ...events], view, host)
@@ -80,7 +87,7 @@ describe('apply: Radici', () => {
 })
 
 describe('attivazione e dreaming', () => {
-  const OLD = Date.now() - 3 * 365 * 24 * 3600 * 1000 // tre anni senza usi
+  const OLD = Date.now() - 3 * 365 * 24 * 3600 * 1000 // tre anni senza usi / EN: three years without uses
   const base = { kind: 'decision', createdAt: OLD, uses: 0, votes: 0, degree: 0, pinned: false }
 
   it('una Radice mai usata da anni resta almeno a ROOT_FLOOR; un ricordo normale decade', () => {
@@ -99,9 +106,10 @@ describe('attivazione e dreaming', () => {
 })
 
 // ═══════════════════════════════ Revisione (8.3) ═══════════════════════════════
+// EN: Review (8.3)
 
 describe('revisione: codice e documenti', () => {
-  /** git nel repository di prova; `at` = data del commit. */
+  /** git nel repository di prova; `at` = data del commit. / EN: git in the test repository; `at` = commit date. */
   const git = (cwd: string, args: string[], at?: number) => {
     const date = at !== undefined ? new Date(at).toISOString() : undefined
     const r = spawnSync('git', ['-c', 'user.name=T', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', ...args], { cwd, encoding: 'utf8', env: { ...process.env, ...(date ? { GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date } : {}) } })
@@ -114,7 +122,7 @@ describe('revisione: codice e documenti', () => {
     git(repo, ['add', '-A'])
     git(repo, ['commit', '-q', '-m', `modifica ${file}`], at)
   }
-  /** Cartella "progetti" con un repository "ordini" dentro (come chi abilita C:\progetti). */
+  /** Cartella "progetti" con un repository "ordini" dentro (come chi abilita C:\progetti). / EN: "progetti" folder with an "ordini" repository inside (like someone enabling C:\progetti). */
   const setup = () => {
     const parent = tmpHome('progetti')
     const repo = path.join(parent, 'ordini')
@@ -139,14 +147,14 @@ describe('revisione: codice e documenti', () => {
   it('codeFindings: solo i commit DOPO la revisione sui file citati, e i file scomparsi', () => {
     const { repo } = setup()
     const now = Date.now()
-    commit(repo, 'src/orders/a.ts', 'v1', now - 5 * HOUR) // prima della revisione: non conta
-    commit(repo, 'src/billing/b.ts', 'x', now - HOUR) // dopo, ma su un altro file: non conta
+    commit(repo, 'src/orders/a.ts', 'v1', now - 5 * HOUR) // prima della revisione: non conta / EN: before the review: doesn't count
+    commit(repo, 'src/billing/b.ts', 'x', now - HOUR) // dopo, ma su un altro file: non conta / EN: after, but on another file: doesn't count
     const [info] = localRepos([repo])
     const code = { project: 'ordini', files: ['src/orders/', 'src/gone.ts'], symbols: [], commits: [] }
     let f = codeFindings(rootAt(now - 2 * HOUR), code, info)
     expect(f.map((x) => x.reason)).toEqual(['File citati non più presenti: src/gone.ts'])
 
-    commit(repo, 'src/orders/a.ts', 'v2', now - HOUR / 2) // dopo la revisione, su un file citato
+    commit(repo, 'src/orders/a.ts', 'v2', now - HOUR / 2) // dopo la revisione, su un file citato / EN: after the review, on a cited file
     f = codeFindings(rootAt(now - 2 * HOUR), code, info)
     expect(f[0].reason).toMatch(/^1 commit hanno modificato i file citati/)
     expect(f[0].refs).toHaveLength(1)

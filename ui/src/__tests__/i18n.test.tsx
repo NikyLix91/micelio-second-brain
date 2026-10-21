@@ -1,6 +1,9 @@
 /**
  * Lingua dell'interfaccia (B1): selettore IT/EN, scelta ricordata, testi e formattazione che
  * seguono la lingua, tabelle di etichette, didascalia del tour.
+ *
+ * EN: Interface language (B1): IT/EN switch, remembered choice, texts and formatting that
+ * follow the language, label tables, tour caption.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
@@ -31,7 +34,7 @@ describe('lingua', () => {
     expect(Object.keys(KIND_LABEL)).toContain('gotcha')
     expect(localStorage.getItem('micelio.lang')).toBe('en')
     expect(detectLang()).toBe('en')
-    act(() => { fireEvent.click(screen.getByText('IT')) }) // ripristina per gli altri test
+    act(() => { fireEvent.click(screen.getByText('IT')) }) // ripristina per gli altri test / EN: restore for the other tests
   })
 
   it('una schermata intera in inglese', async () => {

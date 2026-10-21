@@ -1,6 +1,9 @@
 /**
  * Logica pura della UI: tappe del tour del Nucleo, geometria della camera, colori stabili,
  * parser dello stream SSE. Niente DOM né WebGL: girano velocissimi.
+ *
+ * EN: Pure UI logic: Nucleus tour stops, camera geometry, stable colors,
+ * SSE stream parser. No DOM or WebGL: they run very fast.
  */
 import { describe, expect, it } from 'vitest'
 import type { GraphNode } from '../api/client'

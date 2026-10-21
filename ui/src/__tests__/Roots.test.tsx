@@ -2,6 +2,10 @@
  * Radici nella UI (Fase 8): elenco per categoria con stato di revisione, revisione manuale,
  * suggerimenti promossi con la categoria scelta, "Rendi Radice" dal dettaglio di un ricordo.
  * fetch è finto: rispondiamo in base a metodo + URL e controlliamo cosa viene inviato al daemon.
+ *
+ * EN: Roots in the UI (Phase 8): list by category with review status, manual review,
+ * suggestions promoted with the chosen category, "Make Root" from a memory's detail.
+ * fetch is fake: we reply based on method + URL and check what gets sent to the daemon.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -22,7 +26,7 @@ const root = (id: string, title: string, category: RootView['category'], status:
   byName: 'alice', reviewedByName: 'bruno'
 })
 
-/** fetch finto: "METODO /percorso" → risposta JSON. */
+/** fetch finto: "METODO /percorso" → risposta JSON. / EN: Fake fetch: "METHOD /path" → JSON response. */
 function mockFetch (routes: Record<string, unknown>) {
   return vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
     const key = `${init?.method ?? 'GET'} ${String(url)}`

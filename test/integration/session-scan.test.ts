@@ -1,6 +1,9 @@
 /**
  * Sessione lunga in corso, raccolta a capitoli dal controllo periodico (senza hook di fine
  * sessione): ogni parte nuova viene distillata una sola volta.
+ *
+ * EN: Long session in progress, collected in chapters by the periodic check (no end-of-session
+ * hook): each new part is distilled only once.
  */
 import fs from 'node:fs'
 import path from 'node:path'
@@ -17,7 +20,7 @@ describe('raccolta delle sessioni in corso', () => {
   const transcripts = path.join(claudeDir, 'projects', 'C--progetto-lungo')
   const prev = process.env.CLAUDE_CONFIG_DIR
 
-  /** Fa sembrare la trascrizione "in pausa" da 20 minuti. */
+  /** Fa sembrare la trascrizione "in pausa" da 20 minuti. / EN: Makes the transcript look "paused" for 20 minutes. */
   const pause = (file: string) => { const t = new Date(Date.now() - 20 * 60_000); fs.utimesSync(file, t, t) }
   const chapter = (lesson: string) => [
     ...Array.from({ length: 4 }, (_, i) => ({ user: `passo ${i} del lavoro sul servizio ordini ` + 'x'.repeat(120) })),
@@ -55,7 +58,7 @@ describe('raccolta delle sessioni in corso', () => {
     expect(node.scanSessions()).toBe(1)
     await node.processQueue()
     expect(node.recall('secondo').map((h) => h.title)).toEqual(['Secondo capitolo concluso'])
-    expect((await node.status()).memories).toBe(2) // il primo capitolo non è stato rielaborato
-    expect(node.scanSessions()).toBe(0) // niente di nuovo
+    expect((await node.status()).memories).toBe(2) // il primo capitolo non è stato rielaborato / EN: the first chapter was not processed again
+    expect(node.scanSessions()).toBe(0) // niente di nuovo / EN: nothing new
   })
 })

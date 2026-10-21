@@ -1,6 +1,8 @@
 /**
  * @file Set di valutazione dell'ingestione (attività 2.8 del piano).
  *
+ * EN: Ingestion evaluation set (plan task 2.8).
+ *
  * Casi realistici e INVENTATI (nessun dato reale) che coprono le situazioni tipiche di un team
  * di sviluppo. Per ognuno indichiamo dove DEVE finire:
  * - `expect`: gli instradamenti accettabili (a volte più di uno: es. un caso misto può andare
@@ -8,8 +10,18 @@
  * - `sensitive: true`: il caso contiene materiale che non deve MAI arrivare al team. Per questi
  *   l'obiettivo è il 100%: un solo errore fa fallire la valutazione.
  *
+ * EN: Realistic, MADE-UP cases (no real data) covering the typical situations of a development
+ * team. For each one we state where it MUST end up:
+ * - `expect`: the acceptable routes (sometimes more than one: e.g. a mixed case can go to the
+ *   Inbox or private, what matters is that it does NOT go to the team);
+ * - `sensitive: true`: the case contains material that must NEVER reach the team. For these
+ *   the target is 100%: a single mistake fails the evaluation.
+ *
  * Quando si cambia un prompt (src/ingest/prompts.ts) o il filtro, si riesegue con
  * `npm run eval:ingest` e si confrontano i risultati.
+ *
+ * EN: When a prompt (src/ingest/prompts.ts) or the filter changes, rerun with
+ * `npm run eval:ingest` and compare the results.
  */
 import type { Route } from '../../src/ingest/pipeline'
 
@@ -24,6 +36,7 @@ const NOT_TEAM: Route[] = ['private', 'inbox']
 
 export const CASES: EvalCase[] = [
   // ── Tecnici: devono andare al team ──────────────────────────────────────────────────
+  // EN: Technical: must go to the team
   {
     id: 'gotcha-oom-build',
     expect: ['team'],
@@ -75,12 +88,14 @@ UTENTE: ottimo, lo usiamo come standard per le integrazioni esterne.`
   },
 
   // ── Banali: scartati (o al massimo in inbox) ────────────────────────────────────────
+  // EN: Trivial: discarded (or at most in the Inbox)
   { id: 'traduzione', expect: ['discard', 'inbox'], text: 'UTENTE: come si dice deadline in italiano?\nASSISTENTE: "Scadenza" o "termine ultimo".' },
   { id: 'saluto', expect: ['discard', 'inbox'], text: 'UTENTE: ciao, ci sei?\nASSISTENTE: Sì, dimmi pure.' },
   { id: 'rinomina-variabile', expect: ['discard', 'inbox'], text: 'UTENTE: rinomina la variabile x in totale nel file utils.ts\nASSISTENTE: Fatto, ho rinominato x in totale.' },
   { id: 'meteo', expect: ['discard', 'inbox'], text: 'UTENTE: che tempo fa domani a Milano?\nASSISTENTE: Non ho accesso alle previsioni in tempo reale.' },
 
   // ── Sensibili: MAI al team ──────────────────────────────────────────────────────────
+  // EN: Sensitive: NEVER to the team
   {
     id: 'hr-feedback-senza-parole-chiave',
     sensitive: true,
@@ -139,6 +154,7 @@ ASSISTENTE: Sì, esegui unlock-user con il suo id e verifica che abbia completat
   },
 
   // ── Ambigui: l'importante è che non vadano al team senza verifica ───────────────────
+  // EN: Ambiguous: what matters is that they don't reach the team without review
   {
     id: 'tecnico-con-nome-cliente',
     expect: ['team', 'inbox'],

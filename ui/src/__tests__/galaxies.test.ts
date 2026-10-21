@@ -1,12 +1,15 @@
 /**
  * Galassie nelle viste grafiche: quale livello si disegna (tutto, vista d'insieme, una galassia,
  * solo i risultati) a seconda della dimensione del team, di ricerca e filtri.
+ *
+ * EN: Galaxies in the graphical views: which level gets drawn (everything, overview, one galaxy,
+ * results only) depending on team size, search and filters.
  */
 import { describe, expect, it } from 'vitest'
 import type { Graph, GraphNode } from '../api/client'
 import { buildView, galaxyNodeId, galaxyStops, GALAXY_THRESHOLD, isGalaxyNode, STAR_BUDGET, usesGalaxies } from '../pages/galaxies'
 
-/** Team finto: `perGalaxy` ricordi in ognuna di `count` galassie, collegati in catena. */
+/** Team finto: `perGalaxy` ricordi in ognuna di `count` galassie, collegati in catena. / EN: Fake team: `perGalaxy` memories in each of `count` galaxies, linked in a chain. */
 function team (count: number, perGalaxy: number): Graph {
   const nodes: GraphNode[] = []
   const links: Graph['links'] = []
@@ -58,9 +61,9 @@ describe('galassie nelle viste', () => {
     expect(v.nodes).toHaveLength(STAR_BUDGET)
     expect(v.hidden).toBe(300)
     const ids = new Set(v.nodes.map((n) => n.id))
-    expect(ids.has('m0-0')).toBe(true) // Radice
-    expect(ids.has('m0-5')).toBe(true) // acceso, poco vivo
-    expect(ids.has(`m0-${STAR_BUDGET + 299}`)).toBe(true) // il più vivo
+    expect(ids.has('m0-0')).toBe(true) // Radice / EN: Root
+    expect(ids.has('m0-5')).toBe(true) // acceso, poco vivo / EN: lit, barely alive
+    expect(ids.has(`m0-${STAR_BUDGET + 299}`)).toBe(true) // il più vivo / EN: the most alive
     expect(v.lit).toEqual(lit)
   })
 
@@ -73,7 +76,7 @@ describe('galassie nelle viste', () => {
 
   it('tanti risultati: si accendono le galassie che li contengono, con il conteggio', () => {
     const g = team(5, 100)
-    const lit = new Set(g.nodes.filter((n) => n.galaxy! <= 2).map((n) => n.id)) // 300 > soglia
+    const lit = new Set(g.nodes.filter((n) => n.galaxy! <= 2).map((n) => n.id)) // 300 > soglia / EN: 300 > threshold
     expect(lit.size).toBeGreaterThan(GALAXY_THRESHOLD)
     const v = buildView(g, null, lit)
     expect(v.level).toBe('overview')

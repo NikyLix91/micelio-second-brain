@@ -10,6 +10,18 @@
  *
  * Tutto resta su questo PC; al team arrivano solo il pollice in su e quante volte un ricordo è
  * stato utile (src/node/micelio-node.ts, efficacyReport).
+ *
+ * EN: Efficacy (B11): when agents query Micelio and whether they get useful data.
+ *
+ * - **Queries**, live: every request from Claude Code to Micelio (MCP tool or automatic
+ *   context), with what it received and how long the daemon took to answer;
+ * - **Outcomes**, once the session is over: for each memory delivered, whether the agent used it. First
+ *   the heuristic ("probably useful", with the evidence), then the LLM's judgement at distillation
+ *   ("useful" confirmed → automatic thumbs up; "wrong" → to review);
+ * - most useful memories, noise (returned often, never useful), wrong ones, unanswered questions.
+ *
+ * Everything stays on this PC; the team only gets the thumbs up and how many times a memory was
+ * useful (src/node/micelio-node.ts, efficacyReport).
  */
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
@@ -118,10 +130,11 @@ export function Efficacy () {
   const [days, setDays] = useState(7)
   const [project, setProject] = useState('')
   const q = useQuery({ queryKey: ['efficacy', days, project], queryFn: () => api.efficacy(days, project || undefined) })
-  /** Ricordo aperto nel pannello di dettaglio. */
+  /** Ricordo aperto nel pannello di dettaglio. / EN: Memory open in the detail panel. */
   const [open, setOpen] = useState<{ id: string, title: string } | null>(null)
   const r = q.data
   // Progetti visti nel periodo, per il filtro (anche quello scelto, se non compare più)
+  // EN: Projects seen in the period, for the filter (including the chosen one, if it no longer appears)
   const projects = [...new Set([...(r?.consultations ?? []).map((c) => c.project), ...(r?.outcomes ?? []).map((o) => o.project), project || null].filter((p): p is string => !!p))].sort()
   const link = (m: { id: string, title: string }) => <button className='link' onClick={() => setOpen(m)}>{m.title}</button>
 
@@ -235,7 +248,7 @@ export function Efficacy () {
   )
 }
 
-/** Un numero con etichetta e nota, in cima alla pagina. */
+/** Un numero con etichetta e nota, in cima alla pagina. / EN: A number with label and note, at the top of the page. */
 function Tile ({ label, value, hint, warn = false }: { label: string, value: number | string, hint: string, warn?: boolean }) {
   return (
     <div className='card'>

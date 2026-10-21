@@ -1,14 +1,26 @@
 /**
  * @file Backup e ripristino del sapere di un team (B7) nell'interfaccia.
  *
+ * EN: Backup and restore of a team's knowledge (B7) in the UI.
+ *
  * - BackupCard (pagina Team): crea il file di backup del team e ripristina un backup, dentro
  *   questo team (solo admin) o in un team nuovo;
  * - RestoreBackup: il ripristino da solo, usato anche nella schermata di benvenuto («Ripristina da
  *   un backup»: un PC nuovo, o il sapere di un team da portare altrove);
  * - AutoBackupCard (Impostazioni): backup automatici giornalieri del team.
  *
+ * EN:
+ * - BackupCard (Team page): creates the team's backup file and restores a backup, into
+ *   this team (admin only) or into a new team;
+ * - RestoreBackup: the restore on its own, also used in the welcome screen («Restore from
+ *   a backup»: a new PC, or a team's knowledge to move elsewhere);
+ * - AutoBackupCard (Settings): daily automatic backups of the team.
+ *
  * Il file viaggia fra UI e daemon in base64 (JSON, come le altre chiamate). Il daemon lo cifra e lo
  * decifra: la UI non vede mai il contenuto, solo il manifesto (nome del team, data, conteggi).
+ *
+ * EN: The file travels between UI and daemon in base64 (JSON, like the other calls). The daemon
+ * encrypts and decrypts it: the UI never sees the content, only the manifest (team name, date, counts).
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
@@ -99,7 +111,7 @@ const S = defineStrings({
   }
 })
 
-/** Il contenuto di un file del browser in base64 (senza il prefisso "data:…;base64,"). */
+/** Il contenuto di un file del browser in base64 (senza il prefisso "data:…;base64,"). / EN: The content of a browser file in base64 (without the "data:…;base64," prefix). */
 function fileToBase64 (file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const r = new FileReader()
@@ -109,7 +121,7 @@ function fileToBase64 (file: File): Promise<string> {
   })
 }
 
-/** Fa scaricare al browser (o all'app desktop) un file ricevuto in base64. */
+/** Fa scaricare al browser (o all'app desktop) un file ricevuto in base64. / EN: Makes the browser (or the desktop app) download a file received in base64. */
 function downloadBase64 (name: string, data: string): void {
   const bytes = Uint8Array.from(atob(data), (c) => c.charCodeAt(0))
   const url = URL.createObjectURL(new Blob([bytes], { type: 'application/octet-stream' }))
@@ -120,7 +132,7 @@ function downloadBase64 (name: string, data: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 10_000)
 }
 
-/** Pagina Team: crea un backup e ripristina. */
+/** Pagina Team: crea un backup e ripristina. / EN: Team page: create a backup and restore. */
 export function BackupCard ({ isAdmin }: { isAdmin: boolean }) {
   const s = useStrings(S)
   const [pw, setPw] = useState('')
@@ -150,10 +162,17 @@ export function BackupCard ({ isAdmin }: { isAdmin: boolean }) {
 
 /**
  * Ripristino di un backup: file → cosa contiene → password → dove.
+ *
+ * EN: Restoring a backup: file → what it contains → password → where.
+ *
  * @param canIntoThis l'utente è admin del team corrente (può ripristinare al suo interno)
+ *                    EN: the user is admin of the current team (can restore into it)
  * @param newTeamOnly schermata di benvenuto: c'è solo il team nuovo
+ *                    EN: welcome screen: only the new team option exists
  * @param nodeName / network con newTeamOnly: il nome e la rete scelti nel modulo di benvenuto
+ *                 EN: with newTeamOnly, the name and network chosen in the welcome form
  * @param onNewTeam chiamata con l'id del team nuovo (benvenuto: si entra subito nel team)
+ *                  EN: called with the new team's id (welcome: you enter the team right away)
  */
 export function RestoreBackup ({ canIntoThis = false, newTeamOnly = false, nodeName, network, onNewTeam }: { canIntoThis?: boolean, newTeamOnly?: boolean, nodeName?: string, network?: 'public' | 'local', onNewTeam?: (id: string) => void }) {
   const s = useStrings(S)
@@ -237,7 +256,7 @@ export function RestoreBackup ({ canIntoThis = false, newTeamOnly = false, nodeN
   )
 }
 
-/** Impostazioni: backup automatici giornalieri del team. */
+/** Impostazioni: backup automatici giornalieri del team. / EN: Settings: daily automatic backups of the team. */
 export function AutoBackupCard () {
   const s = useStrings(S)
   const client = useQueryClient()
@@ -273,7 +292,7 @@ export function AutoBackupCard () {
         <div>
           <label>{s.folder}</label>
           <div className='row'>
-            {/* Nell'app desktop la finestra di scelta del sistema; nel browser si scrive il percorso */}
+            {/* Nell'app desktop la finestra di scelta del sistema; nel browser si scrive il percorso / EN: In the desktop app, the system picker dialog; in the browser, you type the path */}
             {window.micelio?.pickFolder && <button className='btn' onClick={() => void window.micelio!.pickFolder!().then((d) => { if (d) setFolder(d) })}>{s.pickFolder}</button>}
             <input style={{ flex: 1 }} value={folder ?? b.folder} onChange={(e) => setFolder(e.target.value)} placeholder={s.folderPlaceholder} />
           </div>

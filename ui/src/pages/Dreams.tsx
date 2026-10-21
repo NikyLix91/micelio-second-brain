@@ -5,6 +5,14 @@
  * - "Sogna ora": avvia un consolidamento su questo nodo (usa il LLM e il suo budget).
  * - Archivio: ricordi sostituiti da una fusione o archiviati (decaduti, superati). Niente è
  *   perso: ogni ricordo si può ripristinare.
+ *
+ * EN: Dreams: the dreaming diary and the archive (Phase 6, DESIGN §10).
+ *
+ * EN:
+ * - Diary: every dream of the team (who did it, when, what it merged/archived/linked).
+ * - "Dream now": starts a consolidation on this node (uses the LLM and its budget).
+ * - Archive: memories replaced by a merge or archived (decayed, superseded). Nothing is
+ *   lost: every memory can be restored.
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { call } from '../api/client'

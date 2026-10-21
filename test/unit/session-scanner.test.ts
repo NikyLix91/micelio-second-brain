@@ -1,6 +1,9 @@
 /**
  * Raccolta delle sessioni in corso e recupero di quelle perse (src/ingest/session-scanner.ts).
  * Le trascrizioni sono finte ma nel formato di Claude Code; l'età dei file si simula con utimes.
+ *
+ * EN: Collection of ongoing sessions and recovery of missed ones (src/ingest/session-scanner.ts).
+ * The transcripts are fake but in the Claude Code format; file age is simulated with utimes.
  */
 import fs from 'node:fs'
 import path from 'node:path'
@@ -20,7 +23,7 @@ describe('SessionScanner', () => {
   let scanner: SessionScanner
   const opts = () => ({ projectsDir: projects, watched: [project], idleMinutes: 10, minUserTurns: 4, minChars: 6000, staleHours: 6, now: NOW })
 
-  /** Scrive una trascrizione nella cartella del "progetto" Claude con un'età simulata. */
+  /** Scrive una trascrizione nella cartella del "progetto" Claude con un'età simulata. / EN: Writes a transcript into the Claude "project" folder with a simulated age. */
   const session = (id: string, userTurns: number, ageMinutes: number, cwd = project, charsPerTurn = 200) => {
     const dir = path.join(projects, 'C--progetto')
     fs.mkdirSync(dir, { recursive: true })
@@ -66,6 +69,7 @@ describe('SessionScanner', () => {
     store.setSessionLines('lunga', fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).length)
     expect(scanner.scan({ ...opts(), now: NOW + MIN })).toEqual([])
     // La sessione continua (giorni dopo): nuova parte matura
+    // EN: The session goes on (days later): a new part is ready
     session('lunga', 12, 15)
     expect(scanner.scan({ ...opts(), now: NOW + 2 * MIN }).map((c) => c.sessionId)).toEqual(['lunga'])
   })

@@ -1,6 +1,9 @@
 /**
  * Limite di ricordi distillati (Fase 10): la scheda "Qualità della distillazione" mostra fasce,
  * saturazione e indicazione; l'admin cambia il limite dalla pagina Team.
+ *
+ * EN: Limit on distilled memories (Phase 10): the "Distillation quality" card shows bands,
+ * saturation and advice; the admin changes the limit from the Team page.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -38,9 +41,10 @@ describe('Qualità della distillazione', () => {
     wrap(DistillQualityCard)
     expect(await screen.findByText('Conviene alzare il limite.')).toBeTruthy()
     expect(screen.getByText('0.70')).toBeTruthy()
-    expect(screen.getByText('4ª–5ª')).toBeTruthy() // fascia composta dalla UI (from/to)
+    expect(screen.getByText('4ª–5ª')).toBeTruthy() // fascia composta dalla UI (from/to) / EN: band composed by the UI (from/to)
     expect(screen.getByText(/limite raggiunto in 12 distillazioni su 20/)).toBeTruthy()
     // L'indicazione è composta nella lingua dell'utente a partire dai valori (non dal testo della CLI)
+    // EN: The advice is composed in the user's language from the values (not from the CLI text)
     expect(screen.getByText(/punteggio 0\.60 contro 0\.70/)).toBeTruthy()
   })
 

@@ -8,6 +8,16 @@
  *   → arriva dopo qualche secondo, e dà ai temi della mappa un nome leggibile.
  * Sotto ogni risposta: «Salva come ricordo»; se la memoria non lo sa, «Segnala al team».
  * Un clic su [n] illumina il ricordo nella mappa; un clic su un ricordo lo apre.
+ *
+ * EN: Ask (B10): AI chat over the team memory, with the mind map of the knowledge.
+ *
+ * EN: Three columns: conversations (history, only on this PC) · conversation · mind map.
+ * Each question fires two requests together:
+ * - /api/chat/map: the map (search and links, no LLM) → shows up right away;
+ * - /api/chat/ask: the LLM answer, written ONLY from the memories found, with [n] references
+ *   → arrives after a few seconds, and gives the map's themes a readable name.
+ * Below each answer: «Save as a memory»; if the memory doesn't know, «Report to the team».
+ * A click on [n] highlights the memory in the map; a click on a memory opens it.
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
@@ -77,13 +87,14 @@ const S = defineStrings({
   }
 })
 
-/** Una risposta come la mostra la pagina (dalla cronologia o appena arrivata). */
+/** Una risposta come la mostra la pagina (dalla cronologia o appena arrivata). / EN: An answer as the page shows it (from history or just arrived). */
 interface Answer { messageId: number, text: string, unknown: boolean, cited: string[], refs: { n: number, id: string, title: string }[], map: ChatMap, saved?: { outcome: string } }
 
 export function Ask () {
   const s = useStrings(S)
   const client = useQueryClient()
   // `#/chiedi?chat=<id>` apre direttamente una conversazione
+  // EN: `#/chiedi?chat=<id>` opens a conversation directly
   const [params] = useSearchParams()
   const [chatId, setChatId] = useState<number | null>(params.get('chat') ? Number(params.get('chat')) : null)
   const [question, setQuestion] = useState('')
@@ -99,9 +110,11 @@ export function Ask () {
   const endRef = useRef<HTMLDivElement>(null)
 
   // Domanda/risposta in coppie, dalla cronologia
+  // EN: Question/answer pairs, from the history
   const turns = pairUp(messages.data ?? [])
   const last = turns.at(-1)?.answer
   // Aprendo una conversazione si torna alla mappa della sua ultima risposta
+  // EN: Opening a conversation goes back to the map of its last answer
   useEffect(() => { if (!pending && last) { setMap(last.map); setExtra({}) } }, [last?.messageId])
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [turns.length, pending])
 
@@ -111,6 +124,7 @@ export function Ask () {
       setSlow(false)
       const timer = setTimeout(() => setSlow(true), 15_000)
       // La mappa arriva subito (senza LLM), la risposta dopo
+      // EN: The map arrives right away (no LLM), the answer later
       api.chatMap(q).then((m) => { setMap(m); setExtra({}); setFocus(null) }).catch(() => {})
       try { return await api.chatAsk(q, chatId ?? undefined) } finally { clearTimeout(timer) }
     },
@@ -132,7 +146,7 @@ export function Ask () {
     <>
       <PageHeader help='ask' title={s.title} subtitle={s.subtitle} />
       <div className='ask'>
-        {/* ── Cronologia ── */}
+        {/* ── Cronologia ── / EN: ── History ── */}
         <aside className='ask-history'>
           <button className='btn primary' onClick={newChat}>{s.newChat}</button>
           <div className='muted small' style={{ margin: '12px 0 6px' }}>{s.history}</div>
@@ -151,7 +165,7 @@ export function Ask () {
           ))}
         </aside>
 
-        {/* ── Conversazione ── */}
+        {/* ── Conversazione ── / EN: ── Conversation ── */}
         <section className='ask-thread'>
           <div className='ask-messages'>
             {turns.length === 0 && !pending && (
@@ -183,7 +197,7 @@ export function Ask () {
           </div>
         </section>
 
-        {/* ── Mappa mentale ── */}
+        {/* ── Mappa mentale ── / EN: ── Mind map ── */}
         <section className='ask-map'>
           {!map
             ? <Empty>{s.mapEmpty}</Empty>
@@ -201,11 +215,12 @@ export function Ask () {
   )
 }
 
-/** Una risposta: testo con i riferimenti [n] cliccabili, fonti, azioni. */
+/** Una risposta: testo con i riferimenti [n] cliccabili, fonti, azioni. / EN: An answer: text with clickable [n] references, sources, actions. */
 function AnswerView ({ a, onRef, onSave, saving, reported, onReport }: { a: Answer, onRef: (id: string) => void, onSave: () => void, saving: boolean, reported: boolean, onReport: () => void }) {
   const s = useStrings(S)
   const idOf = (n: number) => a.refs.find((r) => r.n === n)?.id
   // [n] → link interno, poi reso come pulsante che illumina il ricordo nella mappa
+  // EN: [n] → internal link, then rendered as a button that highlights the memory in the map
   const text = a.text.replace(/\[(\d+)\]/g, (m, n) => (idOf(Number(n)) ? `[${n}](#ref-${n})` : m))
   const used = a.refs.filter((r) => a.cited.includes(r.id))
   return (
@@ -239,7 +254,7 @@ function AnswerView ({ a, onRef, onSave, saving, reported, onReport }: { a: Answ
   )
 }
 
-/** Messaggi in coppie domanda → risposta. */
+/** Messaggi in coppie domanda → risposta. / EN: Messages as question → answer pairs. */
 function pairUp (msgs: ChatMessage[]): { question: ChatMessage, answer: Answer | null }[] {
   const out: { question: ChatMessage, answer: Answer | null }[] = []
   for (const m of msgs) {

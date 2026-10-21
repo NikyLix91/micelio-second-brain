@@ -1,6 +1,9 @@
 /**
  * Schermata Sicurezza (Fase 9): banco di prova, regole del team (modificabili solo dall'admin),
  * scansione con "ripulisci", registro. fetch è finto: rispondiamo per metodo + URL.
+ *
+ * EN: Security screen (Phase 9): test bench, team rules (editable only by the admin), scan with "clean",
+ * log. fetch is fake: we reply by method + URL.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'

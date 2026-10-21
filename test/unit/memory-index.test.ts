@@ -55,6 +55,7 @@ describe('MemoryIndex incrementale', () => {
     idx.rebuild([a, b], members, { votes: new Map(), pins: new Set(), usage: new Map() })
     expect(idx.search('gateway').map((h) => h.id)).toEqual(['a'])
     // b esce (archiviato), c entra, a riceve un voto
+    // EN: b leaves (archived), c enters, a gets a vote
     const c = mem('c', 'Gateway di pagamento', 'circuit breaker')
     idx.rebuild([a, c], members, { votes: new Map([['a', 2]]), pins: new Set(), usage: new Map() })
     expect(idx.count()).toBe(2)
@@ -62,6 +63,7 @@ describe('MemoryIndex incrementale', () => {
     expect(idx.search('gateway').map((h) => h.id).sort()).toEqual(['a', 'c'])
     expect(idx.signals().get('a')?.votes).toBe(2)
     // stesso stato: nulla da fare, risultato identico
+    // EN: same state: nothing to do, identical result
     idx.rebuild([a, c], members, { votes: new Map([['a', 2]]), pins: new Set(), usage: new Map() })
     expect(idx.search('gateway')).toHaveLength(2)
   })

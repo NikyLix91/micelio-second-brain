@@ -6,6 +6,14 @@
  *   il nuovo team.
  * Tre strade, come in CLI: creare un team (`micelio init`), entrarci con un invito (`micelio join`)
  * o ripristinarne uno da un backup (B7, `micelio backup restore --new-team`).
+ *
+ * EN: Create a team or join one with an invite. Two uses:
+ * - first start: the PC is not part of any team yet (instead of the whole app);
+ * - "Add a team" (B3, route /team/nuovo): another team next to the existing ones,
+ *   with separate knowledge. Your name is already known (personal identity): you can change it
+ *   only for the new team.
+ * Three ways, as in the CLI: create a team (`micelio init`), join with an invite (`micelio join`)
+ * or restore one from a backup (B7, `micelio backup restore --new-team`).
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
@@ -59,12 +67,15 @@ const S = defineStrings({
 
 /**
  * @param adding true = "Aggiungi un team" dentro l'app; false = primo avvio
+ *        EN: true = "Add a team" inside the app; false = first start
  * @param onDone chiamata dopo l'ingresso nel nuovo team (es. per tornare alla home)
+ *        EN: called after joining the new team (e.g. to go back to the home)
  */
 export function Onboarding ({ adding = false, onDone }: { adding?: boolean, onDone?: () => void }) {
   const client = useQueryClient()
   const s = useStrings(S)
   // Identità personale: dal secondo team il nome è già noto
+  // EN: Personal identity: from the second team on, the name is already known
   const teams = useQuery({ queryKey: ['teams'], queryFn: api.teams })
   const known = teams.data?.identity?.name ?? null
   const [mode, setMode] = useState<'join' | 'init' | 'restore'>('join')
@@ -72,9 +83,11 @@ export function Onboarding ({ adding = false, onDone }: { adding?: boolean, onDo
   const [code, setCode] = useState('')
   const [name, setName] = useState('')
   // B4: team solo per sé, senza rete (modalità solo locale)
+  // EN: B4: a team just for yourself, with no network (local-only mode)
   const [solo, setSolo] = useState(false)
   const done = (r: { teamId: string }) => {
     // L'interfaccia passa subito al nuovo team
+    // EN: The interface switches to the new team right away
     setCurrentTeam(r.teamId)
     void client.resetQueries()
     onDone?.()
@@ -109,7 +122,7 @@ export function Onboarding ({ adding = false, onDone }: { adding?: boolean, onDo
             <div className='muted small'>{s.soloHint}</div>
           </div>
         )}
-        {/* Ripristino (B7): nome e rete scelti qui sopra; si entra nel team appena è pronto */}
+        {/* Ripristino (B7): nome e rete scelti qui sopra; si entra nel team appena è pronto / EN: Restore (B7): name and network chosen above; you enter the team as soon as it is ready */}
         {mode === 'restore' && (nameOk
           ? <RestoreBackup newTeamOnly nodeName={name} network={solo ? 'local' : undefined} onNewTeam={(id) => done({ teamId: id })} />
           : <div className='muted small'>{known ? s.pcNameKnown(known) : s.pcName}</div>)}

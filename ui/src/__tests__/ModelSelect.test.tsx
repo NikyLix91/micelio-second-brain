@@ -1,6 +1,9 @@
 /**
  * Impostazioni → Intelligenza (LLM): tendine dei modelli (Haiku, Sonnet, Opus, «Altro…» con
  * nome libero) e spiegazione dell'adapter (es. «fake» = LLM finto del team demo).
+ *
+ * EN: Settings → Intelligence (LLM): model dropdowns (Haiku, Sonnet, Opus, «Other…» with a
+ * free name) and explanation of the adapter (e.g. «fake» = the demo team's fake LLM).
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'

@@ -1,4 +1,5 @@
 // Daemon NestJS: autenticazione, API REST, MCP via client MCP reale, persistenza al riavvio.
+// EN: NestJS daemon: authentication, REST API, MCP via a real MCP client, persistence across restarts.
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import type { NestExpressApplication } from '@nestjs/platform-express'
@@ -27,9 +28,9 @@ describe('daemon', () => {
   }
 
   const start = async () => {
-    process.env.MICELIO_PORT = '0' // porta libera scelta dal sistema
-    process.env.MICELIO_LLM_ADAPTER = 'fake' // niente chiamate reali a Claude nei test
-    process.env.MICELIO_EMBEDDER = 'hash' // niente download del modello di embedding
+    process.env.MICELIO_PORT = '0' // porta libera scelta dal sistema / EN: free port chosen by the OS
+    process.env.MICELIO_LLM_ADAPTER = 'fake' // niente chiamate reali a Claude nei test / EN: no real Claude calls in tests
+    process.env.MICELIO_EMBEDDER = 'hash' // niente download del modello di embedding / EN: no download of the embedding model
     process.env.MICELIO_DHT_BOOTSTRAP = dht.bootstrap.map((b) => `${b.host}:${b.port}`).join(',')
     app = await startDaemon(paths)
     const addr = app.getHttpServer().address() as import('node:net').AddressInfo
@@ -64,6 +65,7 @@ describe('daemon', () => {
     expect(r.data.error).toMatch(/non configurato/)
     expect((await api('POST', '/api/team/init', { team: '' })).status).toBe(400)
     // La UI chiede la lingua con x-micelio-lang: lo stesso errore in inglese
+    // EN: The UI asks for the language with x-micelio-lang: the same error in English
     const en = await fetch(`${base}/api/memories`, {
       method: 'POST',
       headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', 'x-micelio-lang': 'en' },
@@ -115,10 +117,11 @@ describe('daemon', () => {
     const body = { session_id: 'sess-1', transcript_path: transcriptPath, cwd: project }
 
     // Cartella non abilitata: la sessione viene ignorata (D7)
+    // EN: Folder not enabled: the session is ignored (D7)
     const ignored = await api('POST', '/api/ingest/session', body)
     expect(ignored.data).toMatchObject({ queued: false })
 
-    expect((await api('POST', '/api/watch', { path: project })).data).toContain(canonicalPath(project)) // salvata in forma canonica (nome lungo)
+    expect((await api('POST', '/api/watch', { path: project })).data).toContain(canonicalPath(project)) // salvata in forma canonica (nome lungo) / EN: saved in canonical form (long name)
     expect((await api('POST', '/api/ingest/session', body)).data).toMatchObject({ queued: true })
     expect((await api('POST', '/api/ingest/run')).data).toEqual({ processed: true })
 
@@ -146,6 +149,7 @@ describe('daemon', () => {
     const decoder = new TextDecoder()
     let received = ''
     // Legge lo stream finché non vede un evento "inbox" (o scade il tempo).
+    // EN: Reads the stream until it sees an "inbox" event (or time runs out).
     const waitFor = async (pattern: RegExp) => {
       const t0 = Date.now()
       while (!pattern.test(received) && Date.now() - t0 < 10_000) {
@@ -159,6 +163,7 @@ describe('daemon', () => {
     ctrl.abort()
     expect(received).toMatch(/event: change\ndata: \{"topic":"inbox"\}/)
     // Pulizia: rifiuta l'elemento creato, per non alterare i conteggi dei test successivi
+    // EN: Cleanup: reject the created item, so the counts of later tests aren't affected
     const inbox = await api('GET', '/api/inbox')
     for (const i of inbox.data) await api('POST', `/api/inbox/${i.id}/reject`)
   })
@@ -189,6 +194,7 @@ describe('daemon', () => {
     expect((await api('POST', `/api/memories/${r.data.id}/redact`, { reason: 'errore' })).status).toBe(200)
     expect((await api('GET', '/api/memories/search?q=redigere')).data).toEqual([])
     // Ripristino non permesso per un ricordo redatto
+    // EN: Restore not allowed for a redacted memory
     expect((await api('POST', `/api/archive/${r.data.id}/restore`)).status).toBe(400)
   })
 
@@ -198,6 +204,7 @@ describe('daemon', () => {
     expect((await api('POST', `/api/roots/${id}`, { category: 'inventata' })).status).toBe(400)
     expect((await api('GET', '/api/roots?category=practice')).data.map((r: any) => r.id)).toEqual([id])
     // "review" e "suggestions" non devono essere scambiati per l'id di un ricordo
+    // EN: "review" and "suggestions" must not be mistaken for a memory id
     const review = await api('POST', '/api/roots/review', {})
     expect(review.status).toBe(200)
     expect(review.data).toMatchObject({ checked: 1, flagged: [] })
@@ -221,12 +228,13 @@ describe('daemon', () => {
     await start()
     const s = await api('GET', '/api/status')
     expect(s.data.team.name).toBe('Team Test')
-    expect(s.data.memories).toBe(4) // 1 API + 1 MCP + 1 sessione + 1 inbox approvato
+    expect(s.data.memories).toBe(4) // 1 API + 1 MCP + 1 sessione + 1 inbox approvato / EN: 1 API + 1 MCP + 1 session + 1 approved inbox item
     expect((await api('GET', '/api/memories/search?q=drizzle')).data).toHaveLength(1)
   })
 
   it('più team (B3): un secondo team, intestazione x-micelio-team, MCP per team', async () => {
     // il secondo team si aggiunge al primo; il nome viene dall'identità personale
+    // EN: the second team is added to the first; the name comes from the personal identity
     const created = await api('POST', '/api/team/init', { team: 'Secondo' })
     expect(created.status).toBe(201)
     expect(created.data).toMatchObject({ nodeName: 'nodo-test', role: 'admin' })
@@ -234,19 +242,21 @@ describe('daemon', () => {
     const list = await api('GET', '/api/teams')
     expect(list.data.teams.map((t: any) => [t.name, t.isDefault])).toEqual([['Team Test', true], ['Secondo', false]])
     expect(list.data.identity).toMatchObject({ name: 'nodo-test' })
-    expect(list.data.identity.secretKey).toBeUndefined() // la chiave segreta non esce mai
+    expect(list.data.identity.secretKey).toBeUndefined() // la chiave segreta non esce mai / EN: the secret key never leaves
 
     // senza intestazione: il predefinito; con l'intestazione (id o nome): l'altro team
+    // EN: without the header: the default; with the header (id or name): the other team
     const inTeam = (team: string) => ({ authorization: `Bearer ${token}`, 'x-micelio-team': team })
     expect((await api('GET', '/api/status')).data.team.name).toBe('Team Test')
     const st = await fetch(`${base}/api/status`, { headers: inTeam('secondo') })
     expect(((await st.json()) as any).team.name).toBe('Secondo')
     const hits = await fetch(`${base}/api/memories/search?q=drizzle`, { headers: inTeam(second) })
-    expect(await hits.json()).toEqual([]) // il sapere del primo team non si vede dal secondo
+    expect(await hits.json()).toEqual([]) // il sapere del primo team non si vede dal secondo / EN: the first team's knowledge isn't visible from the second
     const unknown = await fetch(`${base}/api/status`, { headers: inTeam('gamma') })
     expect(unknown.status).toBe(400)
 
     // MCP del secondo team: salva e cerca solo lì
+    // EN: MCP of the second team: saves and searches only there
     const client = new Client({ name: 'test', version: '1.0.0' })
     await client.connect(new StreamableHTTPClientTransport(new URL(`${base}/mcp/${second}`), {
       requestInit: { headers: { authorization: `Bearer ${token}` } }
@@ -258,6 +268,7 @@ describe('daemon', () => {
     expect((await api('POST', '/mcp/gamma', { jsonrpc: '2.0', id: 1, method: 'tools/list' })).status).toBe(404)
 
     // il predefinito si cambia, poi si toglie il secondo team da questo PC
+    // EN: change the default, then remove the second team from this PC
     expect((await api('POST', `/api/teams/${second}/default`)).data.find((t: any) => t.isDefault).name).toBe('Secondo')
     expect((await api('DELETE', '/api/teams/Secondo')).data.map((t: any) => t.name)).toEqual(['Team Test'])
     expect((await api('GET', '/api/status')).data.team.name).toBe('Team Test')

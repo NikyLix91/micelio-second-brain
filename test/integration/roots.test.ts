@@ -1,6 +1,9 @@
 // Radici (Fase 8) su due nodi veri: promozione replicata, filtri (progetto, categoria, file,
 // testo), "Radici pertinenti" in coda alle ricerche, marcatura nel grafo, conferma e rimozione,
 // revisione manuale (codice cambiato, contraddizione) con segnalazione replicata.
+// EN: Roots (Phase 8) on two real nodes: replicated promotion, filters (project, category, file,
+//     text), "related Roots" appended to searches, marking in the graph, confirm and removal,
+//     manual review (changed code, contradiction) with a replicated flag.
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -25,6 +28,7 @@ describe('Radici fra due nodi', () => {
     await bruno.join((await alice.invite()).code, 'bruno')
 
     // Una Radice di progetto (con riferimenti al codice), una generale, un ricordo normale
+    // EN: A project Root (with code references), a general one, a normal memory
     arch = published(await alice.remember({
       kind: 'decision',
       title: 'Architettura a eventi del gestionale ordini',
@@ -61,6 +65,7 @@ describe('Radici fra due nodi', () => {
 
   it('Radici pertinenti: arrivano anche se non sono fra i risultati, mai doppie', async () => {
     // Con un solo risultato la Radice può essere fuori: deve arrivare comunque, e mai due volte.
+    // EN: With a single result the Root may be left out: it must arrive anyway, and never twice.
     for (const q of ['timeout bus eventi', 'eventi di dominio sul bus']) {
       const hits = (await alice.recallHybrid(q, 1)).map((h) => h.id)
       const related = (await alice.relatedRoots(q, hits)).map((h) => h.id)
@@ -68,6 +73,7 @@ describe('Radici fra due nodi', () => {
       expect(related.filter((id) => hits.includes(id))).toEqual([])
     }
     // Nessuna Radice pertinente a un argomento estraneo
+    // EN: No Root related to an unrelated topic
     expect(await alice.relatedRoots('zzz qwerty', [])).toEqual([])
   })
 
@@ -87,6 +93,7 @@ describe('Radici fra due nodi', () => {
 
   it('revisione manuale: codice cambiato e ricordo recente che la contraddice → "da rivedere" per tutti', async () => {
     // Il repository del progetto "ordini" sta in una cartella abilitata su questo PC
+    // EN: The repository of the "ordini" project is in an enabled folder on this PC
     const parent = tmpHome('progetti')
     const repo = path.join(parent, 'ordini')
     fs.mkdirSync(path.join(repo, 'src', 'orders'), { recursive: true })
@@ -96,14 +103,16 @@ describe('Radici fra due nodi', () => {
     git(['init', '-q'])
     fs.writeFileSync(path.join(repo, 'src', 'orders', 'order.service.ts'), 'export class OrderService {}\n')
     git(['add', '-A'])
-    git(['commit', '-q', '-m', 'OrderService chiama i pagamenti in modo sincrono'], Date.now() + 60_000) // dopo la revisione
+    git(['commit', '-q', '-m', 'OrderService chiama i pagamenti in modo sincrono'], Date.now() + 60_000) // dopo la revisione / EN: after the review
     alice.watchAdd(parent)
 
     // Un collega scrive un ricordo che contraddice la Radice
+    // EN: A colleague writes a memory that contradicts the Root
     await bruno.remember({ kind: 'decision', title: 'Gestionale ordini: chiamate sincrone fra servizi', body: 'Il gestionale ordini ora usa chiamate sincrone fra servizi al posto degli eventi di dominio sul bus. [contraddice]' })
     await eventually(() => alice.recall('chiamate sincrone').length === 1, nodes)
 
     // Gli embedding si calcolano in background: si riprova finché anche la contraddizione è trovata
+    // EN: Embeddings are computed in the background: retry until the contradiction is found too
     let result = await alice.rootReview()
     await eventually(async () => {
       result = await alice.rootReview()
@@ -114,6 +123,7 @@ describe('Radici fra due nodi', () => {
     expect(reasons.some((r) => /^Contraddetta/.test(r))).toBe(true)
 
     // La segnalazione arriva a tutti; la conferma la azzera
+    // EN: The flag reaches everyone; confirming clears it
     await eventually(async () => (await bruno.roots()).find((r) => r.id === arch)?.status === 'review', nodes)
     await bruno.rootConfirm(arch)
     await eventually(async () => (await alice.roots()).find((r) => r.id === arch)?.status === 'ok', nodes)

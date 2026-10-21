@@ -1,10 +1,17 @@
 /**
  * @file Vista deterministica del team (DESIGN §4.3, §9).
  *
+ * EN: Deterministic team view (DESIGN §4.3, §9).
+ *
  * Autobase raccoglie i feed di tutti i membri, li ordina in modo causale (linearizzazione) e
  * passa i blocchi, in quell'ordine, alla nostra funzione `applyNodes`. Il compito di
  * `applyNodes` è trasformare gli eventi nello STATO del team, scritto in un Hyperbee (un
  * key-value store ordinato) che chiamiamo "vista".
+ *
+ * EN: Autobase collects the feeds of all members, orders them causally (linearization) and
+ * passes the blocks, in that order, to our `applyNodes` function. The job of `applyNodes` is
+ * to turn the events into the team STATE, written to a Hyperbee (an ordered key-value store)
+ * that we call the "view".
  *
  * ┌─────────────────────────────── REGOLA D'ORO ───────────────────────────────┐
  * │ Questa funzione deve dipendere SOLO dagli eventi e dalla vista stessa.       │
@@ -15,8 +22,20 @@
  * │ questa garanzia e fa divergere i nodi in modo silenzioso.                     │
  * └──────────────────────────────────────────────────────────────────────────────┘
  *
+ * ┌─────────────────────────────── GOLDEN RULE ────────────────────────────────┐
+ * │ EN: This function must depend ONLY on the events and on the view itself.    │
+ * │ No Date.now(), no network, no files, no global variables.                     │
+ * │ Why: when new blocks arrive the ordering can change, and Autobase UNDOES and  │
+ * │ REAPPLIES part of the history. Every node, given the same events, must reach  │
+ * │ exactly the same view. Any external input breaks this guarantee and makes     │
+ * │ the nodes diverge silently.                                                   │
+ * └──────────────────────────────────────────────────────────────────────────────┘
+ *
  * Questo è anche l'unico posto dove i PERMESSI sono definitivi: un nodo modificato può emettere
  * qualunque evento, ma se `apply` lo scarta, per il team quell'evento non esiste.
+ *
+ * EN: This is also the only place where PERMISSIONS are final: a tampered node can emit any
+ * event, but if `apply` drops it, that event does not exist for the team.
  */
 import Hyperbee from 'hyperbee'
 import b4a from 'b4a'
@@ -27,6 +46,9 @@ import type { GapRecord, InviteRecord, MemberRecord, MemoryRecord, RootRecord, T
 /**
  * Chiavi della vista. Il prefisso raggruppa i record dello stesso tipo, così si possono
  * scorrere con un range (vedi RANGES).
+ *
+ * EN: View keys. The prefix groups records of the same type, so they can be scanned with a
+ * range (see RANGES).
  */
 export const KEYS = {
   team: 'team',
@@ -34,28 +56,31 @@ export const KEYS = {
   memory: (id: string) => `memory/${id}`,
   invite: (id: string) => `invite/${id}`,
   config: (k: string) => `config/${k}`,
-  /** Voto di un nodo su un ricordo (uno per nodo: l'ultimo nell'ordine linearizzato vince). */
+  /** Voto di un nodo su un ricordo (uno per nodo: l'ultimo nell'ordine linearizzato vince). / EN: A node's vote on a memory (one per node: the last one in linearized order wins). */
   vote: (id: string, node: string) => `vote/${id}/${node}`,
   pin: (id: string) => `pin/${id}`,
-  /** Radice (Fase 8): ricordo fondante, vedi RootRecord. */
+  /** Radice (Fase 8): ricordo fondante, vedi RootRecord. / EN: Root (Phase 8): a foundational memory, see RootRecord. */
   root: (id: string) => `root/${id}`,
-  /** Uso di un ricordo da parte di un nodo: contatore cumulativo e ultimo uso. */
+  /** Uso di un ricordo da parte di un nodo: contatore cumulativo e ultimo uso. / EN: Usage of a memory by a node: cumulative counter and last use. */
   usage: (id: string, node: string) => `usage/${id}/${node}`,
-  /** Volte in cui un ricordo è stato utile a un agente su un nodo (B11). */
+  /** Volte in cui un ricordo è stato utile a un agente su un nodo (B11). / EN: Times a memory was useful to an agent on a node (B11). */
   useful: (id: string, node: string) => `useful/${id}/${node}`,
-  /** Collegamento esplicito fra ricordi (dreaming). */
+  /** Collegamento esplicito fra ricordi (dreaming). / EN: Explicit link between memories (dreaming). */
   link: (from: string, to: string) => `link/${from}/${to}`,
-  /** Chi ha "vinto" il sogno di un'epoca. */
+  /** Chi ha "vinto" il sogno di un'epoca. / EN: Who "won" the dream of an epoch. */
   dreamClaim: (epoch: string) => `dream/${epoch}`,
-  /** Diario del sogno di un'epoca. */
+  /** Diario del sogno di un'epoca. / EN: Dream log of an epoch. */
   dreamLog: (epoch: string) => `dreamlog/${epoch}`,
-  /** Lacuna di conoscenza segnalata al team (B4). */
+  /** Lacuna di conoscenza segnalata al team (B4). / EN: Knowledge gap reported to the team (B4). */
   gap: (id: string) => `gap/${id}`
 } as const
 
 /**
  * Range per scorrere tutti i record di un tipo. `lt: 'member0'` funziona perché il carattere
  * '0' viene subito dopo '/' nell'ordine ASCII: il range include tutto ciò che inizia con 'member/'.
+ *
+ * EN: Ranges to scan all records of a type. `lt: 'member0'` works because the character '0'
+ * comes right after '/' in ASCII order: the range includes everything starting with 'member/'.
  */
 export const RANGES = {
   members: { gt: 'member/', lt: 'member0' },
@@ -76,6 +101,10 @@ export const RANGES = {
  * Crea la vista. Viene chiamata da Autobase, che le passa uno store "speciale" i cui core sono
  * gestiti da lui (per poterli riavvolgere durante i riordini). Va derivata SOLO da quello store.
  * `extension: false` disattiva un'estensione di rete di Hyperbee che qui non serve.
+ *
+ * EN: Creates the view. Called by Autobase, which passes a "special" store whose cores it
+ * manages (so it can rewind them during reorderings). It must be derived ONLY from that store.
+ * `extension: false` disables a Hyperbee network extension we don't need here.
  */
 export function openView (store: any): any {
   return new Hyperbee(store.get('view'), { keyEncoding: 'utf-8', valueEncoding: 'json', extension: false })
@@ -84,7 +113,7 @@ export function openView (store: any): any {
 const hex = (b: Uint8Array) => b4a.toString(b, 'hex') as string
 const buf = (h: string) => b4a.from(h, 'hex')
 
-/** Legge un record della vista; null se non esiste. */
+/** Legge un record della vista; null se non esiste. / EN: Reads a view record; null if missing. */
 async function get<T> (view: any, key: string): Promise<T | null> {
   const node = await view.get(key)
   return node ? node.value as T : null
@@ -93,16 +122,24 @@ async function get<T> (view: any, key: string): Promise<T | null> {
 /**
  * Handler `apply` di Autobase: riceve un lotto di blocchi già ordinati e aggiorna la vista.
  *
+ * EN: Autobase `apply` handler: receives a batch of already ordered blocks and updates the view.
+ *
  * @param nodes blocchi linearizzati; ognuno ha `value` (il nostro evento) e `from.key` (il feed autore)
+ *              EN: linearized blocks; each has `value` (our event) and `from.key` (the author feed)
  * @param view  la vista Hyperbee creata da `openView`
+ *              EN: the Hyperbee view created by `openView`
  * @param host  chiamate di sistema di Autobase (addWriter, removeWriter…), anch'esse deterministiche
+ *              EN: Autobase system calls (addWriter, removeWriter…), deterministic as well
  */
 export async function applyNodes (nodes: any[], view: any, host: any): Promise<void> {
   for (const node of nodes) {
     // I blocchi `null` sono "ack": Autobase li usa per far convergere l'ordinamento. Nessun effetto.
+    // EN: `null` blocks are "acks": Autobase uses them to make the ordering converge. No effect.
     if (node.value === null) continue
     // Un evento malformato, o di una versione futura che non conosciamo, viene IGNORATO.
     // Non possiamo lanciare un errore: bloccheremmo l'intero team su quel blocco.
+    // EN: A malformed event, or one from a future version we don't know, is IGNORED.
+    //     We can't throw: we would block the whole team on that block.
     const parsed = TeamEvent.safeParse(node.value)
     if (!parsed.success) continue
     await applyEvent(parsed.data, hex(node.from.key), view, host)
@@ -111,14 +148,22 @@ export async function applyNodes (nodes: any[], view: any, host: any): Promise<v
 
 /**
  * Applica un singolo evento valido.
+ *
+ * EN: Applies a single valid event.
+ *
  * @param ev     evento già validato
+ *               EN: already validated event
  * @param author chiave (hex) del feed da cui arriva: l'unica identità affidabile
+ *               EN: key (hex) of the feed it comes from: the only trustworthy identity
  */
 async function applyEvent (ev: TeamEvent, author: string, view: any, host: any): Promise<void> {
   // ── team.init ──────────────────────────────────────────────────────────────────────
   // Primo evento in assoluto. Quando il fondatore crea il team è l'unico writer, quindi il suo
   // team.init è necessariamente il primo blocco linearizzato. Qualunque team.init successivo
   // (anche dello stesso fondatore) viene ignorato.
+  // EN: The very first event. When the founder creates the team they are the only writer, so
+  //     their team.init is necessarily the first linearized block. Any later team.init (even
+  //     from the same founder) is ignored.
   if (ev.type === 'team.init') {
     if (await get(view, KEYS.team)) return
     const team: TeamRecord = { name: ev.name, founder: author, createdAt: ev.ts }
@@ -131,6 +176,9 @@ async function applyEvent (ev: TeamEvent, author: string, view: any, host: any):
   // Da qui in poi l'autore deve essere un membro attivo. Questo controllo è ciò che rende
   // inutili i blocchi scritti da un nodo espulso (Autobase smette comunque di includerli,
   // ma potrebbero esserci blocchi "in volo" scritti prima che vedesse l'espulsione).
+  // EN: From here on the author must be an active member. This check is what makes blocks
+  //     written by a removed node useless (Autobase stops including them anyway, but there
+  //     could be blocks "in flight" written before it saw the removal).
   const me = await get<MemberRecord>(view, KEYS.member(author))
   if (!me || me.removed) return
   const isAdmin = me.role === 'admin'
@@ -141,10 +189,14 @@ async function applyEvent (ev: TeamEvent, author: string, view: any, host: any):
       const m = ev.memory
       // I default sono già applicati da zod nel parse, ma restiamo difensivi: un nodo con uno
       // schema diverso potrebbe aver scritto un evento senza qualche campo opzionale.
+      // EN: Defaults are already applied by zod during parsing, but we stay defensive: a node
+      //     with a different schema might have written an event without some optional field.
       const kind = m.kind ?? 'fact'
       const id = memoryId({ kind, title: m.title, body: m.body })
       // Idempotenza: se il ricordo esiste già (stesso contenuto, anche da un altro autore)
       // si tiene il PRIMO nell'ordine linearizzato, che è lo stesso su tutti i nodi.
+      // EN: Idempotency: if the memory already exists (same content, even from another author)
+      //     we keep the FIRST one in linearized order, which is the same on every node.
       if (await get(view, KEYS.memory(id))) return
       const rec: MemoryRecord = {
         id, kind, title: m.title, body: m.body, tags: m.tags ?? [], source: m.source ?? { type: 'api' },
@@ -157,6 +209,8 @@ async function applyEvent (ev: TeamEvent, author: string, view: any, host: any):
     // ── invite.add ───────────────────────────────────────────────────────────────────
     // Qualunque membro può invitare (decisione di design). L'invito nella vista serve ai
     // membri che accoglieranno la richiesta di pairing per verificarla.
+    // EN: Any member can invite (design decision). The invite in the view lets the members
+    //     who will accept the pairing request verify it.
     case 'invite.add': {
       if (await get(view, KEYS.invite(ev.id))) return
       const inv: InviteRecord = { id: ev.id, publicKey: ev.publicKey, expires: ev.expires, by: author }
@@ -166,6 +220,7 @@ async function applyEvent (ev: TeamEvent, author: string, view: any, host: any):
 
     // ── invite.del ───────────────────────────────────────────────────────────────────
     // Un invito può annullarlo chi l'ha creato o un admin.
+    // EN: An invite can be cancelled by its creator or by an admin.
     case 'invite.del': {
       const inv = await get<InviteRecord>(view, KEYS.invite(ev.id))
       if (inv && (inv.by === author || isAdmin)) await view.del(KEYS.invite(ev.id))
@@ -176,20 +231,28 @@ async function applyEvent (ev: TeamEvent, author: string, view: any, host: any):
     // Scritto dal membro che ha accolto la richiesta di pairing (src/net/team-node.ts,
     // onCandidate). Con un `inviteId` l'invito deve esistere: così nessun membro può aggiungere
     // writer "fuori protocollo" senza lasciare traccia, e ogni invito vale una sola volta.
+    // EN: Written by the member who accepted the pairing request (src/net/team-node.ts,
+    //     onCandidate). With an `inviteId` the invite must exist: this way no member can add
+    //     writers "outside the protocol" without leaving a trace, and each invite works only once.
     case 'member.add': {
       // invitedBy = chi ha CREATO l'invito, non chi ha accolto la richiesta: è l'informazione
       // utile per la tracciabilità ("chi ha portato dentro chi").
+      // EN: invitedBy = who CREATED the invite, not who accepted the request: that is the
+      //     useful information for traceability ("who brought in whom").
       let invitedBy = author
       if (ev.inviteId) {
         const inv = await get<InviteRecord>(view, KEYS.invite(ev.inviteId))
-        if (!inv) return // invito inesistente o già consumato
+        if (!inv) return // invito inesistente o già consumato / EN: invite missing or already used
         invitedBy = inv.by
-        await view.del(KEYS.invite(ev.inviteId)) // monouso
+        await view.del(KEYS.invite(ev.inviteId)) // monouso / EN: single use
       }
       // Un nodo già membro non si riaggiunge; un nodo ESPULSO non rientra con un nuovo invito
       // usando la stessa chiave (dovrebbe creare una nuova identità, visibile a tutti).
+      // EN: A node that is already a member is not re-added; a REMOVED node cannot rejoin with
+      //     a new invite using the same key (it would have to create a new identity, visible to all).
       if (await get<MemberRecord>(view, KEYS.member(ev.key))) return
       // Il nuovo membro è writer ma non indexer: gli indexer sono solo gli admin (D3).
+      // EN: The new member is a writer but not an indexer: only admins are indexers (D3).
       await host.addWriter(buf(ev.key), { indexer: false })
       const rec: MemberRecord = { key: ev.key, name: ev.name, role: 'member', invitedBy, removed: false, joinedAt: ev.ts }
       await view.put(KEYS.member(ev.key), rec)
@@ -200,15 +263,21 @@ async function applyEvent (ev: TeamEvent, author: string, view: any, host: any):
     // Solo gli admin espellono. Nota: la stessa verifica è fatta anche dal nodo PRIMA di
     // emettere l'evento (MicelioNode.requireAdmin) per via degli eventi concorrenti, vedi
     // DESIGN §9 "Permessi ed eventi concorrenti".
+    // EN: Only admins remove members. Note: the node also runs the same check BEFORE emitting
+    //     the event (MicelioNode.requireAdmin) because of concurrent events, see
+    //     DESIGN §9 "Permessi ed eventi concorrenti".
     case 'member.remove': {
       if (!isAdmin) return
       const target = await get<MemberRecord>(view, KEYS.member(ev.key))
       if (!target || target.removed) return
       // Autobase non permette di rimuovere l'ultimo indexer (il team resterebbe senza nessuno
       // in grado di consolidare l'ordine): in quel caso l'espulsione viene ignorata.
+      // EN: Autobase does not allow removing the last indexer (the team would be left with no
+      //     one able to finalize the ordering): in that case the removal is ignored.
       if (!host.removeable(buf(ev.key))) return
       await host.removeWriter(buf(ev.key))
       // Il record resta, marcato `removed`: serve allo storico e all'albero degli inviti.
+      // EN: The record stays, marked `removed`: it is needed for history and the invite tree.
       await view.put(KEYS.member(ev.key), { ...target, removed: true })
       return
     }
@@ -216,6 +285,8 @@ async function applyEvent (ev: TeamEvent, author: string, view: any, host: any):
     // ── gap.report / gap.close (B4) ──────────────────────────────────────────────────
     // Qualunque membro segnala o chiude. Una lacuna chiusa e segnalata di nuovo si riapre: il
     // bisogno è tornato (es. il ricordo che la colmava è stato archiviato).
+    // EN: Any member can report or close. A closed knowledge gap that is reported again
+    //     reopens: the need is back (e.g. the memory that filled it was archived).
     case 'gap.report': {
       const g = await get<GapRecord>(view, KEYS.gap(ev.id))
       if (!g) {
@@ -236,8 +307,13 @@ async function applyEvent (ev: TeamEvent, author: string, view: any, host: any):
     // Ognuno lega solo il PROPRIO feed (author) alla sua persona, e solo con una firma valida
     // della persona su quel feed: nessuno può spacciarsi per un altro (src/core/identity.ts).
     // La verifica è puro calcolo, quindi deterministica come richiede apply.
+    // EN: Everyone binds only their OWN feed (author) to their person, and only with a valid
+    //     signature of the person over that feed: nobody can impersonate someone else
+    //     (src/core/identity.ts). The check is pure computation, so it is deterministic as
+    //     apply requires.
     case 'member.identity': {
       // `me` = record dell'autore, già verificato come membro attivo qui sopra
+      // EN: `me` = the author's record, already checked above as an active member
       if (me.person === ev.person) return
       if (!verifyMembership(ev.person, author, ev.sig)) return
       await view.put(KEYS.member(author), { ...me, person: ev.person })
@@ -247,6 +323,8 @@ async function applyEvent (ev: TeamEvent, author: string, view: any, host: any):
     // ── member.promote ───────────────────────────────────────────────────────────────
     // Admin = indexer (decisione D3): gli indexer fissano i punti di ordinamento definitivi.
     // Riaggiungere il writer con `indexer: true` è il modo in cui Autobase lo promuove.
+    // EN: Admin = indexer (decision D3): indexers set the final ordering checkpoints.
+    //     Re-adding the writer with `indexer: true` is how Autobase promotes it.
     case 'member.promote': {
       if (!isAdmin) return
       const target = await get<MemberRecord>(view, KEYS.member(ev.key))
@@ -258,6 +336,7 @@ async function applyEvent (ev: TeamEvent, author: string, view: any, host: any):
 
     // ── memory.vote ──────────────────────────────────────────────────────────────────
     // Qualunque membro vota; un voto per nodo e per ricordo (0 = voto ritirato).
+    // EN: Any member can vote; one vote per node per memory (0 = vote withdrawn).
     case 'memory.vote': {
       if (!(await get(view, KEYS.memory(ev.id)))) return
       if (ev.delta === 0) await view.del(KEYS.vote(ev.id, author))
@@ -267,6 +346,7 @@ async function applyEvent (ev: TeamEvent, author: string, view: any, host: any):
 
     // ── memory.pin / memory.unpin ────────────────────────────────────────────────────
     // Qualunque membro può fissare un ricordo importante; lo sblocca chi l'ha fissato o un admin.
+    // EN: Any member can pin an important memory; it is unpinned by whoever pinned it or by an admin.
     case 'memory.pin': {
       if (!(await get(view, KEYS.memory(ev.id)))) return
       if (!(await get(view, KEYS.pin(ev.id)))) await view.put(KEYS.pin(ev.id), { by: author, ts: ev.ts })
@@ -281,12 +361,14 @@ async function applyEvent (ev: TeamEvent, author: string, view: any, host: any):
     // ── Radici: root.set / root.unset / root.flag / root.confirm ───────────────────
     // Qualunque membro. Una Radice esiste solo per un ricordo attivo; le segnalazioni si
     // accumulano (al massimo 20, le più recenti) finché qualcuno non conferma la Radice.
+    // EN: Roots: any member. A Root exists only for an active memory; flags accumulate
+    //     (at most 20, the most recent ones) until someone confirms the Root.
     case 'root.set': {
       const mem = await get<MemoryRecord>(view, KEYS.memory(ev.id))
       if (!mem || mem.status !== 'active') return
       const prev = await get<RootRecord>(view, KEYS.root(ev.id))
       const rec: RootRecord = prev
-        ? { ...prev, category: ev.category } // già Radice: cambia solo la categoria
+        ? { ...prev, category: ev.category } // già Radice: cambia solo la categoria / EN: already a Root: only the category changes
         : { id: ev.id, category: ev.category, by: author, ts: ev.ts, reviewedAt: ev.ts, reviewedBy: author, status: 'ok', flags: [] }
       await view.put(KEYS.root(ev.id), rec)
       return
@@ -299,6 +381,7 @@ async function applyEvent (ev: TeamEvent, author: string, view: any, host: any):
       const prev = await get<RootRecord>(view, KEYS.root(ev.id))
       if (!prev) return
       // La stessa segnalazione ripetuta (stesso motivo e riferimenti) non si duplica.
+      // EN: The same flag repeated (same reason and references) is not duplicated.
       const same = prev.flags.some((f) => f.reason === ev.reason && f.refs.join(',') === ev.refs.join(','))
       if (same) return
       const flags = [...prev.flags, { reason: ev.reason, refs: ev.refs, by: author, ts: ev.ts }].slice(-20)
@@ -315,6 +398,8 @@ async function applyEvent (ev: TeamEvent, author: string, view: any, host: any):
     // ── usage.report ─────────────────────────────────────────────────────────────────
     // G-Counter: per ogni (ricordo, nodo autore del report) si tiene il MASSIMO dei contatori
     // cumulativi ricevuti. Report ripetuti o fuori ordine non alterano il totale.
+    // EN: G-Counter: for each (memory, node authoring the report) we keep the MAXIMUM of the
+    //     cumulative counters received. Repeated or out-of-order reports don't change the total.
     case 'usage.report':
     case 'useful.report': {
       for (const [id, u] of Object.entries(ev.counts)) {
@@ -331,11 +416,15 @@ async function applyEvent (ev: TeamEvent, author: string, view: any, host: any):
     // Fusione: il nuovo ricordo prende il posto dei vecchi. Valida solo se TUTTI i vecchi sono
     // ancora attivi e nessuno è fissato: se due nodi sognano in parallelo, vince la prima fusione
     // nell'ordine linearizzato e la seconda (che tocca ricordi già sostituiti) viene ignorata.
+    // EN: Merge: the new memory replaces the old ones. Valid only if ALL the old ones are still
+    //     active and none is pinned: if two nodes dream in parallel, the first merge in
+    //     linearized order wins and the second (which touches already superseded memories) is ignored.
     case 'memory.supersede': {
       const olds: MemoryRecord[] = []
       for (const id of ev.old) {
         const o = await get<MemoryRecord>(view, KEYS.memory(id))
         // Ricordi fissati e Radici non si fondono: il dreaming non li tocca.
+        // EN: Pinned memories and Roots are never merged: dreaming doesn't touch them.
         if (!o || o.status !== 'active' || await get(view, KEYS.pin(id)) || await get(view, KEYS.root(id))) return
         olds.push(o)
       }
@@ -360,6 +449,8 @@ async function applyEvent (ev: TeamEvent, author: string, view: any, host: any):
     // ── memory.archive / memory.restore ──────────────────────────────────────────────
     // Archiviare: qualunque membro (in pratica il dreaming); mai un ricordo fissato.
     // Ripristinare: qualunque membro, da archiviato o sostituito.
+    // EN: Archive: any member (in practice dreaming); never a pinned memory.
+    //     Restore: any member, from archived or superseded.
     case 'memory.archive': {
       const m = await get<MemoryRecord>(view, KEYS.memory(ev.id))
       if (!m || m.status !== 'active' || await get(view, KEYS.pin(ev.id)) || await get(view, KEYS.root(ev.id))) return
@@ -378,6 +469,8 @@ async function applyEvent (ev: TeamEvent, author: string, view: any, host: any):
     // ── memory.redact ────────────────────────────────────────────────────────────────
     // Solo admin. Titolo e corpo vengono sostituiti: nessun nodo li mostrerà più, e lo stato
     // "redacted" non si può ripristinare (restore ignora i ricordi redatti).
+    // EN: Admins only. Title and body are replaced: no node will show them again, and the
+    //     "redacted" state cannot be restored (restore ignores redacted memories).
     case 'memory.redact': {
       if (!isAdmin) return
       const m = await get<MemoryRecord>(view, KEYS.memory(ev.id))
@@ -390,6 +483,8 @@ async function applyEvent (ev: TeamEvent, author: string, view: any, host: any):
     // ── dream.claim / dream.complete ─────────────────────────────────────────────────
     // Coordinamento (DESIGN §10.1): per ogni epoca vale solo la PRIMA rivendicazione
     // nell'ordine linearizzato, identico su tutti i nodi. Il diario è accettato solo dal vincitore.
+    // EN: Coordination (DESIGN §10.1): for each epoch only the FIRST claim in linearized order
+    //     counts, identical on every node. The log is accepted only from the winner.
     case 'dream.claim': {
       if (!(await get(view, KEYS.dreamClaim(ev.epoch)))) await view.put(KEYS.dreamClaim(ev.epoch), { by: author, ts: ev.ts })
       return
@@ -404,6 +499,8 @@ async function applyEvent (ev: TeamEvent, author: string, view: any, host: any):
     // ── team.config ──────────────────────────────────────────────────────────────────
     // Configurazione condivisa (es. memory.language, filter.blockKeywords). Solo admin.
     // Il valore è libero: chi lo legge deve validarlo.
+    // EN: Shared configuration (e.g. memory.language, filter.blockKeywords). Admins only.
+    //     The value is free-form: whoever reads it must validate it.
     case 'team.config': {
       if (!isAdmin) return
       await view.put(KEYS.config(ev.key), { value: ev.value, by: author, ts: ev.ts })

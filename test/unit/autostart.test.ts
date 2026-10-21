@@ -1,6 +1,9 @@
 /**
  * Avvio automatico (src/node/autostart.ts): file generati per ogni sistema, attivazione e
  * disattivazione in una cartella di prova (MICELIO_AUTOSTART_DIR), senza toccare il sistema reale.
+ *
+ * EN: Autostart (src/node/autostart.ts): files generated for each OS, enabling and disabling in a
+ * test folder (MICELIO_AUTOSTART_DIR), without touching the real system.
  */
 import fs from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -16,7 +19,7 @@ describe('autostart', () => {
     const t = autostartTarget('C:/m/dist/cli/main.js', 'C:/Users/x/.micelio', 'win32')
     expect(t.file).toMatch(/micelio-start\.vbs$/)
     expect(t.content).toContain('.Run ')
-    expect(t.content).toContain(', 0, False') // finestra nascosta, non attende
+    expect(t.content).toContain(', 0, False') // finestra nascosta, non attende / EN: hidden window, does not wait
     expect(t.content).toContain('""C:/m/dist/cli/main.js"" --home ""C:/Users/x/.micelio"" start')
   })
 

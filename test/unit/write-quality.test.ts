@@ -4,6 +4,12 @@
  *   niente sostituzione di ricordi protetti);
  * - ricordi che invecchiano con il codice: commit successivi sui file citati e file spariti, da un
  *   repository git temporaneo con commit DATATI; riduzione dell'attivazione.
+ *
+ * EN: Knowledge quality (B4):
+ * - update instead of add: the LLM decision is made safe (valid target, no replacement of
+ *   protected memories);
+ * - memories that age with the code: later commits on the cited files and vanished files, from a
+ *   temporary git repository with DATED commits; activation reduction.
  */
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
@@ -21,7 +27,7 @@ const B = 'b'.repeat(64)
 const hit = (id: string, extra: Partial<RecallHit> = {}): RecallHit =>
   ({ id, kind: 'fact', title: `Ricordo ${id.slice(0, 1)}`, body: 'corpo', tags: [], author: A, authorName: 'ada', ts: 0, score: 0, ...extra }) as RecallHit
 
-/** git nel repository di prova; `at` = data del commit. */
+/** git nel repository di prova; `at` = data del commit. / EN: git in the test repository; `at` = commit date. */
 function git (cwd: string, args: string[], at?: number): void {
   const date = at !== undefined ? new Date(at).toISOString() : undefined
   const r = spawnSync('git', ['-c', 'user.name=Test', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', ...args], {
@@ -70,6 +76,7 @@ describe('ricordi che invecchiano con il codice', () => {
     commit(repo, 'src/other.ts', 'x', t0 + DAY)
     const memTs = t0 + 2 * DAY
     // dopo il ricordo: 2 commit sul file citato, 1 su un altro file, poi un file citato rimosso
+    // EN: after the memory: 2 commits on the cited file, 1 on another file, then a cited file removed
     commit(repo, 'src/orders/order.service.ts', 'v2', memTs + DAY)
     commit(repo, 'src/other.ts', 'y', memTs + 2 * DAY)
     commit(repo, 'src/orders/order.service.ts', 'v3', memTs + 3 * DAY)
@@ -85,9 +92,9 @@ describe('ricordi che invecchiano con il codice', () => {
       hit('c'.repeat(64), { ts: memTs, source: { type: 'claude-code', code: { project: 'altro-progetto', files: ['x.ts'], symbols: [], commits: [] } } })
     ]
     const r = computeStaleness(mems, [info])
-    expect(r.get(A)).toEqual({ commits: 3, missing: 1 }) // 2 sul service + la rimozione di legacy
-    expect(r.get(B)).toEqual({ commits: 0, missing: 0 }) // scritto dopo tutte le modifiche
-    expect(r.has('c'.repeat(64))).toBe(false) // repository non presente su questo PC
+    expect(r.get(A)).toEqual({ commits: 3, missing: 1 }) // 2 sul service + la rimozione di legacy / EN: 2 on the service + the removal of legacy
+    expect(r.get(B)).toEqual({ commits: 0, missing: 0 }) // scritto dopo tutte le modifiche / EN: written after all the changes
+    expect(r.has('c'.repeat(64))).toBe(false) // repository non presente su questo PC / EN: repository not present on this PC
     fs.rmSync(repo, { recursive: true, force: true })
   })
 

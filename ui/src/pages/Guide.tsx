@@ -2,6 +2,10 @@
  * @file Guida completa (B2): indice di tutti gli argomenti, ricerca nel testo, lettura.
  * Si apre dal menu («Guida»), con F1, o dal link «Guida completa» del pannello laterale.
  * `#/guida?t=argomento#ancora` apre direttamente un argomento su una sezione.
+ *
+ * EN: Full guide (B2): index of all topics, full-text search, reading.
+ * It opens from the menu («Guide»), with F1, or from the «Full guide» link in the side panel.
+ * `#/guida?t=argomento#ancora` opens a topic directly at a section.
  */
 import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
@@ -26,7 +30,7 @@ const S = defineStrings({
   }
 })
 
-/** Testo normalizzato per la ricerca (minuscolo, senza accenti). */
+/** Testo normalizzato per la ricerca (minuscolo, senza accenti). / EN: Text normalized for search (lowercase, no accents). */
 const norm = (s: string) => s.toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '')
 
 export function Guide () {
@@ -38,6 +42,7 @@ export function Guide () {
   const [selId, anchor] = (params.get('t') ?? 'overview').split('#')
 
   // Ricerca: tutte le parole devono comparire nel titolo, nell'introduzione o in una sezione
+  // EN: Search: all words must appear in the title, the introduction or a section
   const words = norm(query).split(/\s+/).filter((w) => w.length > 1)
   const hits = (text: string) => words.every((w) => norm(text).includes(w))
   const list = words.length

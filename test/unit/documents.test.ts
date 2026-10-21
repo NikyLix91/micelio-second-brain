@@ -1,4 +1,4 @@
-/** Regole sui percorsi (src/privacy/paths.ts) ed estrazione/suddivisione del testo (src/ingest/extract.ts). */
+/** Regole sui percorsi (src/privacy/paths.ts) ed estrazione/suddivisione del testo (src/ingest/extract.ts). / EN: Path rules (src/privacy/paths.ts) and text extraction/chunking (src/ingest/extract.ts). */
 import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -14,7 +14,7 @@ describe('percorsi bloccati', () => {
   })
 
   it('non blocca percorsi tecnici, anche con parole simili', () => {
-    expect(isBlockedPath('architettura/hrm-sync.md')).toBeNull() // "hrm-sync" non è la cartella "hr"
+    expect(isBlockedPath('architettura/hrm-sync.md')).toBeNull() // "hrm-sync" non è la cartella "hr" / EN: "hrm-sync" is not the "hr" folder
     expect(isBlockedPath('docs/procedure/rilascio.docx')).toBeNull()
   })
 
@@ -25,7 +25,7 @@ describe('percorsi bloccati', () => {
 
   it('sintassi dei glob', () => {
     expect(globToRegExp('*.md').test('note.md')).toBe(true)
-    expect(globToRegExp('*.md').test('a/note.md')).toBe(false) // * non attraversa le cartelle
+    expect(globToRegExp('*.md').test('a/note.md')).toBe(false) // * non attraversa le cartelle / EN: * does not cross folders
     expect(globToRegExp('**/x/**').test('/a/b/x/c.txt')).toBe(true)
     expect(globToRegExp('file?.txt').test('file1.txt')).toBe(true)
   })
@@ -56,7 +56,7 @@ describe('estrazione e suddivisione', () => {
     const chunks = chunkText(text, 1000, 5)
     expect(chunks.length).toBe(5)
     expect(chunks.every((c) => c.length <= 1000)).toBe(true)
-    expect(chunks[0].endsWith('x')).toBe(true) // taglio su un confine di paragrafo
+    expect(chunks[0].endsWith('x')).toBe(true) // taglio su un confine di paragrafo / EN: cut on a paragraph boundary
     expect(chunkText('breve', 1000)).toEqual(['breve'])
   })
 })

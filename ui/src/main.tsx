@@ -1,6 +1,9 @@
 /**
  * @file Punto d'ingresso della UI: ottiene il token (api/auth.ts), poi monta l'app.
  * Se il token manca (pagina aperta senza `micelio ui` e fuori dall'app desktop) mostra come entrare.
+ *
+ * EN: UI entry point: gets the token (api/auth.ts), then mounts the app.
+ * If the token is missing (page opened without `micelio ui` and outside the desktop app) it shows how to get in.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { StrictMode } from 'react'
@@ -13,11 +16,12 @@ import './styles.css'
 const root = createRoot(document.getElementById('root')!)
 
 // Le query non si ricaricano "da sole" a intervalli: ci pensano gli eventi SSE (api/live.ts).
+// EN: Queries don't refetch "on their own" at intervals: SSE events handle that (api/live.ts).
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 60_000, refetchOnWindowFocus: true, retry: 1 } }
 })
 
-/** Messaggi mostrati prima dell'app (accesso). La lingua è quella salvata o del sistema. */
+/** Messaggi mostrati prima dell'app (accesso). La lingua è quella salvata o del sistema. / EN: Messages shown before the app (access). The language is the saved one or the system one. */
 const S = defineStrings({
   it: { noToken: 'Apri l’interfaccia con il comando `micelio ui` (oppure usa l’app desktop): così la pagina riceve l’accesso al tuo nodo.', authFailed: 'Accesso non riuscito' },
   en: { noToken: 'Open the interface with the `micelio ui` command (or use the desktop app): this gives the page access to your node.', authFailed: 'Access failed' }
@@ -33,6 +37,7 @@ function Message ({ title, text }: { title: string, text: string }) {
 }
 
 // Lingua decisa una volta all'avvio (salvata o del sistema); poi la gestisce I18nProvider.
+// EN: Language chosen once at startup (saved or system); after that I18nProvider manages it.
 const lang = detectLang()
 initAuth().then(
   (token) => {

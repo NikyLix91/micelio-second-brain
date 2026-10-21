@@ -2,6 +2,10 @@
  * Contesto automatico per gli agenti (B4): composizione compatta del testo (righe con id e avvisi,
  * limite di caratteri senza righe tagliate) e installazione degli hook in settings.json di Claude
  * Code (idempotente, rispetta gli hook non di Micelio, si disattiva).
+ *
+ * EN: Automatic context for agents (B4): compact composition of the text (lines with ids and warnings,
+ * character limit without cut lines) and installation of the hooks in the Claude Code settings.json
+ * (idempotent, respects non-Micelio hooks, can be turned off).
  */
 import fs from 'node:fs'
 import path from 'node:path'
@@ -19,6 +23,7 @@ describe('composizione del contesto', () => {
   it('una riga per ricordo: tipo o Radice, titolo, prima riga, id e avvisi', () => {
     expect(firstLine('# Titolo\n\n> nota importante')).toBe('Titolo')
     // callout di Obsidian: l'intestazione da sola non dice nulla, conta la riga dopo
+    // EN: Obsidian callout: the header alone says nothing, the next line is what counts
     expect(firstLine('> [!abstract] TL;DR\n> Il deploy usa blu-verde.')).toBe('Il deploy usa blu-verde.')
     expect(contextLine(hit(1))).toBe(`- [gotcha] Ricordo 1 — Titolo (id:${'1'.repeat(12)})`)
     const root = contextLine(hit(2, { root: { category: 'policy', status: 'review' } }))
@@ -54,7 +59,7 @@ describe('installazione degli hook', () => {
     process.env.CLAUDE_CONFIG_DIR = dir
     fs.writeFileSync(file, JSON.stringify({ theme: 'dark', hooks: { UserPromptSubmit: [{ hooks: [{ type: 'command', command: 'echo mio' }] }] } }))
     installHooks('/home/ada/.micelio', ['SessionEnd', 'SessionStart', 'UserPromptSubmit'], '/opt/micelio/cli/main.js')
-    installHooks('/home/ada/.micelio', ['SessionEnd', 'SessionStart', 'UserPromptSubmit'], '/opt/micelio/cli/main.js') // idempotente
+    installHooks('/home/ada/.micelio', ['SessionEnd', 'SessionStart', 'UserPromptSubmit'], '/opt/micelio/cli/main.js') // idempotente / EN: idempotent
     let s = JSON.parse(fs.readFileSync(file, 'utf8'))
     expect(s.theme).toBe('dark')
     const cmds = (ev: string) => (s.hooks[ev] ?? []).flatMap((g: any) => g.hooks.map((h: any) => h.command))
@@ -63,6 +68,7 @@ describe('installazione degli hook', () => {
     expect(cmds('UserPromptSubmit')).toEqual(['echo mio', expect.stringMatching(/hook prompt$/)])
     expect(fs.existsSync(file + '.micelio-backup')).toBe(true)
     // contesto spento: restano la raccolta e l'hook dell'utente
+    // EN: context off: collection and the user's hook remain
     installHooks('/home/ada/.micelio', ['SessionEnd'], '/opt/micelio/cli/main.js')
     s = JSON.parse(fs.readFileSync(file, 'utf8'))
     expect(s.hooks.SessionStart).toBeUndefined()
@@ -74,13 +80,17 @@ describe('installazione degli hook', () => {
 describe('pertinenza del contesto per richiesta', () => {
   it('passa solo ciò che si distacca nettamente dagli altri, oltre alla soglia fissa', () => {
     // tutto «somiglia un po'» (punteggi compressi): nessuno si distacca → soglia sopra a tutti
+    // EN: everything "looks a bit alike" (compressed scores): nothing stands out → threshold above all of
+    //     them
     const flat = [0.861, 0.862, 0.86, 0.863, 0.861, 0.862, 0.864, 0.86, 0.861, 0.862]
     expect(Math.max(...flat)).toBeLessThan(relevanceCutoff(flat, 0.86) + 1e-9 + 0.001)
     expect(flat.filter((x) => x >= relevanceCutoff(flat, 0.86)).length).toBeLessThanOrEqual(1)
     // uno chiaramente più pertinente: passa solo lui
+    // EN: one clearly more relevant: only that one passes
     const peak = [...flat.map((x) => x - 0.02), 0.91]
     expect(peak.filter((x) => x >= relevanceCutoff(peak, 0.86))).toEqual([0.91])
     // pochi ricordi: vale la soglia fissa
+    // EN: few memories: the fixed threshold applies
     expect(relevanceCutoff([0.9, 0.5], 0.86)).toBe(0.86)
   })
 })

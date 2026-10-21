@@ -1,6 +1,9 @@
 /**
  * Guida in linea (B2): contenuti completi e allineati nelle due lingue, ogni «?» della UI punta
  * a un argomento e a una sezione che esistono, pannello laterale e pagina Guida funzionanti.
+ *
+ * EN: In-app help (B2): complete content, aligned in both languages, every «?» in the UI points
+ * to a topic and a section that exist, side panel and Help page working.
  */
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
@@ -11,9 +14,10 @@ import { I18nProvider } from '../i18n'
 import { Guide } from '../pages/Guide'
 
 // Sorgenti delle schermate come testo: servono a trovare tutti i riferimenti help='…' / topic='…'
+// EN: Screen sources as text: used to find all the help='…' / topic='…' references
 const SOURCES = import.meta.glob(['../**/*.tsx', '!../__tests__/**'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>
 
-/** Verifica che "argomento#ancora" esista in entrambe le lingue. */
+/** Verifica che "argomento#ancora" esista in entrambe le lingue. / EN: Checks that "topic#anchor" exists in both languages. */
 function resolves (ref: string): boolean {
   const [id, anchor] = ref.split('#')
   return (['it', 'en'] as const).every((lang) => {
@@ -31,9 +35,10 @@ describe('guida in linea', () => {
       const it = topic('it', id)!
       const en = topic('en', id)!
       // stesse ancore nello stesso ordine: i «?» funzionano in tutte e due le lingue
+      // EN: same anchors in the same order: the «?» buttons work in both languages
       expect(en.sections.map((s) => s.id), id).toEqual(it.sections.map((s) => s.id))
       for (const t of [it, en]) {
-        expect(t.title, id).not.toBe(id) // il titolo # c'è
+        expect(t.title, id).not.toBe(id) // il titolo # c'è / EN: the # title is there
         expect(t.intro.length, id).toBeGreaterThan(20)
         expect(t.sections.length, id).toBeGreaterThan(0)
         for (const s of t.sections) expect(s.body.length, `${id}#${s.id}`).toBeGreaterThan(20)
@@ -46,7 +51,7 @@ describe('guida in linea', () => {
     for (const src of Object.values(SOURCES)) {
       for (const m of src.matchAll(/\b(?:help|topic)=['"]([a-z0-9#-]+)['"]/g)) refs.add(m[1])
     }
-    expect(refs.size).toBeGreaterThan(30) // le schermate sono coperte davvero
+    expect(refs.size).toBeGreaterThan(30) // le schermate sono coperte davvero / EN: the screens are really covered
     for (const ref of refs) expect(resolves(ref), ref).toBe(true)
   })
 

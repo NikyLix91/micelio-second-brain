@@ -2,6 +2,10 @@
  * Blocco B4 nella UI: ricordi personali (filtro, modulo, pannello), riepilogo e lacune, contesto
  * automatico nelle Impostazioni, file per gli agenti, team "solo per me".
  * fetch è finto: rispondiamo in base a metodo + URL e controlliamo cosa viene inviato al daemon.
+ *
+ * EN: Block B4 in the UI: personal memories (filter, form, panel), digest and knowledge gaps,
+ * automatic context in Settings, agent files, "just for me" team.
+ * fetch is fake: we respond based on method + URL and check what is sent to the daemon.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'

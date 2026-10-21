@@ -1,5 +1,7 @@
 /**
  * Formato testuale dei riferimenti al codice (src/core/code-refs.ts), usato da MCP, CLI ed export.
+ *
+ * EN: Text format of code references (src/core/code-refs.ts), used by MCP, CLI and export.
  */
 import { describe, expect, it } from 'vitest'
 import { formatCodeRefs } from '../../src/core/code-refs'

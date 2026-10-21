@@ -1,6 +1,9 @@
 /**
  * Qualità della distillazione (Fase 10): metriche per posizione nel distillato, saturazione del
  * limite, indicazione all'admin; e il limite `distill.maxMemories` rispettato dalla pipeline.
+ *
+ * EN: Distillation quality (Phase 10): metrics by position in the distilled batch, limit
+ * saturation, advice for the admin; and the `distill.maxMemories` limit enforced by the pipeline.
  */
 import { describe, expect, it } from 'vitest'
 import { IngestPipeline } from '../../src/ingest/pipeline'
@@ -17,13 +20,16 @@ const NOW = Date.UTC(2026, 9, 18)
 const OLD = NOW - 10 * 24 * 3600 * 1000
 const NEW = NOW - 3600 * 1000
 
-/** Un ricordo distillato in posizione `rank` di un distillato da `batch` ricordi. */
+/** Un ricordo distillato in posizione `rank` di un distillato da `batch` ricordi. / EN: A distilled memory at position `rank` of a distillation of `batch` memories. */
 const mem = (rank: number, o: Partial<QualityInput> = {}, batch = 5): QualityInput =>
   ({ ts: OLD, status: 'active', source: { type: 'claude-code', rank, batch }, votes: 0, uses: 0, ...o })
 
 /**
  * `n` distillazioni da 5 ricordi: le posizioni 1–3 sempre usate; le posizioni 4–5 usate con
  * la qualità indicata ("good" = come le prime, "bad" = fuse o votate inutili).
+ *
+ * EN: `n` distillations of 5 memories: positions 1–3 always used; positions 4–5 used with the
+ * given quality ("good" = like the first ones, "bad" = merged or voted not useful).
  */
 function batches (n: number, tail: 'good' | 'bad', batch = 5): QualityInput[] {
   const out: QualityInput[] = []
@@ -39,7 +45,7 @@ describe('distillQuality', () => {
     const q = distillQuality([
       mem(1, { uses: 3 }), mem(1, { votes: 1 }), mem(1, { votes: -2 }), mem(1, { status: 'archived' }),
       mem(2), mem(2, { ts: NEW }), mem(1, { status: 'redacted' }),
-      { ts: OLD, status: 'active', source: { type: 'mcp' }, votes: 0, uses: 9 } // non distillato: escluso
+      { ts: OLD, status: 'active', source: { type: 'mcp' }, votes: 0, uses: 9 } // non distillato: escluso / EN: not distilled: excluded
     ], 5, NOW)
     const first = q.buckets.find((b) => b.label === '1ª')!
     expect(first).toMatchObject({ n: 4, useful: 0.5, notUseful: 0.25, removed: 0.25, unused: 0, young: 0 })
@@ -47,6 +53,7 @@ describe('distillQuality', () => {
     expect(q.buckets.find((b) => b.label === '2ª')).toMatchObject({ n: 1, unused: 1, young: 1 })
     expect(q.total).toBe(6)
     // Fasce mostrate: quelle entro il limite (5) — non "6ª–10ª" se non ha dati
+    // EN: Buckets shown: those within the limit (5), not "6ª–10ª" when it has no data
     expect(q.buckets.map((b) => b.label)).toEqual(['1ª', '2ª', '3ª', '4ª–5ª'])
   })
 
@@ -59,10 +66,13 @@ describe('distillQuality', () => {
     expect(distillQuality(batches(2, 'good'), 5, NOW).advice.action).toBe('unknown')
     expect(batches(10, 'good').length).toBeGreaterThanOrEqual(MIN_SAMPLE)
     // Ultime posizioni buone come le prime e limite sempre raggiunto → alzare
+    // EN: Last positions as good as the first ones and limit always reached → raise
     expect(distillQuality(batches(10, 'good'), 5, NOW).advice).toMatchObject({ action: 'raise' })
     // Ultime posizioni fuse o votate inutili → abbassare
+    // EN: Last positions merged or voted not useful → lower
     expect(distillQuality(batches(10, 'bad'), 5, NOW).advice.action).toBe('lower')
     // Buone ma il modello propone quasi sempre meno del limite (saturazione bassa) → tenere
+    // EN: Good, but the model almost always proposes fewer than the limit (low saturation) → keep
     const unsaturated = batches(10, 'good').map((m) => (m.source!.rank === 1 ? { ...m, source: { ...m.source!, batch: 3 } } : m))
     expect(distillQuality(unsaturated, 5, NOW).advice).toMatchObject({ action: 'keep' })
   })

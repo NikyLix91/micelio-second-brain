@@ -1,6 +1,9 @@
 /*
  * Stile della UI di Micelio. Niente librerie di componenti: variabili CSS per i colori (tema
  * chiaro e scuro automatico secondo il sistema operativo) e poche classi riusabili.
+ *
+ * EN: Micelio UI styles. No component library: CSS variables for the colors (light and dark
+ * theme picked automatically from the operating system) and a few reusable classes.
  */
 :root {
   --bg: #f6f7f5;
@@ -9,7 +12,7 @@
   --border: #dfe3dc;
   --text: #1d231c;
   --muted: #5f6b5c;
-  --accent: #3f7a4a;        /* verde "micelio" */
+  --accent: #3f7a4a;        /* verde "micelio" / EN: "micelio" green */
   --accent-text: #ffffff;
   --accent-soft: #e3efe4;
   --warn: #9a6a00;
@@ -54,7 +57,7 @@ pre { background: var(--surface-2); padding: 10px 12px; border-radius: 8px; over
 h1 { font-size: 20px; margin: 0 0 4px; }
 h2 { font-size: 15px; margin: 0 0 10px; }
 
-/* ── Struttura: barra laterale + contenuto ─────────────────────────────── */
+/* ── Struttura: barra laterale + contenuto / EN: Layout: sidebar + content ── */
 .app { display: grid; grid-template-columns: 220px 1fr; height: 100%; }
 .sidebar {
   background: var(--surface); border-right: 1px solid var(--border);
@@ -63,7 +66,7 @@ h2 { font-size: 15px; margin: 0 0 10px; }
 .brand { font-weight: 700; font-size: 17px; padding: 0 10px 14px; display: flex; gap: 8px; align-items: center; }
 .brand small { font-weight: 400; color: var(--muted); font-size: 12px; display: block; }
 .team-switch { padding: 0 10px 12px; }
-/* Mappa 2D: dettaglio del ricordo sopra la mappa, con uno scorrimento suo */
+/* Mappa 2D: dettaglio del ricordo sopra la mappa, con uno scorrimento suo / EN: 2D map: memory detail over the map, with its own scrolling */
 .map-detail { position: absolute; top: 12px; right: 12px; width: min(380px, calc(100% - 24px)); max-height: calc(100% - 24px); overflow-y: auto; z-index: 5; border-radius: 12px; box-shadow: 0 8px 24px rgb(0 0 0 / 35%); }
 .team-switch label { display: flex; align-items: center; gap: 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 4px; }
 .team-switch select { width: 100%; }
@@ -77,13 +80,13 @@ h2 { font-size: 15px; margin: 0 0 10px; }
 .nav-link:hover { background: var(--surface-2); }
 .nav-link.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .sidebar-footer { margin-top: auto; padding: 10px; font-size: 12px; color: var(--muted); }
-/* Il pallino dello stato resta sulla stessa riga del testo, anche con frasi lunghe (italiano) */
+/* Il pallino dello stato resta sulla stessa riga del testo, anche con frasi lunghe (italiano) / EN: The status dot stays on the same line as the text, even with long sentences (Italian) */
 .sidebar-footer .row { flex-wrap: nowrap; }
 .main { overflow-y: auto; padding: 24px 28px 40px; }
 .page-header { margin-bottom: 18px; }
 .page-header p { margin: 0; color: var(--muted); }
 
-/* ── Elementi riusabili ────────────────────────────────────────────────── */
+/* ── Elementi riusabili / EN: Reusable elements ─────────────────────────── */
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow); }
 .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
 .stack { display: flex; flex-direction: column; gap: 12px; }
@@ -120,10 +123,10 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent-soft
 .badge.accent { background: var(--accent-soft); color: var(--accent); }
 .badge.warn { background: var(--warn-soft); color: var(--warn); }
 .badge.danger { background: var(--danger-soft); color: var(--danger); }
-/* Efficacia (B11): esito "utile" (verde pieno), numero in evidenza se c'è da guardare */
+/* Efficacia (B11): esito "utile" (verde pieno), numero in evidenza se c'è da guardare / EN: Effectiveness (B11): "useful" outcome (solid green), number highlighted when there's something to look at */
 .badge.ok { background: var(--accent); color: #fff; }
 .stat.warn { color: var(--warn); }
-/* Elenco senza puntini e pulsante che sembra un link (titoli di ricordi cliccabili) */
+/* Elenco senza puntini e pulsante che sembra un link (titoli di ricordi cliccabili) / EN: List without bullets and a button that looks like a link (clickable memory titles) */
 ul.plain { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
 button.link { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; font: inherit; text-align: left; }
 button.link:hover { text-decoration: underline; }
@@ -156,16 +159,16 @@ th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--bord
 th { color: var(--muted); font-weight: 500; font-size: 12px; }
 th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
 
-/* Spazio occupato: barra a segmenti, un colore per membro (Stato del nodo) */
+/* Spazio occupato: barra a segmenti, un colore per membro (Stato del nodo) / EN: Used space: segmented bar, one color per member (Node status) */
 .storage-bar { display: flex; height: 14px; border-radius: 999px; overflow: hidden; background: var(--surface-2); }
 .storage-bar > div { height: 100%; min-width: 2px; }
 .storage-bar > div + div { border-left: 1px solid var(--bg, #000); }
 
-/* Radici (Fase 8): il rombo accanto ai titoli; rosso se "da rivedere" */
+/* Radici (Fase 8): il rombo accanto ai titoli; rosso se "da rivedere" / EN: Roots (Phase 8): the diamond next to titles; red if "to review" */
 .root-mark { color: var(--accent); font-size: 12px; }
 .root-mark.review { color: var(--danger); }
 
-/* Scelta della rete (Impostazioni) */
+/* Scelta della rete (Impostazioni) / EN: Network choice (Settings) */
 .choice { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; color: var(--text); margin: 0; }
 .choice.selected { border-color: var(--accent); background: var(--accent-soft); }
 .choice input { width: auto; margin-top: 3px; }
@@ -178,7 +181,11 @@ th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
 
 /* ── Nucleo 3D (home): scena a tutto schermo con HUD olografico ─────────────
  * Il contenitore riempie l'area principale ignorandone il padding (vedi .main.full).
- * HUD = "head-up display": testi e comandi sovrapposti alla scena, in stile ologramma ambra. */
+ * HUD = "head-up display": testi e comandi sovrapposti alla scena, in stile ologramma ambra.
+ *
+ * EN: 3D Nucleus (home): full-screen scene with a holographic HUD.
+ * The container fills the main area ignoring its padding (see .main.full).
+ * HUD = "head-up display": text and controls overlaid on the scene, in amber hologram style. */
 .main.full { padding: 0; position: relative; overflow: hidden; }
 .nucleus { position: absolute; inset: 0; background: #000; }
 .hud {
@@ -213,11 +220,11 @@ th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .hud-tip { font: 12px ui-monospace, Consolas, monospace; color: #ffe2b8; background: rgb(20 12 2 / 85%); border: 1px solid #ffb347; padding: 4px 8px; border-radius: 3px; }
 .nucleus-panel { position: absolute; top: 120px; right: 22px; width: 380px; max-height: calc(100% - 150px); overflow-y: auto; }
 
-/* Tema "olografico" dell'intera app quando si è nel Nucleo: barra laterale scura e ambra. */
+/* Tema "olografico" dell'intera app quando si è nel Nucleo: barra laterale scura e ambra. / EN: "Holographic" theme of the whole app while in the Nucleus: dark, amber sidebar. */
 .app.holo .sidebar { background: #05090c; border-right-color: #2a1d0b; }
 .app.holo .brand, .app.holo .nav-link { color: #ffcf8a; }
 .app.holo .brand small, .app.holo .sidebar-footer { color: rgb(255 207 138 / 60%); }
-/* Selettore della lingua sul tema scuro: con i colori normali «EN» era grigio scuro su nero, illeggibile */
+/* Selettore della lingua sul tema scuro: con i colori normali «EN» era grigio scuro su nero, illeggibile / EN: Language selector on the dark theme: with the normal colors "EN" was dark gray on black, unreadable */
 .app.holo .lang-switch { border-color: rgb(255 170 60 / 40%); }
 .app.holo .lang-btn { color: rgb(255 207 138 / 80%); }
 .app.holo .lang-btn.on { background: rgb(255 170 60 / 24%); color: #ffd27a; }
@@ -225,7 +232,7 @@ th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .app.holo .nav-link.active { background: rgb(255 170 60 / 18%); color: #ffd27a; }
 .app.holo .dot.on { background: #ffb347; box-shadow: 0 0 6px #ffb347; }
 
-/* Legenda cliccabile del Nucleo: ogni voce è un pulsante (isola / mostra tutti). */
+/* Legenda cliccabile del Nucleo: ogni voce è un pulsante (isola / mostra tutti). / EN: Clickable Nucleus legend: each entry is a button (isolate / show all). */
 .hud-legend-item {
   display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; cursor: pointer;
   font: inherit; font-size: 12px; color: #ffcf8a; background: transparent; border: 1px solid transparent;
@@ -236,12 +243,12 @@ th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .hud-legend-item.off { opacity: .45; }
 .hud-legend-count { margin-left: auto; opacity: .6; font-size: 11px; }
 
-/* Selettore della lingua (barra laterale) */
+/* Selettore della lingua (barra laterale) / EN: Language selector (sidebar) */
 .lang-switch { display: inline-flex; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
 .lang-btn { background: transparent; border: 0; padding: 1px 8px; font-size: 11px; color: var(--muted); cursor: pointer; }
 .lang-btn.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 
-/* Guida in linea (B2): pulsante «?», pannello laterale, pagina della guida */
+/* Guida in linea (B2): pulsante «?», pannello laterale, pagina della guida / EN: In-app help (B2): "?" button, side drawer, help page */
 .help-btn { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--border); background: var(--surface); color: var(--muted); font-size: 11px; font-weight: 700; cursor: pointer; vertical-align: middle; padding: 0; line-height: 1; }
 .help-btn:hover { color: var(--accent); border-color: var(--accent); }
 .help-drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(520px, 92vw); background: var(--surface); border-left: 1px solid var(--border); box-shadow: -8px 0 24px rgb(0 0 0 / 18%); padding: 16px 18px; overflow-y: auto; z-index: 50; }
@@ -251,7 +258,7 @@ th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .help-topic table { margin: 6px 0; }
 .guide { align-items: start; }
 
-/* ── Chiedi (B10): cronologia · conversazione · mappa mentale ── */
+/* ── Chiedi (B10): cronologia · conversazione · mappa mentale / EN: Ask (B10): history · conversation · mind map ── */
 .ask { display: grid; grid-template-columns: 200px minmax(320px, 380px) 1fr; gap: 16px; height: calc(100vh - 150px); min-height: 480px; }
 .ask-history { overflow-y: auto; }
 .ask-chat { padding: 8px 10px; border-radius: 8px; cursor: pointer; margin-bottom: 4px; }
@@ -270,7 +277,7 @@ button.ref { background: var(--accent-soft); color: var(--accent); border: 0; bo
 @keyframes spin { to { transform: rotate(360deg); } }
 .ask-map { position: relative; min-height: 0; background: #0b100d; border-radius: var(--radius); overflow: hidden; }
 .ask-map > .muted { color: #9aa696; padding: 24px; }
-/* Mappa mentale */
+/* Mappa mentale / EN: Mind map */
 .mindmap { position: absolute; inset: 0; }
 .mindmap svg { width: 100%; height: 100%; cursor: grab; user-select: none; }
 .mindmap svg:active { cursor: grabbing; }

@@ -1,6 +1,8 @@
 /**
  * @file Elementi grafici del Nucleo 3D: l'"ologramma" attorno ai ricordi.
  *
+ * EN: Graphic elements of the 3D Nucleus: the "hologram" around the memories.
+ *
  * - glowTexture / starSprite: ogni ricordo è uno sprite con un alone radiale, in fusione
  *   ADDITIVA (le luci sovrapposte si sommano, come in un ologramma);
  * - createHologram: anelli orbitali sottili, meridiani tratteggiati e un pulviscolo di
@@ -10,27 +12,41 @@
  *   stanno invece al centro: sono letteralmente il nucleo del sapere;
  * - rootMarker: stella + anello luminoso, il segno distintivo delle Radici.
  *
+ * EN:
+ * - glowTexture / starSprite: each memory is a sprite with a radial halo, with ADDITIVE
+ *   blending (overlapping lights add up, as in a hologram);
+ * - createHologram: thin orbital rings, dashed meridians and a dust of
+ *   particles on the sphere surface. The group rotates slowly (animateHologram);
+ * - sphericalForce: force for the d3 simulation that places the memories inside a spherical
+ *   shell, instead of the usual shapeless "cloud" of a force graph. The ROOTS (Phase 8)
+ *   sit at the center instead: they are literally the nucleus of the knowledge;
+ * - rootMarker: star + glowing ring, the distinctive mark of the Roots.
+ *
  * Il bagliore vero e proprio (bloom) lo aggiunge Nucleus.tsx con UnrealBloomPass.
+ *
+ * EN: The actual glow (bloom) is added by Nucleus.tsx with UnrealBloomPass.
  */
 import * as THREE from 'three'
 import { ROOT_STAR } from '../colors'
 
-/** Raggio della sfera del nucleo, nelle unità della scena. */
+/** Raggio della sfera del nucleo, nelle unità della scena. / EN: Radius of the nucleus sphere, in scene units. */
 export const SPHERE_RADIUS = 120
 
-/** Colori dell'ologramma: ambra / oro come nell'immagine di riferimento. */
+/** Colori dell'ologramma: ambra / oro come nell'immagine di riferimento. / EN: Hologram colors: amber / gold as in the reference image. */
 export const HOLO = {
   amber: '#ffb347',
   gold: '#ffd27a',
   deep: '#ff8c1a',
   // Nero puro: con la catena di post-processing (bloom) qualunque altro colore di fondo viene
   // schiarito (grigio-blu), mentre il nero resta nero. Verificato con le catture dell'app.
+  // EN: Pure black: with the post-processing chain (bloom) any other background color gets
+  //     lightened (grey-blue), while black stays black. Verified with app screenshots.
   background: '#000000'
 }
 
 let cachedTexture: THREE.Texture | null = null
 
-/** Texture con un alone radiale bianco → trasparente, condivisa da tutti gli sprite. */
+/** Texture con un alone radiale bianco → trasparente, condivisa da tutti gli sprite. / EN: Texture with a white → transparent radial halo, shared by all sprites. */
 export function glowTexture (): THREE.Texture {
   if (cachedTexture) return cachedTexture
   const size = 64
@@ -50,9 +66,14 @@ export function glowTexture (): THREE.Texture {
 
 /**
  * Sprite luminoso per un ricordo.
+ *
+ * EN: Glowing sprite for a memory.
  * @param color   colore dell'alone
+ *                EN: halo color
  * @param size    dimensione (più grande = più collegato o selezionato)
+ *                EN: size (bigger = more connected or selected)
  * @param opacity 1 per i ricordi "accesi", bassa per quelli spenti da un filtro
+ *                EN: 1 for "lit" memories, low for those dimmed by a filter
  */
 export function starSprite (color: string, size: number, opacity = 1): THREE.Sprite {
   const material = new THREE.SpriteMaterial({
@@ -60,7 +81,7 @@ export function starSprite (color: string, size: number, opacity = 1): THREE.Spr
     color: new THREE.Color(color),
     transparent: true,
     opacity,
-    depthWrite: false, // gli aloni non si "tagliano" a vicenda
+    depthWrite: false, // gli aloni non si "tagliano" a vicenda / EN: halos do not "cut" each other
     blending: THREE.AdditiveBlending
   })
   const sprite = new THREE.Sprite(material)
@@ -70,7 +91,7 @@ export function starSprite (color: string, size: number, opacity = 1): THREE.Spr
 
 let cachedRing: THREE.Texture | null = null
 
-/** Texture di un anello luminoso (centro trasparente): il segno delle Radici. */
+/** Texture di un anello luminoso (centro trasparente): il segno delle Radici. / EN: Texture of a glowing ring (transparent center): the mark of the Roots. */
 function ringTexture (): THREE.Texture {
   if (cachedRing) return cachedRing
   const size = 128
@@ -91,13 +112,20 @@ function ringTexture (): THREE.Texture {
 
 /**
  * Una Radice: la stella del ricordo circondata da un anello luminoso.
+ *
+ * EN: A Root: the memory's star surrounded by a glowing ring.
  * @param starColor colore della stella
+ *                  EN: star color
  * @param ringColor colore dell'anello (bianco ghiaccio, rosso se "da rivedere")
+ *                  EN: ring color (ice white, red if "to review")
  * @param size      dimensione della stella; l'anello è circa il doppio
+ *                  EN: star size; the ring is about twice as big
  */
 /**
  * @param crowd attenuazione degli anelli quando le Radici sono tante (1 = nessuna, vedi rootCrowding):
  *              gli anelli sono la parte più grande e luminosa, e sommandosi coprono tutto
+ *              EN: ring dimming when there are many Roots (1 = none, see rootCrowding):
+ *              the rings are the biggest and brightest part, and adding up they cover everything
  */
 export function rootMarker (starColor: string, ringColor: string, size: number, opacity = 1, crowd = 1): THREE.Group {
   const group = new THREE.Group()
@@ -116,13 +144,13 @@ export function rootMarker (starColor: string, ringColor: string, size: number, 
   return group
 }
 
-/** Materiale per linee olografiche sottili. */
+/** Materiale per linee olografiche sottili. / EN: Material for thin holographic lines. */
 function lineMaterial (color: string, opacity: number, dashed = false): THREE.LineBasicMaterial {
   const params = { color: new THREE.Color(color), transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false }
   return dashed ? new THREE.LineDashedMaterial({ ...params, dashSize: 3, gapSize: 4 }) : new THREE.LineBasicMaterial(params)
 }
 
-/** Cerchio di raggio r nel piano XY, come linea chiusa. */
+/** Cerchio di raggio r nel piano XY, come linea chiusa. / EN: Circle of radius r in the XY plane, as a closed line. */
 function circle (r: number, material: THREE.LineBasicMaterial, segments = 160): THREE.LineLoop {
   const pts: THREE.Vector3[] = []
   for (let i = 0; i < segments; i++) {
@@ -130,13 +158,16 @@ function circle (r: number, material: THREE.LineBasicMaterial, segments = 160): 
     pts.push(new THREE.Vector3(Math.cos(a) * r, Math.sin(a) * r, 0))
   }
   const line = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts), material)
-  line.computeLineDistances() // necessario per le linee tratteggiate
+  line.computeLineDistances() // necessario per le linee tratteggiate / EN: needed for dashed lines
   return line
 }
 
 /**
  * Crea la "gabbia" olografica attorno ai ricordi. I numeri pseudo-casuali sono generati da
  * un seme fisso: la scena è identica a ogni apertura.
+ *
+ * EN: Builds the holographic "cage" around the memories. The pseudo-random numbers come from
+ * a fixed seed: the scene is identical every time it opens.
  */
 export function createHologram (radius = SPHERE_RADIUS): THREE.Group {
   const group = new THREE.Group()
@@ -145,15 +176,18 @@ export function createHologram (radius = SPHERE_RADIUS): THREE.Group {
   const rand = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646 }
 
   // Anelli orbitali a inclinazioni diverse: alcuni pieni, altri tratteggiati.
+  // EN: Orbital rings at different tilts: some solid, others dashed.
   for (let i = 0; i < 9; i++) {
     const r = radius * (1.02 + rand() * 0.38)
     const ring = circle(r, lineMaterial(i % 3 === 0 ? HOLO.gold : HOLO.amber, 0.12 + rand() * 0.25, i % 2 === 1))
     ring.rotation.set(rand() * Math.PI, rand() * Math.PI, 0)
-    ring.userData.spin = (rand() - 0.5) * 0.004 // velocità di rotazione propria
+    ring.userData.spin = (rand() - 0.5) * 0.004 // velocità di rotazione propria / EN: its own rotation speed
     group.add(ring)
   }
   // Archi parziali: segmenti di circonferenza a raggi e inclinazioni diverse, come i "circuiti"
   // dell'immagine di riferimento. Alcuni più luminosi, la maggior parte appena accennati.
+  // EN: Partial arcs: circle segments at different radii and tilts, like the "circuits"
+  //     of the reference image. Some brighter, most barely visible.
   for (let i = 0; i < 26; i++) {
     const r = radius * (0.7 + rand() * 0.75)
     const start = rand() * Math.PI * 2
@@ -169,13 +203,14 @@ export function createHologram (radius = SPHERE_RADIUS): THREE.Group {
     group.add(arc)
   }
   // Corone graduate: anelli con tacche radiali, come le scale di uno strumento.
+  // EN: Graduated crowns: rings with radial ticks, like the scales of an instrument.
   for (let i = 0; i < 3; i++) {
     const r = radius * (1.18 + i * 0.12)
     const pts: THREE.Vector3[] = []
     const ticks = 120
     for (let t = 0; t < ticks; t++) {
       const a = (t / ticks) * Math.PI * 2
-      const len = t % 10 === 0 ? 6 : 2.5 // una tacca lunga ogni dieci
+      const len = t % 10 === 0 ? 6 : 2.5 // una tacca lunga ogni dieci / EN: one long tick every ten
       pts.push(new THREE.Vector3(Math.cos(a) * r, Math.sin(a) * r, 0), new THREE.Vector3(Math.cos(a) * (r + len), Math.sin(a) * (r + len), 0))
     }
     const crown = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), lineMaterial(HOLO.amber, 0.35))
@@ -184,12 +219,14 @@ export function createHologram (radius = SPHERE_RADIUS): THREE.Group {
     group.add(crown)
   }
   // Meridiani tratteggiati: danno l'idea di un globo.
+  // EN: Dashed meridians: they suggest a globe.
   for (let i = 0; i < 6; i++) {
     const m = circle(radius * 0.98, lineMaterial(HOLO.deep, 0.08, true))
     m.rotation.y = (i / 6) * Math.PI
     group.add(m)
   }
   // Pulviscolo: particelle sparse appena fuori dalla superficie.
+  // EN: Dust: particles scattered just outside the surface.
   const count = 1800
   const positions = new Float32Array(count * 3)
   for (let i = 0; i < count; i++) {
@@ -208,7 +245,7 @@ export function createHologram (radius = SPHERE_RADIUS): THREE.Group {
   return group
 }
 
-/** Fa ruotare lentamente il gruppo e ogni anello con la sua velocità. Da chiamare a ogni frame. */
+/** Fa ruotare lentamente il gruppo e ogni anello con la sua velocità. Da chiamare a ogni frame. / EN: Slowly rotates the group and each ring at its own speed. Call it every frame. */
 export function animateHologram (group: THREE.Object3D): void {
   group.rotation.y += 0.0008
   for (const child of group.children) {
@@ -227,13 +264,26 @@ export function animateHologram (group: THREE.Object3D): void {
  * basta più: gli anelli si sovrappongono da qualunque distanza e il bagliore li fonde in una palla
  * bianca. Allora le Radici si distribuiscono nel guscio come gli altri ricordi, e restano
  * riconoscibili dalla stella ciano con l'anello.
+ *
+ * EN: d3 force that pushes each node towards its own "preferred" radius inside the sphere, between
+ * 45% and 100% of `radius`. The preferred radius depends on the node id (stable from one
+ * start to the next), so the memories fill a thick shell instead of piling up at the center.
+ * The Roots instead form the nucleus at the center of the sphere. The nucleus grows with the number of
+ * Roots (cube root: the volume grows like their number), up to 42% of the radius, always
+ * inside the memories' shell. Beyond ROOT_CORE_MAX Roots (e.g. an imported vault) the nucleus is no
+ * longer enough: the rings overlap from any distance and the glow merges them into a white
+ * ball. So the Roots spread across the shell like the other memories, and stay
+ * recognizable by the cyan star with the ring.
  */
-/** Radici oltre le quali non formano più un nucleo al centro (vedi sphericalForce). */
+/** Radici oltre le quali non formano più un nucleo al centro (vedi sphericalForce). / EN: Number of Roots beyond which they no longer form a nucleus at the center (see sphericalForce). */
 export const ROOT_CORE_MAX = 20
 
 /**
  * Spessore del nucleo delle Radici, in frazioni del raggio della sfera: 8–28% fino a 8 Radici, poi
  * cresce con la radice cubica del loro numero, fino a 15–42%. Oltre ROOT_CORE_MAX: tutto il guscio.
+ *
+ * EN: Thickness of the Roots' nucleus, as fractions of the sphere radius: 8–28% up to 8 Roots, then
+ * it grows with the cube root of their number, up to 15–42%. Beyond ROOT_CORE_MAX: the whole shell.
  */
 export function rootCore (count: number): { inner: number, outer: number } {
   if (count > ROOT_CORE_MAX) return { inner: 0.45, outer: 1 }
@@ -245,6 +295,10 @@ export function rootCore (count: number): { inner: number, outer: number } {
  * Quanto attenuare ogni Radice quando sono tante (1 = nessuna attenuazione, minimo 0,3): i loro
  * sprite si sommano (fusione additiva) e il bloom amplifica. Già una manciata di Radici vicine
  * (es. una tappa del tour) a piena luce si fonde in una macchia bianca: oltre 4 si attenuano.
+ *
+ * EN: How much to dim each Root when there are many (1 = no dimming, minimum 0.3): their
+ * sprites add up (additive blending) and bloom amplifies them. Even a handful of nearby Roots
+ * (e.g. a tour stop) at full light merge into a white blob: above 4 they get dimmed.
  */
 export function rootCrowding (count: number): number {
   return Math.max(0.3, Math.sqrt(4 / Math.max(4, count)))
@@ -271,6 +325,7 @@ export function sphericalForce (radius = SPHERE_RADIUS, strength = 0.08) {
       for (let i = 0; i < n.id.length; i++) h = (h * 31 + n.id.charCodeAt(i)) >>> 0
       const f = (h % 1000) / 1000
       // Radici: nel nucleo (vedi rootCore); gli altri ricordi nel guscio (45–100% del raggio).
+      // EN: Roots: in the nucleus (see rootCore); the other memories in the shell (45–100% of the radius).
       preferred.set(n.id, radius * (n.root ? core.inner + f * (core.outer - core.inner) : 0.45 + f * 0.55))
     }
   }
@@ -280,7 +335,11 @@ export function sphericalForce (radius = SPHERE_RADIUS, strength = 0.08) {
 /**
  * Etichetta di testo nello spazio 3D (sempre rivolta alla camera): il nome di una galassia.
  * Disegnata su un canvas, una texture per etichetta (le galassie sono al massimo una quarantina).
+ *
+ * EN: Text label in 3D space (always facing the camera): the name of a galaxy.
+ * Drawn on a canvas, one texture per label (there are at most about forty galaxies).
  * @param height altezza della scritta in unità della scena
+ *               EN: text height in scene units
  */
 export function textSprite (text: string, color: string, height: number, opacity = 1): THREE.Sprite {
   const font = 48
@@ -290,6 +349,7 @@ export function textSprite (text: string, color: string, height: number, opacity
   canvas.width = Math.ceil(ctx.measureText(text).width) + 16
   canvas.height = font + 16
   // Ridimensionare il canvas azzera lo stato del contesto: il font va reimpostato
+  // EN: Resizing the canvas resets the context state: the font must be set again
   ctx.font = `600 ${font}px ui-monospace, Consolas, monospace`
   ctx.fillStyle = color
   ctx.textBaseline = 'middle'
@@ -304,12 +364,18 @@ export function textSprite (text: string, color: string, height: number, opacity
 /**
  * Una galassia nella vista d'insieme del Nucleo: un ammasso luminoso (più grande con più ricordi),
  * un anello ciano se contiene Radici, e il nome con il numero di ricordi sotto.
+ *
+ * EN: A galaxy in the Nucleus overview: a glowing cluster (bigger with more memories),
+ * a cyan ring if it contains Roots, and the name with the number of memories below.
  * @param size diametro dell'ammasso
+ *             EN: cluster diameter
  */
 export function galaxyMarker (color: string, size: number, label: string, opacity = 1, roots = false): THREE.Group {
   const group = new THREE.Group()
   // Due aloni sovrapposti: un nucleo pieno e una nebbia larga e tenue (l'aspetto di un ammasso)
   // (intensità contenute: con il bloom decine di ammassi pieni si fondono in un muro di luce)
+  // EN: Two overlapping halos: a solid core and a wide, faint haze (the look of a cluster)
+  //     (low intensities: with bloom, dozens of solid clusters merge into a wall of light)
   group.add(starSprite(color, size, opacity * 0.6))
   group.add(starSprite(color, size * 1.7, opacity * 0.12))
   if (roots) {
@@ -318,6 +384,7 @@ export function galaxyMarker (color: string, size: number, label: string, opacit
     group.add(ring)
   }
   // Testo color ambra tenue, sotto la soglia del bloom: altrimenti le scritte diventano bianche e sfocate
+  // EN: Text in faint amber, below the bloom threshold: otherwise the labels turn white and blurry
   const text = textSprite(label, opacity >= 0.6 ? '#b8894a' : '#5a4422', 5.5, opacity >= 0.6 ? 0.85 : 0.5)
   text.position.set(0, -size * 0.75 - 5, 0)
   group.add(text)

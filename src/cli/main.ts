@@ -9,6 +9,16 @@
  * - `setup`:  modifica la configurazione dei client AI (MCP + hook).
  *
  * Ordine dei comandi nel file = ordine in cui compaiono in `micelio --help`.
+ *
+ * EN: The `micelio` CLI: manages the local node.
+ *
+ * EN: Almost every command is an HTTP client of the daemon (see client.ts). Exceptions:
+ * - `daemon`: IS the daemon (starts NestJS in the foreground);
+ * - `start`:  launches `micelio daemon` in the background and waits for it to respond;
+ * - `hook`:   called by Claude Code at session end; it must be very fast and never fail;
+ * - `setup`:  changes the configuration of the AI clients (MCP + hooks).
+ *
+ * EN: Order of the commands in the file = order in which they appear in `micelio --help`.
  */
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
@@ -39,13 +49,16 @@ const program = new Command()
   .description('Secondo cervello distribuito peer-to-peer per il team di sviluppo')
   // La versione è quella del package.json accanto a dist/ (nell'installazione: la versione dell'app,
   // scritta da scripts/package-common.js); prima era scritta a mano ed era rimasta a 0.2.0
+  // EN: The version is the one in the package.json next to dist/ (in the installation: the app version,
+  //     written by scripts/package-common.js); it used to be hand-written and was stuck at 0.2.0
   .version((require('../../package.json') as { version: string }).version)
   .option('--home <dir>', 'cartella dati del nodo (default ~/.micelio o $MICELIO_HOME)')
   .option('--team <team>', 'team su cui lavorare, per id o nome (default: il team predefinito, vedi `micelio teams`)')
 
 // ═══════════════════════════════ Utilità ═══════════════════════════════
+// EN: Utilities
 
-/** Percorsi del nodo, tenendo conto di `--home`. Va chiamata dentro le action (dopo il parse). */
+/** Percorsi del nodo, tenendo conto di `--home`. Va chiamata dentro le action (dopo il parse). / EN: Node paths, honoring `--home`. Must be called inside the actions (after parsing). */
 function paths (): NodePaths {
   const home = program.opts().home as string | undefined
   if (home) process.env.MICELIO_HOME = path.resolve(home)
@@ -57,12 +70,17 @@ const client = () => new DaemonClient(paths(), program.opts().team as string | u
  * Percorsi del team da usare quando il daemon è spento (es. `micelio network set`): con più
  * team (B3) le impostazioni di rete stanno in `teams/<id>/settings.json`. A daemon spento i nomi
  * dei team non si possono leggere (stanno nel log cifrato): `--team` accetta solo l'id.
+ *
+ * EN: Paths of the team to use when the daemon is off (e.g. `micelio network set`): with several
+ * teams (B3) the network settings are in `teams/<id>/settings.json`. With the daemon off the team
+ * names can't be read (they're in the encrypted log): `--team` accepts only the id.
  */
 function offlinePaths (): NodePaths {
   const root = paths()
   const dir = hostFiles(root).teams
   const ids = fs.existsSync(dir) ? fs.readdirSync(dir).filter((id) => fs.existsSync(path.join(dir, id, 'state.json'))) : []
   // Struttura a un team non ancora migrata (o nessun team): tutto in config.json
+  // EN: Single-team layout not migrated yet (or no team): everything is in config.json
   if (!ids.length) return root
   const want = (program.opts().team as string | undefined) ?? loadConfig(root).defaultTeam ?? ids[0]
   const id = ids.find((i) => i.startsWith(want))
@@ -70,11 +88,11 @@ function offlinePaths (): NodePaths {
   return teamPaths(root, id)
 }
 
-/** Prime 12 cifre di una chiave: abbastanza per riconoscerla, abbastanza corte da leggere. */
+/** Prime 12 cifre di una chiave: abbastanza per riconoscerla, abbastanza corte da leggere. / EN: First 12 digits of a key: enough to recognize it, short enough to read. */
 const short = (k: string | null | undefined) => (k ? k.slice(0, 12) : '-')
-/** Data leggibile "AAAA-MM-GG HH:MM" (UTC). */
+/** Data leggibile "AAAA-MM-GG HH:MM" (UTC). / EN: Readable date "YYYY-MM-DD HH:MM" (UTC). */
 const date = (ts: number) => new Date(ts).toISOString().replace('T', ' ').slice(0, 16)
-/** Indenta un testo multi-riga. */
+/** Indenta un testo multi-riga. / EN: Indents a multi-line text. */
 const indent = (s: string, pad = '  ') => s.split('\n').map((l) => pad + l).join('\n')
 
 function printStatus (s: NodeStatus): void {
@@ -94,14 +112,16 @@ function printHit (h: RecallHit, full = false): void {
   console.log(`\n■ ${h.title}`)
   const prio = h.activation !== undefined ? ` · attivazione ${Math.round(h.activation * 100)}%${h.votes ? ` · voti ${h.votes > 0 ? '+' : ''}${h.votes}` : ''}${h.pinned ? ' · 📌' : ''}` : ''
   // B4: ricordo personale (solo su questo PC) e codice citato cambiato dopo il ricordo
+  // EN: B4: personal memory (only on this PC) and cited code changed after the memory
   const marks = `${h.personal ? ' · 🔒 personale' : ''}${h.stale && (h.stale.commits || h.stale.missing) ? ` · ⚠ codice cambiato (${h.stale.commits} commit${h.stale.missing ? `, ${h.stale.missing} file spariti` : ''})` : ''}`
   console.log(`  [${h.kind}] id:${h.id.slice(0, 12)} · ${h.authorName ?? short(h.author)} · ${date(h.ts)}${h.tags.length ? ' · #' + h.tags.join(' #') : ''}${prio}${marks}`)
   // Riferimenti al codice (progetto, file, simboli, commit): dove approfondire
+  // EN: Code references (project, files, symbols, commits): where to dig deeper
   for (const l of formatCodeRefs(h.source?.code, full)) console.log(`  ↳ ${l.replace(/`/g, '')}`)
   console.log(indent(h.body))
 }
 
-/** Stampa l'esito di un salvataggio esplicito, mostrando sempre il testo salvato (D6). */
+/** Stampa l'esito di un salvataggio esplicito, mostrando sempre il testo salvato (D6). / EN: Prints the outcome of an explicit save, always showing the saved text (D6). */
 function printOutcome (r: ExplicitOutcome): void {
   switch (r.outcome) {
     case 'team':
@@ -117,7 +137,7 @@ function printOutcome (r: ExplicitOutcome): void {
   }
 }
 
-/** Legge tutto lo stdin (se non è un terminale interattivo). */
+/** Legge tutto lo stdin (se non è un terminale interattivo). / EN: Reads all of stdin (if it isn't an interactive terminal). */
 async function readStdin (): Promise<string> {
   if (process.stdin.isTTY) return ''
   const chunks: Buffer[] = []
@@ -126,11 +146,13 @@ async function readStdin (): Promise<string> {
 }
 
 // ═══════════════════════════════ Daemon ═══════════════════════════════
+// EN: Daemon
 
 program.command('daemon')
   .description('esegue il daemon in primo piano (usato da `start` e nei container)')
   .action(async () => {
     // Caricato solo qui: gli altri comandi non devono pagare l'avvio di NestJS e della rete.
+    // EN: Loaded only here: the other commands must not pay for starting NestJS and the network.
     const { startDaemon } = require('../daemon/main') as typeof import('../daemon/main')
     await startDaemon(paths())
   })
@@ -138,7 +160,11 @@ program.command('daemon')
 /**
  * Avvia il daemon in background (staccato dal terminale) e attende che risponda.
  * Usata da `micelio start` e dall'hook di fine sessione quando trova il daemon spento.
+ *
+ * EN: Starts the daemon in the background (detached from the terminal) and waits for it to respond.
+ * Used by `micelio start` and by the session-end hook when it finds the daemon off.
  * @returns true se il daemon risponde entro `waitMs`
+ *          EN: true if the daemon responds within `waitMs`
  */
 async function startInBackground (p: NodePaths, waitMs = 30_000): Promise<boolean> {
   const c = new DaemonClient(p)
@@ -146,14 +172,16 @@ async function startInBackground (p: NodePaths, waitMs = 30_000): Promise<boolea
   fs.mkdirSync(p.logs, { recursive: true })
   const out = fs.openSync(path.join(p.logs, 'daemon.log'), 'a')
   // Rilanciamo questo stesso script con il comando `daemon`, staccato dal processo corrente.
+  // EN: We relaunch this same script with the `daemon` command, detached from the current process.
   const child = spawn(process.execPath, [__filename, 'daemon'], {
     detached: true,
     stdio: ['ignore', out, out],
-    env: { ...process.env, MICELIO_HOME: p.home, NO_COLOR: '1' }, // log su file: niente colori ANSI
+    env: { ...process.env, MICELIO_HOME: p.home, NO_COLOR: '1' }, // log su file: niente colori ANSI / EN: log to file: no ANSI colors
     windowsHide: true
   })
   child.unref()
   // Attende che il daemon risponda (apertura dei feed, annuncio sulla DHT…).
+  // EN: Waits for the daemon to respond (opening feeds, announcing on the DHT…).
   for (let t = 0; t < waitMs; t += 500) {
     if (await c.health()) return true
     await new Promise((r) => setTimeout(r, 500))
@@ -181,7 +209,7 @@ program.command('stop')
     console.log('Daemon in chiusura')
   })
 
-/** Avvio automatico all'accesso al PC (src/node/autostart.ts): nessun privilegio di amministratore. */
+/** Avvio automatico all'accesso al PC (src/node/autostart.ts): nessun privilegio di amministratore. / EN: Autostart at PC login (src/node/autostart.ts): no administrator privileges. */
 program.command('autostart')
   .description('avvio automatico del daemon all\'accesso al PC: on | off | status')
   .argument('[azione]', 'on | off | status', 'status')
@@ -208,17 +236,25 @@ program.command('status')
   })
 
 // ═══════════════════════════════ Rete ═══════════════════════════════
+// EN: Network
 
 /**
  * Dove i nodi del team si incontrano: DHT pubblica di Holepunch (default) o DHT privata del team
  * (server/ nella repo). Se il daemon è acceso la scelta passa da lui e vale SUBITO (il nodo si
  * ricollega); se è spento si modifica config.json e vale al prossimo avvio.
+ *
+ * EN: Where the team's nodes meet: Holepunch's public DHT (default) or the team's private DHT
+ * (server/ in the repo). If the daemon is on, the choice goes through it and applies RIGHT AWAY (the
+ * node reconnects); if it's off, config.json is changed and it applies at the next start.
  */
 const network = program.command('network').description('rete P2P: DHT pubblica o server del team (show | set | public | private | check)')
 
 /**
  * Applica una scelta di rete: via daemon se risponde, altrimenti direttamente su config.json.
+ *
+ * EN: Applies a network choice: via the daemon if it responds, otherwise directly on config.json.
  * @param bootstrap nodi della DHT privata (undefined = lascia quelli salvati)
+ *        EN: private DHT nodes (undefined = keep the saved ones)
  */
 async function applyNetwork (mode: NetworkMode, bootstrap?: string[]): Promise<void> {
   const c = client()
@@ -240,7 +276,7 @@ async function applyNetwork (mode: NetworkMode, bootstrap?: string[]): Promise<v
   console.log('Il daemon è spento: varrà al prossimo `micelio start`.')
 }
 
-/** Descrizione leggibile della rete scelta. */
+/** Descrizione leggibile della rete scelta. / EN: Readable description of the chosen network. */
 function networkLabel (mode: NetworkMode, bootstrap: string[]): string {
   if (mode === 'local') return 'Solo locale: nessuna rete (per invitare qualcuno scegli `micelio network public` o `set`)'
   return mode === 'private' ? `DHT privata del team: ${bootstrap.join(', ')}` : 'DHT pubblica di Holepunch'
@@ -284,6 +320,7 @@ network.command('check')
     console.log(`IP pubblico:    ${r.publicHost ?? 'non determinato'}`)
     console.log(`NAT simmetrico: ${r.randomizedPort === null ? 'non determinabile (servono almeno 2 nodi DHT)' : r.randomizedPort ? 'SÌ' : 'no'}`)
     // B8: con la DHT privata, il piano B quando l'hole punching fra due PC non riesce
+    // EN: B8: with the private DHT, the fallback when hole punching between two PCs fails
     if (r.relay !== null) console.log(`Relay:          ${r.relay ? 'sì (se l\'hole punching non riesce, la connessione passa dal server, sempre cifrata)' : 'NO: il server non offre un relay (aggiornalo alla versione 0.2.0)'}`)
     if (!r.reachable) {
       console.log('\nNessun nodo ha risposto. Possibili cause: server spento, porta UDP chiusa sul server, oppure questa rete blocca l\'UDP in uscita.')
@@ -297,10 +334,14 @@ network.command('check')
   })
 
 // ═══════════════════════════════ Team ═══════════════════════════════
+// EN: Team
 
 /**
  * Nome con cui presentarsi a un team: quello indicato, altrimenti quello dell'identità personale
  * (B3: la stessa persona in tutti i team), altrimenti, la prima volta, il nome del PC.
+ *
+ * EN: Name to introduce yourself to a team with: the given one, otherwise the personal identity's
+ * (B3: the same person in every team), otherwise, the first time, the PC name.
  */
 function memberName (name?: string): string | undefined {
   if (name) return name
@@ -330,6 +371,7 @@ program.command('join')
   })
 
 // ═══════════════════════════════ Più team (B3) ═══════════════════════════════
+// EN: Multiple teams (B3)
 
 const teams = program.command('teams').description('i team di questo PC: elenco, predefinito, uscita (list | default | leave)')
 
@@ -371,11 +413,16 @@ teams.command('leave')
   })
 
 // ═══════════════════════════ Backup e ripristino (B7) ═══════════════════════════
+// EN: Backup and restore (B7)
 
 /**
  * Password del backup: da MICELIO_BACKUP_PASSWORD (script) o chiesta senza mostrarla. Mai come
  * argomento: finirebbe nella cronologia della shell e nell'elenco dei processi.
+ *
+ * EN: Backup password: from MICELIO_BACKUP_PASSWORD (scripts) or asked without echoing it. Never as
+ * an argument: it would end up in the shell history and in the process list.
  * @param confirm chiederla due volte (creazione: una password sbagliata renderebbe il backup inutile)
+ *        EN: ask for it twice (creation: a mistyped password would make the backup useless)
  */
 async function backupPassword (confirm: boolean): Promise<string> {
   if (process.env.MICELIO_BACKUP_PASSWORD) return process.env.MICELIO_BACKUP_PASSWORD
@@ -385,7 +432,7 @@ async function backupPassword (confirm: boolean): Promise<string> {
   return first
 }
 
-/** Legge una riga dal terminale senza mostrarla (né asterischi). */
+/** Legge una riga dal terminale senza mostrarla (né asterischi). / EN: Reads a line from the terminal without echoing it (not even asterisks). */
 function askHidden (prompt: string): Promise<string> {
   return new Promise((resolve, reject) => {
     process.stdout.write(prompt)
@@ -463,6 +510,7 @@ backup.command('auto')
     if (state || o.folder || o.keep) {
       const enabled = state === undefined ? undefined : state === 'on'
       // La password serve solo la prima volta (o per cambiarla con MICELIO_BACKUP_PASSWORD)
+      // EN: The password is needed only the first time (or to change it with MICELIO_BACKUP_PASSWORD)
       const cur = await client().call<S>('GET', '/api/settings/backup')
       const password = enabled && (!cur.hasPassword || process.env.MICELIO_BACKUP_PASSWORD) ? await backupPassword(true) : undefined
       s = await client().call<S>('PUT', '/api/settings/backup', { enabled, folder: o.folder ? path.resolve(o.folder) : undefined, keep: o.keep ? Number(o.keep) : undefined, password })
@@ -483,6 +531,7 @@ program.command('invite')
     console.log(r.code + '\n')
     console.log('Il nuovo membro esegue:  micelio join <codice> --name <nome-nodo>')
     // Vedi TeamNode.createInvite: senza replica, solo questo nodo può accogliere il nuovo membro.
+    // EN: See TeamNode.createInvite: without replication, only this node can admit the new member.
     if (!r.replicated) console.log('\n⚠ Nessun altro membro online ha ancora ricevuto l\'invito: resta online finché il nuovo membro non è entrato.')
     console.log('Il codice è un segreto: condividilo solo con il destinatario.')
   })
@@ -499,6 +548,7 @@ const members = program.command('members').description('membri del team (albero 
 members.action(async () => {
   const list = await client().call<MemberRecord[]>('GET', '/api/members')
   // Raggruppa per "chi ha invitato" e stampa ricorsivamente partendo dal fondatore (invitedBy = null).
+  // EN: Group by "who invited" and print recursively starting from the founder (invitedBy = null).
   const byInviter = new Map<string | null, MemberRecord[]>()
   for (const m of list) byInviter.set(m.invitedBy, [...(byInviter.get(m.invitedBy) ?? []), m])
   const print = (parent: string | null, depth: number) => {
@@ -528,13 +578,14 @@ team.command('config')
   .argument('<value>', 'valore; JSON accettato (es. \'["parola1","parola2"]\')')
   .action(async (key: string, value: string) => {
     // Se il valore è JSON valido lo usiamo come tale (array, numeri…), altrimenti come stringa.
+    // EN: If the value is valid JSON we use it as such (arrays, numbers…), otherwise as a string.
     let parsed: unknown = value
     try { parsed = JSON.parse(value) } catch {}
     await client().call('POST', '/api/team/config', { key, value: parsed })
     console.log(`${key} = ${JSON.stringify(parsed)} (replicato a tutto il team)`)
   })
 
-/** Qualità della distillazione: serve all'admin per decidere `distill.maxMemories`. */
+/** Qualità della distillazione: serve all'admin per decidere `distill.maxMemories`. / EN: Distillation quality: helps the admin decide `distill.maxMemories`. */
 program.command('quality')
   .description('qualità della distillazione per posizione nel distillato, e indicazione sul limite di ricordi')
   .action(async () => {
@@ -550,6 +601,7 @@ program.command('quality')
   })
 
 // ═══════════════════════════════ Ricordi ═══════════════════════════════
+// EN: Memories
 
 program.command('remember')
   .description('propone un ricordo per il team (passa dal filtro privacy); corpo da --body o da stdin')
@@ -571,6 +623,7 @@ program.command('remember')
   })
 
 // ── Lacune e riepilogo (B4) ───────────────────────────────────────────────────────
+// EN: ── Knowledge gaps and digest (B4) ──
 const gaps = program.command('gaps').description('lacune di conoscenza: ciò che il team cerca e non trova (list | mine | report | close | dismiss)')
 
 gaps.command('list', { isDefault: true })
@@ -640,6 +693,7 @@ program.command('digest')
   })
 
 // ── Ricordi e codice (B4) ─────────────────────────────────────────────────────────
+// EN: ── Memories and code (B4) ──
 program.command('stale')
   .description('ricordi il cui codice citato è cambiato dopo la scrittura (repository di questo PC)')
   .option('--check', 'ricontrolla subito i repository prima di mostrare l\'elenco')
@@ -654,6 +708,7 @@ program.command('stale')
   })
 
 // ── Ricordi personali (B4) ────────────────────────────────────────────────────────
+// EN: ── Personal memories (B4) ──
 const personal = program.command('personal').description('ricordi personali: solo su questo PC (list | share | delete)')
 
 personal.command('list', { isDefault: true })
@@ -739,10 +794,11 @@ program.command('unpin').description('sblocca un ricordo fissato').argument('<id
   .action(async (id: string) => { await client().call('DELETE', `/api/memories/${encodeURIComponent(id)}/pin`); console.log('Ricordo sbloccato') })
 
 // ═══════════════════════════════ Sicurezza (Fase 9) ═══════════════════════════════
+// EN: Security (Phase 9)
 
 const security = program.command('security').alias('sicurezza').description('segreti e file sensibili: test | scan | clean | log | rules')
 
-/** Riepilogo "tipo ×n" delle redazioni. */
+/** Riepilogo "tipo ×n" delle redazioni. / EN: "type ×n" summary of the redactions. */
 const kindsText = (k: Record<string, number>) => Object.entries(k).map(([t, n]) => `${t.replace('secret:', '')}${n > 1 ? ` ×${n}` : ''}`).join(', ')
 
 security.command('test')
@@ -800,8 +856,9 @@ security.command('rules')
   })
 
 // ═══════════════════════════════ Radici (Fase 8) ═══════════════════════════════
+// EN: Roots (Phase 8)
 
-/** Etichette italiane delle categorie delle Radici. */
+/** Etichette italiane delle categorie delle Radici. / EN: Italian labels of the Root categories. */
 const ROOT_LABEL: Record<string, string> = {
   architecture: 'Architettura', network: 'Rete e infrastruttura', interface: 'Interfacce e contratti',
   domain: 'Dominio', practice: 'Best practice', policy: 'Policy', other: 'Altro'
@@ -810,6 +867,9 @@ const ROOT_LABEL: Record<string, string> = {
 /**
  * Radici: il sapere fondante del team, mai dimenticato (architettura, rete, interfacce, dominio,
  * best practice, policy). Qualunque membro può promuovere, togliere e confermare.
+ *
+ * EN: Roots: the team's foundational knowledge, never forgotten (architecture, network, interfaces,
+ * domain, best practices, policies). Any member can promote, remove and confirm.
  */
 const roots = program.command('roots').alias('radici').description('Radici: sapere fondante che non viene mai dimenticato (list | add | remove | confirm | review)')
 
@@ -889,6 +949,7 @@ program.command('export')
   .action(() => console.log(offlinePaths().export))
 
 // ═══════════════════════════════ Inbox e privato ═══════════════════════════════
+// EN: Inbox and private
 
 const inbox = program.command('inbox').description('ricordi in attesa di una tua decisione (solo i casi dubbi)')
 inbox.action(async () => {
@@ -930,6 +991,7 @@ program.command('private')
   })
 
 // ═══════════════════════════════ Ingestione automatica ═══════════════════════════════
+// EN: Automatic ingestion
 
 const watch = program.command('watch').description('cartelle in cui le sessioni di Claude Code vengono raccolte (opt-in)')
 watch.action(async () => {
@@ -996,6 +1058,7 @@ ingest.command('run').description('elabora subito il prossimo lavoro in coda')
   })
 
 // ═══════════════════════════════ Hook ═══════════════════════════════
+// EN: Hook
 
 /**
  * Chiamato da Claude Code alla fine di ogni sessione (hook SessionEnd), con un JSON su stdin:
@@ -1004,8 +1067,16 @@ ingest.command('run').description('elabora subito il prossimo lavoro in coda')
  * Regole: non stampare nulla e NON fallire mai (exit 0 sempre): un errore qui disturberebbe
  * l'utente di Claude Code per un problema di Micelio. Di norma termina in un istante; solo se il
  * daemon è spento lo avvia, impiegando qualche secondo.
+ *
+ * EN: Called by Claude Code at the end of every session (SessionEnd hook), with JSON on stdin:
+ * { session_id, transcript_path, cwd, hook_event_name, reason }.
+ *
+ * EN: Rules: print nothing and NEVER fail (always exit 0): an error here would bother the
+ * Claude Code user over a Micelio problem. It normally finishes instantly; only if the
+ * daemon is off does it start it, taking a few seconds.
  */
 // ── Radici nei file per gli agenti, import (B4) ───────────────────────────────────
+// EN: ── Roots in agent files, import (B4) ──
 roots.command('export')
   .description('scrive le Radici del progetto in CLAUDE.md, AGENTS.md o nelle regole di Cursor, e le tiene aggiornate')
   .argument('[cartella]', 'cartella del progetto (default: quella corrente)', '.')
@@ -1041,10 +1112,14 @@ program.command('hook')
   .action(async (event: string) => {
     try {
       // Anti-loop: le sessioni lanciate da Micelio stesso per classificare/distillare non si raccolgono.
+      // EN: Anti-loop: sessions launched by Micelio itself to classify/distill are not collected.
       if (process.env.MICELIO_INTERNAL || !['session-end', 'session-start', 'prompt'].includes(event)) return
       // Il timer di sicurezza (input che non arriva) va spento appena l'input c'è: acceso, teneva
       // vivo il processo per 2 secondi a OGNI hook, cioè 2 secondi in più su ogni messaggio
       // scritto a Claude Code (misurato: 2,3 s → pochi decimi)
+      // EN: The safety timer (input never arriving) must be cleared as soon as the input is there: left on,
+      //     it kept the process alive for 2 seconds on EVERY hook, i.e. 2 extra seconds on every message
+      //     written to Claude Code (measured: 2.3 s → a few tenths)
       let guard: NodeJS.Timeout | undefined
       const raw = await Promise.race([readStdin(), new Promise<string>((r) => { guard = setTimeout(() => r(''), 2000) })])
       clearTimeout(guard)
@@ -1053,6 +1128,8 @@ program.command('hook')
       if (!input.session_id || !input.transcript_path) return
       // Daemon spento? Lo accendiamo noi invece di perdere la sessione. Se non fa in tempo, non è
       // grave: appena avviato, il daemon recupera da solo le sessioni finite (session-scanner).
+      // EN: Daemon off? We start it instead of losing the session. If it doesn't make it in time, no
+      //     big deal: once started, the daemon picks up finished sessions by itself (session-scanner).
       const p = paths()
       if (!(await new DaemonClient(p).health()) && !(await startInBackground(p, 20_000))) {
         throw new Error('daemon spento e non avviato in tempo: la sessione sarà recuperata al prossimo avvio')
@@ -1063,6 +1140,8 @@ program.command('hook')
     } catch (err) {
       // Niente output verso Claude Code, ma l'errore va registrato: un hook che fallisce in
       // silenzio è quasi impossibile da diagnosticare (es. daemon spento o su un'altra porta).
+      // EN: No output to Claude Code, but the error must be logged: a hook that fails silently
+      //     is nearly impossible to diagnose (e.g. daemon off or on another port).
       try {
         const p = paths()
         fs.mkdirSync(p.logs, { recursive: true })
@@ -1076,6 +1155,11 @@ program.command('hook')
  * come `additionalContext` (JSON su stdout, il formato degli hook SessionStart e UserPromptSubmit).
  * Mai rallentare l'utente: daemon spento = nessun contesto (a inizio sessione lo si avvia per le
  * richieste successive), risposta lenta = nessun contesto.
+ *
+ * EN: Automatic context (B4): asks the daemon for relevant Roots and memories and passes them to Claude Code
+ * as `additionalContext` (JSON on stdout, the format of the SessionStart and UserPromptSubmit hooks).
+ * Never slow the user down: daemon off = no context (at session start it is started for the
+ * following prompts), slow response = no context.
  */
 async function contextHook (event: 'session-start' | 'prompt', input: { session_id?: string, cwd?: string, prompt?: string }): Promise<void> {
   const p = paths()
@@ -1091,10 +1175,14 @@ async function contextHook (event: 'session-start' | 'prompt', input: { session_
 }
 
 // ═══════════════════════════════ Integrazioni ═══════════════════════════════
+// EN: Integrations
 
 /**
  * Server MCP su stdio (shim verso il daemon): per i client che lanciano i server MCP come
  * processo. NON stampare nulla su stdout qui: è il canale del protocollo.
+ *
+ * EN: MCP server over stdio (shim to the daemon): for clients that launch MCP servers as a
+ * process. Do NOT print anything to stdout here: it's the protocol channel.
  */
 program.command('mcp')
   .description('server MCP su stdio (per client che non supportano HTTP): inoltra al daemon')
@@ -1104,11 +1192,12 @@ program.command('mcp')
     await runStdioProxy(c.mcpUrl, c.config.token)
   })
 
-/** Configurazioni pronte da incollare per i client MCP diversi da Claude Code (Fase 7). */
+/** Configurazioni pronte da incollare per i client MCP diversi da Claude Code (Fase 7). / EN: Ready-to-paste configurations for MCP clients other than Claude Code (Phase 7). */
 function clientSnippet (target: string, home: string): string | null {
   const slash = (p: string) => p.replace(/\\/g, '/')
   const cmd = slash(process.execPath)
   // Con --team il client usa sempre quel team (B3), anche se il predefinito cambia
+  // EN: With --team the client always uses that team (B3), even if the default changes
   const team = program.opts().team as string | undefined
   const args = [slash(__filename), '--home', slash(home), ...(team ? ['--team', team] : []), 'mcp']
   switch (target) {
@@ -1134,6 +1223,7 @@ program.command('setup')
   .action(async (target: string, o: { print?: boolean, hook: boolean, context: boolean, project?: string }) => {
     if (o.project && target === 'claude-code') {
       // MCP del team per un solo progetto, ambito "local" di Claude Code (vedi registerProjectMcp)
+      // EN: The team's MCP for a single project, Claude Code's "local" scope (see registerProjectMcp)
       const r = await client().call<{ dir: string, mcpUrl: string }>('POST', '/api/setup/project', { path: path.resolve(o.project) })
       console.log(`Claude Code avviato in ${r.dir} userà il team di ${r.mcpUrl}`)
       return
@@ -1141,6 +1231,8 @@ program.command('setup')
     if (target !== 'claude-code') {
       // Per gli altri client stampiamo la configurazione da incollare: i loro file di configurazione
       // cambiano spesso formato fra una versione e l'altra, meglio non modificarli alla cieca.
+      // EN: For the other clients we print the configuration to paste: their configuration files
+      //     often change format between versions, better not to edit them blindly.
       const snippet = clientSnippet(target, paths().home)
       if (!snippet) throw new DaemonError(`Client non supportato: ${target}. Disponibili: claude-code, codex, vscode, webstorm`)
       console.log(snippet)
@@ -1158,6 +1250,7 @@ program.command('setup')
     }
     try {
       // Stessa logica del pulsante nelle Impostazioni della UI (src/node/integrations.ts).
+      // EN: Same logic as the button in the UI Settings (src/node/integrations.ts).
       const r = setupClaudeCode({ mcpUrl: c.mcpUrl, token: c.config.token, home: p.home, hook: o.hook, context: o.context })
       console.log(`Server MCP registrato: ${r.mcpUrl}`)
       if (r.hookFile) console.log(`Hook di fine sessione installato in ${r.hookFile} (copia di backup accanto)`)
@@ -1172,6 +1265,10 @@ program.command('setup')
  * Apre la UI nel browser predefinito. Il daemon genera un link MONOUSO (valido 60 s) che
  * consegna il token alla pagina; il token non resta nell'URL né nella cronologia.
  * Per l'app desktop: `npm run desktop` dalla cartella del progetto.
+ *
+ * EN: Opens the UI in the default browser. The daemon generates a ONE-TIME link (valid 60 s) that
+ * hands the token to the page; the token doesn't stay in the URL or in the history.
+ * For the desktop app: `npm run desktop` from the project folder.
  */
 program.command('ui')
   .description('apre l\'interfaccia di Micelio nel browser')
@@ -1180,6 +1277,7 @@ program.command('ui')
     const { url } = await client().call<{ url: string }>('POST', '/api/ui/link')
     if (o.print) return console.log(url)
     // Comando di sistema per aprire un URL: start (Windows), open (macOS), xdg-open (Linux).
+    // EN: System command to open a URL: start (Windows), open (macOS), xdg-open (Linux).
     const [cmd, args] = process.platform === 'win32'
       ? ['cmd', ['/c', 'start', '""', url]]
       : [process.platform === 'darwin' ? 'open' : 'xdg-open', [url]]
@@ -1189,9 +1287,13 @@ program.command('ui')
 
 program.parseAsync().catch((err: Error) => {
   // Gli errori "attesi" (DaemonError) si mostrano come messaggio; gli altri con lo stack.
+  // EN: "Expected" errors (DaemonError) are shown as a message; the others with the stack.
   console.error(err instanceof DaemonError ? `✘ ${err.message}` : err)
   // exitCode e non process.exit(1): con una connessione HTTP ancora in chiusura (più chiamate al
   // daemon nello stesso comando, es. `backup restore`) process.exit su Windows faceva fallire
   // un'asserzione interna di Node (UV_HANDLE_CLOSING). Così il processo finisce da solo.
+  // EN: exitCode and not process.exit(1): with an HTTP connection still closing (several calls to the
+  //     daemon in the same command, e.g. `backup restore`) process.exit on Windows triggered an
+  //     internal Node assertion (UV_HANDLE_CLOSING). This way the process ends on its own.
   process.exitCode = 1
 })

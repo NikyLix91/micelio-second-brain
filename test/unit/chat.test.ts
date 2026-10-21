@@ -1,4 +1,5 @@
 // B10: chat sulla memoria. Vicini da aggiungere, temi della mappa mentale, materiale per l'LLM.
+// EN: B10: chat over the memory. Neighbors to add, mind map themes, material for the LLM.
 import { describe, expect, it } from 'vitest'
 import { buildMindMap, chatInput, type ChatMemory, expandWithNeighbors, lineOf, type MapLink } from '../../src/insight/chat'
 
@@ -11,7 +12,7 @@ describe('chat: ricordi e mappa mentale', () => {
   it('ai ricordi trovati si aggiungono i vicini più legati (prima quelli del dreaming), fino al massimo', () => {
     const links = [link('a', 'x', 0.3), link('a', 'y', 0.3, 'dream', 'refines'), link('b', 'z', 0.9), link('x', 'w', 1)]
     expect(expandWithNeighbors(['a', 'b'], links, 4)).toEqual(['a', 'b', 'z', 'y'])
-    expect(expandWithNeighbors(['a', 'b'], links, 10)).toEqual(['a', 'b', 'z', 'y', 'x']) // w è a due passi
+    expect(expandWithNeighbors(['a', 'b'], links, 10)).toEqual(['a', 'b', 'z', 'y', 'x']) // w è a due passi / EN: w is two hops away
   })
 
   it('i temi sono comunità dei collegamenti; i ricordi senza collegamenti vanno in "Altro"', () => {
@@ -20,7 +21,7 @@ describe('chat: ricordi e mappa mentale', () => {
     const map = buildMindMap('come gestiamo i retry?', memories, links, new Set(['a', 'd']))
     expect(map.themes.map((t) => t.memories.sort())).toEqual([['a', 'b', 'c'], ['d', 'e'], ['f']])
     expect(map.themes[0].label).toContain('kafka')
-    expect(map.themes[2]).toMatchObject({ id: -1, label: '' }) // "Altro"
+    expect(map.themes[2]).toMatchObject({ id: -1, label: '' }) // "Altro" / EN: "Other"
     expect(map.links.find((l) => l.kind === 'dream')).toMatchObject({ source: 'd', target: 'e', rel: 'depends-on' })
     expect(map.memories.find((m) => m.id === 'a')).toMatchObject({ found: true, line: 'Corpo del ricordo a.' })
     expect(map.memories.find((m) => m.id === 'b')!.found).toBe(false)
@@ -34,7 +35,7 @@ describe('chat: ricordi e mappa mentale', () => {
     expect([...numbers]).toEqual([[1, 'a'], [2, 'b']])
     expect(input).toContain('[1] Ricordo a  (howto · RADICE (practice) · #kafka)')
     expect(input).toContain('tema 0: ricordi 1, 2')
-    expect(input).not.toContain('domanda 1') // solo le ultime 3
+    expect(input).not.toContain('domanda 1') // solo le ultime 3 / EN: only the last 3
     expect(input).toContain('domanda 4')
     expect(input.trim().endsWith('e i timeout?')).toBe(true)
   })

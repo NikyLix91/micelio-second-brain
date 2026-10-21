@@ -1,6 +1,9 @@
 /**
  * Filtro deterministico (src/privacy/filter.ts): cosa blocca, cosa redige, e soprattutto cosa
  * NON deve toccare (falsi positivi in contesto tecnico).
+ *
+ * EN: Deterministic filter (src/privacy/filter.ts): what it blocks, what it redacts, and above all what
+ * it must NOT touch (false positives in a technical context).
  */
 import { describe, expect, it } from 'vitest'
 import { applyFilter, DEFAULT_BLOCK_KEYWORDS, mergeRules } from '../../src/privacy/filter'
@@ -15,8 +18,9 @@ describe('filtro: blocco degli argomenti HR e personali', () => {
   it('riconosce le parole intere, senza distinguere le maiuscole (salvo le sigle)', () => {
     expect(applyFilter('Domani ho il COLLOQUIO DI VALUTAZIONE').blocked).toBe(true)
     // "ral" minuscolo dentro identificatori o parole non deve far scattare la sigla RAL
+    // EN: lowercase "ral" inside identifiers or words must not trigger the RAL acronym
     expect(applyFilter('const generalRalph = central(ral)').blocked).toBe(false)
-    expect(applyFilter('il metodo malattiaCheck()').blocked).toBe(false) // non è una parola intera
+    expect(applyFilter('il metodo malattiaCheck()').blocked).toBe(false) // non è una parola intera / EN: not a whole word
   })
 
   it('non blocca normali sessioni tecniche', () => {
@@ -26,7 +30,7 @@ describe('filtro: blocco degli argomenti HR e personali', () => {
   it('le parole chiave del team si aggiungono a quelle di default', () => {
     const rules = mergeRules(['progetto riservato', 42, ' '])
     expect(rules.blockKeywords).toContain('progetto riservato')
-    expect(rules.blockKeywords.length).toBe(DEFAULT_BLOCK_KEYWORDS.length + 1) // 42 e ' ' scartati
+    expect(rules.blockKeywords.length).toBe(DEFAULT_BLOCK_KEYWORDS.length + 1) // 42 e ' ' scartati / EN: 42 and ' ' discarded
     expect(applyFilter('note sul Progetto Riservato', rules).blocked).toBe(true)
   })
 })
@@ -48,7 +52,7 @@ describe('filtro: redazione di segreti e dati personali', () => {
   for (const [label, input, type] of cases) {
     it(`redige: ${label}`, () => {
       const r = applyFilter(input)
-      expect(r.blocked).toBe(false) // i segreti si redigono, non bloccano
+      expect(r.blocked).toBe(false) // i segreti si redigono, non bloccano / EN: secrets are redacted, they do not block
       expect(r.text).toContain('[REDACTED:')
       expect(Object.keys(r.redactions).some((k) => k.endsWith(type))).toBe(true)
     })

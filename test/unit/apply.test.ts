@@ -1,4 +1,5 @@
 // apply è deterministica e applica i permessi anche se un client "malevolo" emette eventi vietati.
+// EN: apply is deterministic and enforces permissions even if a "malicious" client emits forbidden events.
 import { describe, expect, it } from 'vitest'
 import { applyNodes, KEYS } from '../../src/net/apply'
 import { envelope, type EventPayload } from '../../src/core/events'
@@ -8,6 +9,7 @@ import os from 'node:os'
 import path from 'node:path'
 
 // Vista finta in memoria con la stessa interfaccia minima di Hyperbee usata da apply.
+// EN: Fake in-memory view with the same minimal Hyperbee interface that apply uses.
 function fakeView () {
   const data = new Map<string, unknown>()
   return {
@@ -58,10 +60,10 @@ describe('apply', () => {
     const inv = 'd'.repeat(64)
     await applyNodes([
       node(A, { type: 'team.init', name: 'T', founderName: 'alice' }),
-      node(A, { type: 'member.add', key: B, name: 'bob', inviteId: inv }), // invito inesistente
+      node(A, { type: 'member.add', key: B, name: 'bob', inviteId: inv }), // invito inesistente / EN: nonexistent invite
       node(A, { type: 'invite.add', id: inv, publicKey: 'e'.repeat(64), expires: 0 }),
       node(A, { type: 'member.add', key: B, name: 'bob', inviteId: inv }),
-      node(A, { type: 'member.add', key: C, name: 'carol', inviteId: inv }) // già usato
+      node(A, { type: 'member.add', key: C, name: 'carol', inviteId: inv }) // già usato / EN: already used
     ], view, host)
     expect(view.data.has(KEYS.member(B))).toBe(true)
     expect(view.data.has(KEYS.member(C))).toBe(false)
@@ -76,10 +78,10 @@ describe('apply', () => {
       node(A, { type: 'team.init', name: 'T', founderName: 'alice' }),
       node(A, { type: 'invite.add', id: inv1, publicKey: 'e'.repeat(64), expires: 0 }),
       node(A, { type: 'member.add', key: B, name: 'bob', inviteId: inv1 }),
-      node(B, { type: 'invite.add', id: inv2, publicKey: 'e'.repeat(64), expires: 0 }), // i membri possono invitare
-      node(A, { type: 'member.add', key: C, name: 'carol', inviteId: inv2 }), // accolta da A, invitata da B
-      node(C, { type: 'member.remove', key: A }), // vietato: carol non è admin
-      node(B, { type: 'member.promote', key: C }), // vietato
+      node(B, { type: 'invite.add', id: inv2, publicKey: 'e'.repeat(64), expires: 0 }), // i membri possono invitare / EN: members can invite
+      node(A, { type: 'member.add', key: C, name: 'carol', inviteId: inv2 }), // accolta da A, invitata da B / EN: accepted by A, invited by B
+      node(C, { type: 'member.remove', key: A }), // vietato: carol non è admin / EN: forbidden: carol is not an admin
+      node(B, { type: 'member.promote', key: C }), // vietato / EN: forbidden
       node(A, { type: 'member.promote', key: B }),
       node(B, { type: 'member.remove', key: C })
     ], view, host)
@@ -120,6 +122,7 @@ describe('apply', () => {
     const ada = ensureIdentity(path.join(dir, 'ada.json'), 'Ada')
     const bo = ensureIdentity(path.join(dir, 'bo.json'), 'Bo')
     // la seconda chiamata non crea una nuova identità e non cambia il nome
+    // EN: the second call does not create a new identity and does not change the name
     expect(ensureIdentity(path.join(dir, 'ada.json'), 'Altro nome')).toEqual(ada)
     const view = fakeView(); const host = fakeHost()
     const inv = 'd'.repeat(64)
@@ -128,8 +131,10 @@ describe('apply', () => {
       node(A, { type: 'invite.add', id: inv, publicKey: 'e'.repeat(64), expires: 0 }),
       node(A, { type: 'member.add', key: B, name: 'bo', inviteId: inv }),
       // B prova ad attribuirsi l'identità di Ada: la firma di Ada copre il feed A, non B
+      // EN: B tries to claim Ada's identity: Ada's signature covers feed A, not B
       node(B, { type: 'member.identity', person: ada.publicKey, sig: signMembership(ada, A) }),
       // firma di Bo, ma dichiarata come persona di Ada: non verifica
+      // EN: Bo's signature, but declared as Ada's person: it does not verify
       node(B, { type: 'member.identity', person: ada.publicKey, sig: signMembership(bo, B) }),
       node(A, { type: 'member.identity', person: ada.publicKey, sig: signMembership(ada, A) }),
       node(B, { type: 'member.identity', person: bo.publicKey, sig: signMembership(bo, B) })
@@ -137,6 +142,7 @@ describe('apply', () => {
     expect((view.data.get(KEYS.member(A)) as any).person).toBe(ada.publicKey)
     expect((view.data.get(KEYS.member(B)) as any).person).toBe(bo.publicKey)
     // una firma fatta per un altro feed (es. lo stesso evento copiato da un altro team) non vale
+    // EN: a signature made for another feed (e.g. the same event copied from another team) is not valid
     expect(verifyMembership(ada.publicKey, C, signMembership(ada, A))).toBe(false)
     expect(verifyMembership(ada.publicKey, A, 'zz')).toBe(false)
     fs.rmSync(dir, { recursive: true, force: true })

@@ -1,6 +1,9 @@
 /**
  * @file Componenti di base riusati da tutte le schermate.
  * Volutamente semplici: niente libreria di componenti, solo classi di styles.css.
+ *
+ * EN: Basic components reused by every screen.
+ * Deliberately simple: no component library, only styles.css classes.
  */
 import { type ReactNode, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
@@ -14,7 +17,10 @@ const S = defineStrings({
 
 /**
  * Intestazione di pagina con titolo e sottotitolo.
+ *
+ * EN: Page header with title and subtitle.
  * @param help argomento della guida in linea ("argomento" o "argomento#ancora"): mostra il «?»
+ *        EN: in-app help topic ("argomento" or "argomento#ancora"): shows the «?»
  */
 export function PageHeader ({ title, subtitle, actions, help }: { title: string, subtitle?: ReactNode, actions?: ReactNode, help?: string }) {
   return (
@@ -31,7 +37,10 @@ export function PageHeader ({ title, subtitle, actions, help }: { title: string,
 
 /**
  * Riquadro con titolo opzionale.
+ *
+ * EN: Card with an optional title.
  * @param help argomento della guida in linea ("argomento#ancora"): mostra il «?» accanto al titolo
+ *        EN: in-app help topic ("argomento#ancora"): shows the «?» next to the title
  */
 export function Card ({ title, children, actions, help }: { title?: string, children: ReactNode, actions?: ReactNode, help?: string }) {
   return (
@@ -52,6 +61,10 @@ export function Card ({ title, children, actions, help }: { title?: string, chil
  * Markdown dei ricordi. IMPORTANTE: react-markdown NON esegue HTML grezzo per impostazione
  * predefinita. I ricordi arrivano da altri nodi del team: rendere HTML arbitrario permetterebbe
  * a un nodo malevolo di eseguire script nella UI (dove c'è il token dell'API locale).
+ *
+ * EN: Memory Markdown. IMPORTANT: react-markdown does NOT render raw HTML by default.
+ * Memories come from other team nodes: rendering arbitrary HTML would let
+ * a malicious node run scripts in the UI (where the local API token lives).
  */
 export function Markdown ({ text }: { text: string }) {
   return (
@@ -59,6 +72,7 @@ export function Markdown ({ text }: { text: string }) {
       <ReactMarkdown
         components={{
           // Link aperti fuori dall'app, mai dentro la finestra della UI.
+          // EN: Links open outside the app, never inside the UI window.
           a: ({ href, children }) => <a href={href} target='_blank' rel='noreferrer noopener'>{children}</a>
         }}
       >
@@ -68,13 +82,13 @@ export function Markdown ({ text }: { text: string }) {
   )
 }
 
-/** Messaggio d'errore leggibile (gli errori dell'API hanno già un testo per l'utente). */
+/** Messaggio d'errore leggibile (gli errori dell'API hanno già un testo per l'utente). / EN: Readable error message (API errors already have a user-facing text). */
 export function ErrorBox ({ error }: { error: unknown }) {
   if (!error) return null
   return <div className='notice error'>{(error as Error).message ?? String(error)}</div>
 }
 
-/** Stato vuoto: testo centrato e smorzato. */
+/** Stato vuoto: testo centrato e smorzato. / EN: Empty state: centered, muted text. */
 export function Empty ({ children }: { children: ReactNode }) {
   return <div className='muted' style={{ padding: '18px 4px' }}>{children}</div>
 }
@@ -82,6 +96,9 @@ export function Empty ({ children }: { children: ReactNode }) {
 /**
  * Pulsante che chiede conferma prima di un'azione irreversibile o "pubblica" (espulsioni,
  * modifiche alla configurazione dell'utente). Al primo clic mostra Conferma/Annulla.
+ *
+ * EN: Button that asks for confirmation before an irreversible or "public" action (removals,
+ * changes to the user's configuration). On the first click it shows Confirm/Cancel.
  */
 export function ConfirmButton ({ label, confirmLabel, onConfirm, danger, disabled }: {
   label: string, confirmLabel?: string, onConfirm: () => void, danger?: boolean, disabled?: boolean
@@ -97,7 +114,7 @@ export function ConfirmButton ({ label, confirmLabel, onConfirm, danger, disable
   )
 }
 
-/** Barra di avanzamento (es. budget LLM). Diventa gialla oltre il 90%. */
+/** Barra di avanzamento (es. budget LLM). Diventa gialla oltre il 90%. / EN: Progress bar (e.g. LLM budget). Turns yellow above 90%. */
 export function Meter ({ value, max }: { value: number, max: number }) {
   const pct = max > 0 ? Math.min(100, Math.round((value / max) * 100)) : 100
   return <div className={`meter ${pct >= 90 ? 'warn' : ''}`}><div style={{ width: `${pct}%` }} /></div>

@@ -1,5 +1,7 @@
 // Più team sulla stessa macchina (B3): migrazione dalla struttura a un team, sapere separato,
 // instradamento per cartella, identità personale comune, uscita da un team.
+// EN: Several teams on the same machine (B3): migration from the single-team layout, separate
+//     knowledge, routing by folder, shared personal identity, leaving a team.
 import fs from 'node:fs'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -33,6 +35,7 @@ describe('più team sullo stesso PC', () => {
     dht = await localDht()
     fs.mkdirSync(clientX, { recursive: true })
     // Un nodo "vecchio" (prima di B3): tutto nella home, cartella di lavoro abilitata in config.json
+    // EN: An "old" node (before B3): everything in the home, work folder enabled in config.json
     const { node } = makeNode('legacy', dht.bootstrap, home)
     await node.start()
     await node.init('Alfa', 'ada')
@@ -55,14 +58,17 @@ describe('più team sullo stesso PC', () => {
     teamA = teams[0].id
     expect(teams[0]).toMatchObject({ name: 'Alfa', nodeName: 'ada', isDefault: true, memories: 1 })
     // i file del team non stanno più nella home…
+    // EN: the team files are no longer in the home…
     expect(fs.existsSync(path.join(home, 'state.json'))).toBe(false)
     expect(fs.existsSync(path.join(home, 'corestore'))).toBe(false)
     expect(fs.existsSync(teamPaths(root, teamA).state)).toBe(true)
     // …le cartelle abilitate passano nelle impostazioni del team, config.json resta della macchina
+    // EN: …the enabled folders move into the team settings, config.json stays machine-level
     expect(readConfigFile(root.config).watch).toBeUndefined()
     expect(loadConfig(teamPaths(root, teamA)).watch.sessions).toEqual([canonicalPath(work)])
     expect(loadConfig(root).defaultTeam).toBe(teamA)
     // il nome del nodo diventa quello dell'identità personale, e l'identità si lega al team
+    // EN: the node name becomes the personal identity's name, and the identity is bound to the team
     const identity = loadIdentity(hostFiles(root).identity)
     expect(identity?.name).toBe('ada')
     const me = (await host.node().members()).find((m) => m.name === 'ada')
@@ -70,19 +76,22 @@ describe('più team sullo stesso PC', () => {
   })
 
   it('un secondo team ha sapere separato e la stessa identità personale', async () => {
-    const { id, status } = await host.createTeam('Beta') // nome dall'identità
+    const { id, status } = await host.createTeam('Beta') // nome dall'identità / EN: name from the identity
     teamB = id
     expect(status.nodeName).toBe('ada')
     published(await host.node('Beta').remember({ title: 'Regola di Beta', body: 'In Beta le release si fanno il giovedì.', tags: ['release'] }))
     // la ricerca di un team non vede i ricordi dell'altro
+    // EN: one team's search does not see the other team's memories
     expect(host.node('Alfa').recall('release giovedì')).toHaveLength(0)
     expect(host.node('Beta').recall('pipeline blu')).toHaveLength(0)
     expect(host.node(teamB).recall('release')).toHaveLength(1)
     // senza indicazione si usa il predefinito (Alfa); si può cambiare
+    // EN: with no team given, the default one is used (Alfa); it can be changed
     expect(host.node().teamName).toBe('Alfa')
     await host.setDefault('beta')
     expect(host.node().teamName).toBe('Beta')
     // stessa persona in entrambi i team, con feed (chiavi del nodo) diversi
+    // EN: same person in both teams, with different feeds (node keys)
     await eventually(async () => !!(await host.node(teamB).members())[0]?.person, [host.node(teamB)])
     const [a] = await host.node(teamA).members()
     const [b] = await host.node(teamB).members()
@@ -97,8 +106,10 @@ describe('più team sullo stesso PC', () => {
     expect(host.ownerOf(path.join(work, 'altro'))).toBe(teamA)
     expect(host.ownerOf(home)).toBeNull()
     // stessa cartella in due team: rifiutata
+    // EN: same folder in two teams: rejected
     expect(() => host.node(teamA).watchAdd(clientX)).toThrow(/già abilitata nel team "Beta"/)
     // documenti annidati fra team: rifiutati (lo stesso file finirebbe in due team)
+    // EN: documents nested across teams: rejected (the same file would end up in two teams)
     return Promise.all([
       expect(host.node(teamA).documentsAdd(work, false)).resolves.toBeTruthy(),
       expect(host.node(teamB).documentsAdd(clientX, false)).rejects.toThrow(/già sorvegliata dal team "Alfa"/)
@@ -123,6 +134,7 @@ describe('più team sullo stesso PC', () => {
     expect(left.map((t) => t.name)).toEqual(['Alfa'])
     expect(fs.existsSync(path.join(hostFiles(root).teams, teamB))).toBe(false)
     // il predefinito torna al primo team rimasto
+    // EN: the default goes back to the first remaining team
     expect(host.node().teamName).toBe('Alfa')
     expect(host.node().recall('pipeline blu')).toHaveLength(1)
   })

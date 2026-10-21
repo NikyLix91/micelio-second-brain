@@ -4,6 +4,12 @@
  *   regole di Cursor della cartella, e tenute aggiornate (src/roots/agent-files.ts);
  * - **Importa**: ADR, CLAUDE.md / AGENTS.md o un vault Markdown diventano Radici (src/roots/import.ts).
  * Nell'app desktop la cartella si sceglie con il selettore del sistema; nel browser si scrive.
+ *
+ * EN: Roots outside Micelio (B4), at the bottom of the Roots page:
+ * - **Files for agents**: a project's Roots written into CLAUDE.md, AGENTS.md or the folder's
+ *   Cursor rules, and kept up to date (src/roots/agent-files.ts);
+ * - **Import**: ADRs, CLAUDE.md / AGENTS.md or a Markdown vault become Roots (src/roots/import.ts).
+ * In the desktop app the folder is picked with the system picker; in the browser you type it.
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
@@ -63,7 +69,7 @@ const S = defineStrings({
   }
 })
 
-/** Le due schede, una sotto l'altra. */
+/** Le due schede, una sotto l'altra. / EN: The two cards, one below the other. */
 export function RootsTools () {
   return (
     <div className='stack' style={{ marginTop: 16 }}>
