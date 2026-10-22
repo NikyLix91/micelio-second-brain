@@ -123,7 +123,11 @@ const S = defineStrings({
       mcpOnly: 'Solo MCP',
       mcpOnlyConfirm: 'Sì, registra MCP',
       done: (url: string) => `Server MCP registrato su ${url}.`,
-      hook: (file: string) => ` Hook installato in ${file}.`
+      hook: (file: string) => ` Hook installato in ${file}.`,
+      viaCli: (file: string) => ` Usato Claude Code in ${file}.`,
+      viaFile: ' Claude Code non è stato trovato: la registrazione è stata scritta direttamente nella sua configurazione (.claude.json), con lo stesso risultato.',
+      restart: ' Chiudi e riapri le sessioni di Claude Code (o ricarica la finestra di VS Code) per vedere Micelio in /mcp.',
+      otherUser: (user: string) => `Attenzione: Claude Code non risulta mai usato dall'utente «${user}», che è quello con cui gira Micelio. Claude Code legge la configurazione dal profilo di chi lo esegue: se lo avvii con un altro utente (per esempio un'utenza amministrativa), non vedrà Micelio. Apri Micelio con lo stesso utente con cui usi Claude Code e ripeti la configurazione.`
     }
   },
   en: {
@@ -233,7 +237,11 @@ const S = defineStrings({
       mcpOnly: 'MCP only',
       mcpOnlyConfirm: 'Yes, register MCP',
       done: (url: string) => `MCP server registered at ${url}.`,
-      hook: (file: string) => ` Hook installed in ${file}.`
+      hook: (file: string) => ` Hook installed in ${file}.`,
+      viaCli: (file: string) => ` Used Claude Code at ${file}.`,
+      viaFile: ' Claude Code was not found: the registration was written directly into its configuration (.claude.json), with the same result.',
+      restart: ' Close and reopen your Claude Code sessions (or reload the VS Code window) to see Micelio in /mcp.',
+      otherUser: (user: string) => `Warning: Claude Code has never been used by the user "${user}", which is the one Micelio runs as. Claude Code reads its configuration from the profile of whoever runs it: if you start it with another user (for example an admin account), it won't see Micelio. Open Micelio with the same user you use Claude Code with and run the setup again.`
     }
   }
 })
@@ -614,8 +622,12 @@ function ClaudeCodeCard () {
       {setup.data && (
         <div className='notice ok' style={{ marginTop: 10 }}>
           {t.done(setup.data.mcpUrl)}{setup.data.hookFile ? t.hook(setup.data.hookFile) : ''}
+          {setup.data.via === 'file' ? t.viaFile : setup.data.claude ? t.viaCli(setup.data.claude) : ''}
+          {t.restart}
         </div>
       )}
+      {/* Claude Code mai usato da questo utente: quasi certamente gira con un'altra utenza / EN: Claude Code never used by this user: almost certainly it runs under another account */}
+      {setup.data?.otherUser && <div className='notice warn' style={{ marginTop: 10 }}>{t.otherUser(setup.data.user)}</div>}
     </Card>
   )
 }

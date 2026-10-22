@@ -45,7 +45,7 @@ micelio setup claude-code --no-hook  # solo MCP
 micelio setup claude-code --print    # mostra cosa farebbe, senza modificare nulla
 ```
 
-Il comando esegue `claude mcp add --transport http --scope user micelio http://127.0.0.1:7337/mcp --header "Authorization: Bearer <token>"`. Poi, salvo `--no-hook`, aggiunge a `~/.claude/settings.json` (rispettando `CLAUDE_CONFIG_DIR`) un hook `SessionEnd` che avvisa il daemon a ogni fine sessione. Il file originale viene salvato in `settings.json.micelio-backup`. Rieseguire il comando è sicuro: sostituisce la configurazione precedente invece di duplicarla.
+Il comando registra lo shim stdio: `claude mcp add --scope user micelio -- <node> <dist/cli/main.js> --home <home> mcp` (dalla 0.5.1; prima era l'endpoint HTTP). `claude` si cerca anche fuori dal PATH: installazione nativa, npm (si lancia il suo `cli.js` con il Node di Micelio), WinGet, estensione di VS Code, Cursor e Windsurf. Se non si trova, la stessa voce si scrive direttamente in `~/.claude.json` (`mcpServers.micelio`, copia in `.claude.json.micelio-backup`). Se Claude Code non risulta mai usato dall'utente del sistema che esegue Micelio, il comando avvisa: Claude Code legge la configurazione dal profilo di chi lo esegue (dalla 0.5.3). Poi, salvo `--no-hook`, aggiunge a `~/.claude/settings.json` (rispettando `CLAUDE_CONFIG_DIR`) un hook `SessionEnd` che avvisa il daemon a ogni fine sessione. Il file originale viene salvato in `settings.json.micelio-backup`. Rieseguire il comando è sicuro: sostituisce la configurazione precedente invece di duplicarla.
 
 Per un uso temporaneo, senza modificare la configurazione:
 

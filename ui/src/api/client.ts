@@ -211,7 +211,7 @@ export const api = {
   fetchSource: (id: string) => call<{ path: string, name: string, size: number, local: boolean }>('POST', `/api/memories/${enc(id)}/source`),
   watchAdd: (path: string) => call<string[]>('POST', '/api/watch', { path }),
   watchRemove: (path: string) => call<string[]>('DELETE', '/api/watch', { path }),
-  setupClaudeCode: (hook: boolean, context = true) => call<{ mcpUrl: string, hookFile: string | null }>('POST', '/api/setup/claude-code', { hook, context }),
+  setupClaudeCode: (hook: boolean, context = true) => call<{ mcpUrl: string, hookFile: string | null, via: 'cli' | 'file', claude: string | null, user: string, otherUser: boolean }>('POST', '/api/setup/claude-code', { hook, context }),
   updateContext: (patch: { sessionStart?: boolean, prompt?: boolean, maxChars?: number }) => call<NodeSettings>('PUT', '/api/settings/context', patch),
 
   // Sicurezza (Fase 9)

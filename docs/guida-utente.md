@@ -542,7 +542,7 @@ Un membro espulso non può più scrivere nel team. **Limite intrinseco:** ciò c
 | `join` va in timeout | Nessun membro del team è online, oppure l'invito non è ancora arrivato a nessun membro online. Riprova quando qualcuno è acceso |
 | `Peer: 0 connessi` a lungo | Nessun altro membro online, oppure la rete blocca UDP, oppure i PC usano DHT diverse. Controlla con `micelio network` (stessa DHT su tutti?) e `micelio network check` (§4-bis) |
 | Le sessioni di Claude Code non vengono raccolte | La cartella è abilitata (`micelio watch`)? Il daemon è attivo? Errori dell'hook in `~/.micelio/logs/hook.log`; sessioni ignorate segnalate in `daemon.log` |
-| `ingest status` dice LLM "NON disponibile" | Claude Code non è nel PATH o non è autenticato. Imposta `llm.command` in `config.json` con il percorso completo di `claude` |
+| `ingest status` dice LLM "NON disponibile" | Claude Code non è stato trovato (né nel PATH né nelle installazioni note, estensione di VS Code compresa) o non è autenticato. Imposta `llm.command` in `config.json` con il percorso completo di `claude` |
 | Tutto finisce in inbox | Budget esaurito o LLM non disponibile (nel dubbio non si pubblica): controlla `micelio ingest status` |
 | Porta 7337 occupata | Imposta `"port"` in `~/.micelio/config.json`, poi riesegui `micelio setup claude-code` |
-| Claude Code non vede i tool | Il daemon deve essere attivo. Verifica con `claude mcp list` |
+| Claude Code non vede i tool (Micelio assente in `/mcp`) | Premi «Collega Claude Code» in Impostazioni e leggi il messaggio, poi chiudi e riapri la sessione. Se compare l'avviso sull'utente, Claude Code gira con un altro utente del sistema: apri Micelio con quello stesso utente. Il daemon deve essere attivo. Verifica con `claude mcp list` |
