@@ -40,8 +40,8 @@
 import Hyperbee from 'hyperbee'
 import b4a from 'b4a'
 import { TeamEvent, memoryId } from '../core/events'
-import { verifyMembership } from '../core/identity'
-import type { GapRecord, InviteRecord, MemberRecord, MemoryRecord, RootRecord, TeamRecord } from '../core/model'
+import { verifyMembership, verifyRedactAck } from '../core/identity'
+import type { GapRecord, InviteRecord, MemberRecord, MemoryRecord, RedactAck, RootRecord, TeamRecord } from '../core/model'
 
 /**
  * Chiavi della vista. Il prefisso raggruppa i record dello stesso tipo, così si possono
@@ -67,6 +67,8 @@ export const KEYS = {
   useful: (id: string, node: string) => `useful/${id}/${node}`,
   /** Sessioni in cui due ricordi sono serviti insieme, su un nodo (B12). `pair` = "idA:idB". / EN: Sessions in which two memories helped together, on a node (B12). `pair` = "idA:idB". */
   couse: (pair: string, node: string) => `couse/${pair}/${node}`,
+  /** Conferma di un nodo di aver tolto un ricordo redatto (B12). / EN: A node's confirmation that it removed a redacted memory (B12). */
+  redactAck: (id: string, node: string) => `redactack/${id}/${node}`,
   /** Collegamento esplicito fra ricordi (dreaming). / EN: Explicit link between memories (dreaming). */
   link: (from: string, to: string) => `link/${from}/${to}`,
   /** Chi ha "vinto" il sogno di un'epoca. / EN: Who "won" the dream of an epoch. */
@@ -94,6 +96,7 @@ export const RANGES = {
   usage: { gt: 'usage/', lt: 'usage0' },
   useful: { gt: 'useful/', lt: 'useful0' },
   couse: { gt: 'couse/', lt: 'couse0' },
+  redactAcks: { gt: 'redactack/', lt: 'redactack0' },
   links: { gt: 'link/', lt: 'link0' },
   dreamLogs: { gt: 'dreamlog/', lt: 'dreamlog0' },
   gaps: { gt: 'gap/', lt: 'gap0' },
@@ -479,8 +482,23 @@ async function applyEvent (ev: TeamEvent, author: string, view: any, host: any):
       if (!isAdmin) return
       const m = await get<MemoryRecord>(view, KEYS.memory(ev.id))
       if (!m || m.status === 'redacted') return
-      await view.put(KEYS.memory(ev.id), { ...m, title: '[contenuto rimosso]', body: '', tags: [], status: 'redacted', statusReason: ev.reason })
+      await view.put(KEYS.memory(ev.id), { ...m, title: '[contenuto rimosso]', body: '', tags: [], status: 'redacted', statusReason: ev.reason, redactedAt: ev.ts, redactedBy: author })
       await view.del(KEYS.pin(ev.id))
+      return
+    }
+
+    // ── redact.ack (B12) ─────────────────────────────────────────────────────────────
+    // Ogni membro conferma solo per sé (chiave = autore), e solo per un ricordo davvero redatto.
+    // Vale la prima conferma: una seconda non sposta la data. La firma si tiene solo se valida
+    // (verifica puro calcolo, deterministica come richiede apply).
+    // EN: Each member confirms only for themselves (key = author), and only for a memory that is
+    //     really redacted. The first confirmation counts: a second one doesn't move the date. The
+    //     signature is kept only if valid (pure-computation check, deterministic as apply requires).
+    case 'redact.ack': {
+      const m = await get<MemoryRecord>(view, KEYS.memory(ev.id))
+      if (m?.status !== 'redacted' || await get(view, KEYS.redactAck(ev.id, author))) return
+      const signed = ev.person && ev.sig && verifyRedactAck(ev.person, ev.id, author, ev.ts, ev.sig)
+      await view.put(KEYS.redactAck(ev.id, author), { ts: ev.ts, cleaned: ev.cleaned, backups: ev.backups, ...(signed ? { person: ev.person, sig: ev.sig } : {}) } satisfies RedactAck)
       return
     }
 

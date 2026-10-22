@@ -54,7 +54,7 @@ import { type Embedder, HashEmbedder, LocalEmbedder } from '../embed/embedder'
 import { activation } from '../rank/activation'
 import { hybridRank, nearest } from '../rank/hybrid'
 import { currentEpoch, Dreamer, type DreamReport, dreamOrder } from '../dream/dreamer'
-import type { MemoryRecord } from '../core/model'
+import type { MemoryRecord, RedactAck } from '../core/model'
 import os from 'node:os'
 import { BACKUP_EXT, type BackupContent, type BackupManifest, backupFileName, countsOf, decodeBackup, encodeBackup } from '../backup/archive'
 import { planRestore } from '../backup/restore-plan'
@@ -93,7 +93,8 @@ import { gapId, gapKey } from '../insight/gaps'
 import { AGENT_FILE_FORMATS, type AgentFileFormat, renderRootsBlock, writeAgentFile } from '../roots/agent-files'
 import { type ImportItem, readImport } from '../roots/import'
 import { repoInfo } from '../ingest/git-changes'
-import { type Identity, signMembership } from '../core/identity'
+import { type Identity, signMembership, signRedactAck } from '../core/identity'
+import { buildReceipt } from '../insight/redaction-receipt'
 import { checkDecision, WRITE_CANDIDATES, WriteDecision, writeUpdateInput, writeUpdateSystem } from '../ingest/write-update'
 
 export interface MicelioNodeOptions {
@@ -162,6 +163,26 @@ export interface ChatReply {
   /** Numero del riferimento [n] → ricordo. / EN: Reference number [n] → memory. */
   refs: { n: number, id: string, title: string }[]
   map: MindMap
+}
+
+/**
+ * Una redazione con le conferme dei membri (B12, ricevuta di redazione).
+ * Stato per membro: "confirmed" = il suo PC ha tolto il ricordo; "pending" = non ancora (spento o
+ * versione precedente alla 0.6.0); "left" = uscito dal team senza confermare (non conta nel totale).
+ *
+ * EN: A redaction with the members' confirmations (B12, redaction receipt).
+ * Status per member: "confirmed" = their PC removed the memory; "pending" = not yet (off or a version
+ * older than 0.6.0); "left" = left the team without confirming (not counted in the total).
+ */
+export interface RedactionView {
+  id: string
+  reason: string
+  /** Quando e da chi (null per le redazioni precedenti alla 0.6.0). / EN: When and by whom (null for redactions before 0.6.0). */
+  at: number | null
+  by: { key: string, name: string } | null
+  confirmed: number
+  total: number
+  members: { key: string, name: string, status: 'confirmed' | 'pending' | 'left', ack: RedactAck | null }[]
 }
 
 /** Un ricordo nel resoconto di efficacia (B11). / EN: A memory in the efficacy report (B11). */
@@ -525,6 +546,8 @@ export class MicelioNode extends EventEmitter {
   private coUsePairs = new Map<string, { count: number, last: number }>()
   /** Vicini d'uso per ricordo, dal più forte, ricalcolati con la costellazione. / EN: Use neighbors per memory, strongest first, recomputed with the constellation. */
   private coUseNear = new Map<string, { id: string, weight: number }[]>()
+  /** Redazioni per cui la conferma è già stata inviata (evita doppi invii prima che la vista la mostri). / EN: Redactions whose confirmation was already sent (avoids double sends before the view shows it). */
+  private acking = new Set<string>()
   private staleTimer: NodeJS.Timeout | null = null
   /** Timer del backup automatico (B7). / EN: Automatic backup timer (B7). */
   private backupTimer: NodeJS.Timeout | null = null
@@ -1129,6 +1152,116 @@ export class MicelioNode extends EventEmitter {
     const rec = this.requireMemory(id)
     await this.requireTeam().append({ type: 'memory.redact', id: rec.id, reason: reason || 'rimosso da un admin' })
     await this.sync()
+  }
+
+  // ═══════════════════════════ Ricevuta di redazione (B12) ═══════════════════════════
+  // EN: Redaction receipt (B12)
+
+  /**
+   * Per ogni ricordo redatto non ancora confermato da questo nodo: toglie le copie locali rimaste
+   * fuori da indice ed export (risposte della chat, proposte in Inbox, copie personali), conta i
+   * backup automatici precedenti e pubblica `redact.ack`, firmato dall'identità personale se c'è.
+   * Chiamata a ogni materializzazione: vale anche per le redazioni arrivate mentre il PC era spento
+   * o prima dell'aggiornamento alla 0.6.0.
+   *
+   * EN: For each redacted memory not yet confirmed by this node: removes the local copies left
+   * outside the index and export (chat answers, Inbox proposals, personal copies), counts the earlier
+   * automatic backups and publishes `redact.ack`, signed by the personal identity if there is one.
+   * Called on every materialization: it also covers redactions that arrived while the PC was off or
+   * before the update to 0.6.0.
+   */
+  private confirmRedactions (inactive: MemoryRecord[], acks: Map<string, Map<string, RedactAck>>): void {
+    const team = this.team
+    if (!team?.writable || !team.localKey) return
+    for (const m of inactive) {
+      if (m.status !== 'redacted' || acks.get(m.id)?.has(team.localKey) || this.acking.has(m.id)) continue
+      this.acking.add(m.id)
+      try {
+        const cleaned = this.cleanRedacted(m.id)
+        const backups = this.backupsBefore(m.redactedAt ?? Date.now())
+        const ts = Date.now()
+        const identity = this.opts.identity?.()
+        const sig = identity ? { person: identity.publicKey, sig: signRedactAck(identity, m.id, team.localKey, ts) } : {}
+        team.append({ type: 'redact.ack', id: m.id, cleaned, backups, ...sig }, ts)
+          .then(() => this.log(`redazione confermata per ${m.id.slice(0, 8)} (chat ${cleaned.chat}, inbox ${cleaned.inbox}, personali ${cleaned.personal}, backup precedenti ${backups})`))
+          .catch((err) => { this.acking.delete(m.id); this.log(`conferma di redazione non inviata: ${(err as Error).message}`) })
+      } catch (err) {
+        this.acking.delete(m.id)
+        this.log(`redazione non ripulita su questo PC: ${(err as Error).message}`)
+      }
+    }
+  }
+
+  /** Copie locali di un ricordo redatto fuori da indice ed export. / EN: Local copies of a redacted memory outside the index and export. */
+  private cleanRedacted (id: string): RedactAck['cleaned'] {
+    const chat = this.privateStore.redactChats(id)
+    let inbox = 0
+    for (const item of this.privateStore.listInbox()) {
+      if (memoryId(item.memory) !== id) continue
+      this.privateStore.removeInbox(item.id)
+      this.privateStore.logDecision(item.source, 'rejected', 'redatto da un admin del team', '[contenuto rimosso]')
+      inbox++
+    }
+    const personal = this.privateStore.personal().some((p) => p.id === id) ? 1 : 0
+    if (personal) this.privateStore.removePersonal(id)
+    if (chat || inbox) this.changed('inbox')
+    return { chat, inbox, personal }
+  }
+
+  /**
+   * Backup automatici di questo team fatti prima della redazione, ancora nella cartella dei backup:
+   * possono contenere il ricordo. Non si toccano (cancellarli o riscriverli è troppo rischioso), ma
+   * si dichiarano nella ricevuta. I backup fatti a mano altrove non si possono conoscere.
+   *
+   * EN: Automatic backups of this team made before the redaction, still in the backup folder: they
+   * may contain the memory. They are not touched (deleting or rewriting them is too risky), but
+   * they're declared in the receipt. Backups made by hand elsewhere can't be known.
+   */
+  private backupsBefore (at: number): number {
+    const folder = this.config.backup.folder
+    if (!folder || !this.teamNameCache || !fs.existsSync(folder)) return 0
+    const prefix = backupFileName(this.teamNameCache).replace(/-\d{4}-\d{2}-\d{2}-\d{4}\.micelio-backup$/, '-')
+    try {
+      return fs.readdirSync(folder).filter((f) => f.startsWith(prefix) && f.endsWith(BACKUP_EXT) && fs.statSync(path.join(folder, f)).mtimeMs < at).length
+    } catch {
+      return 0
+    }
+  }
+
+  /** Redazioni del team con le conferme dei membri, dalla più recente. / EN: The team's redactions with the members' confirmations, newest first. */
+  async redactions (): Promise<RedactionView[]> {
+    const team = this.requireTeam()
+    const [all, members, acks] = await Promise.all([team.memories(), team.members(), team.redactAcks()])
+    const names = new Map(members.map((m) => [m.key, m.name]))
+    return all.filter((m) => m.status === 'redacted').map((m) => {
+      const mine = acks.get(m.id) ?? new Map<string, RedactAck>()
+      const rows = members.map((mem) => {
+        const ack = mine.get(mem.key) ?? null
+        const status = ack ? 'confirmed' as const : mem.removed ? 'left' as const : 'pending' as const
+        return { key: mem.key, name: mem.name, status, ack }
+      })
+      // Chi è uscito senza confermare resta in elenco ma non conta: non può più confermare
+      // EN: Whoever left without confirming stays listed but doesn't count: they can't confirm anymore
+      const counted = rows.filter((r) => r.status !== 'left')
+      return {
+        id: m.id,
+        reason: m.statusReason ?? '',
+        at: m.redactedAt ?? null,
+        by: m.redactedBy ? { key: m.redactedBy, name: names.get(m.redactedBy) ?? m.redactedBy.slice(0, 8) } : null,
+        confirmed: counted.filter((r) => r.status === 'confirmed').length,
+        total: counted.length,
+        members: rows
+      }
+    }).sort((a, b) => (b.at ?? 0) - (a.at ?? 0))
+  }
+
+  /** Ricevuta di una redazione (testo leggibile e JSON verificabile, src/insight/redaction-receipt.ts). / EN: Receipt of a redaction (readable text and verifiable JSON, src/insight/redaction-receipt.ts). */
+  async redactionReceipt (id: string, lang: 'it' | 'en' = 'it'): Promise<{ name: string, text: string, json: unknown }> {
+    const r = (await this.redactions()).find((x) => x.id === id || x.id.startsWith(id.toLowerCase()))
+    if (!r) throw new UserError(`Nessuna redazione per il ricordo ${id}`, `No redaction for memory ${id}`)
+    const team = this.requireTeam()
+    const me = (await team.members()).find((m) => m.key === team.localKey)
+    return buildReceipt({ redaction: r, team: this.teamNameCache ?? '', by: { name: me?.name ?? '', key: team.localKey ?? '' }, lang })
   }
 
   // ═══════════════════════════ Backup e ripristino (B7) ═══════════════════════════
@@ -3258,7 +3391,7 @@ export class MicelioNode extends EventEmitter {
       // Tempi per fase: finiscono nel log solo se l'aggiornamento è lento (vedi in fondo)
       // EN: Per-phase timings: they go to the log only if the update is slow (see below)
       const lap = phaseTimer()
-      const [all, members, votes, pins, usage, links, roots, useful, coUse] = await Promise.all([team.memories(), team.members(), team.votes(), team.pins(), team.usage(), team.links(), team.roots(), team.useful(), team.coUse()])
+      const [all, members, votes, pins, usage, links, roots, useful, coUse, acks] = await Promise.all([team.memories(), team.members(), team.votes(), team.pins(), team.usage(), team.links(), team.roots(), team.useful(), team.coUse(), team.redactAcks()])
       this.usefulCounts = useful
       this.coUsePairs = coUse
       lap('vista')
@@ -3285,6 +3418,9 @@ export class MicelioNode extends EventEmitter {
       lap('indice')
       writeExport(this.paths.export, memories, members)
       lap('export')
+      // B12: indice ed export sono già senza i redatti; si ripulisce il resto e si conferma
+      // EN: B12: index and export are already free of redacted ones; clean the rest and confirm
+      this.confirmRedactions(this.inactive, acks)
       // Costellazione, galassie e collegamenti per ricordo: in sottofondo, fuori dalla scrittura.
       // Intanto graph() restituisce la versione precedente (vecchia di pochi secondi): la UI riceve
       // "memories" quando quella nuova è pronta e la ricarica.

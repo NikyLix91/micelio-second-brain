@@ -769,7 +769,30 @@ program.command('redact').description('rimuove il contenuto di un ricordo per tu
   .argument('<id>').option('-r, --reason <motivo>', 'motivo, visibile nell\'archivio', '')
   .action(async (id: string, o: { reason: string }) => {
     await client().call('POST', `/api/memories/${encodeURIComponent(id)}/redact`, { reason: o.reason })
-    console.log('Contenuto rimosso per tutto il team. Nota: chi l\'aveva già letto o esportato ne conserva una copia.')
+    console.log('Contenuto rimosso per tutto il team. Ogni PC confermerà con una ricevuta: `micelio redactions ' + id.slice(0, 12) + '`.')
+    console.log('Nota: chi l\'aveva già letto o esportato a mano ne conserva una copia.')
+  })
+
+/**
+ * Redazioni e ricevute (B12): senza id l'elenco con l'avanzamento delle conferme; con un id la
+ * ricevuta (testo leggibile, o JSON verificabile con --json).
+ *
+ * EN: Redactions and receipts (B12): without an id the list with the confirmation progress; with an
+ * id the receipt (readable text, or verifiable JSON with --json).
+ */
+program.command('redactions').description('redazioni del team e ricevute: chi ha confermato di aver tolto il ricordo')
+  .argument('[id]', 'ricordo redatto: mostra la ricevuta')
+  .option('--json', 'ricevuta in JSON, con le firme verificabili')
+  .option('--en', 'ricevuta in inglese')
+  .action(async (id: string | undefined, o: { json?: boolean, en?: boolean }) => {
+    if (id) {
+      const r = await client().call<{ text: string, json: unknown }>('GET', `/api/redactions/${encodeURIComponent(id)}/receipt?lang=${o.en ? 'en' : 'it'}`)
+      console.log(o.json ? JSON.stringify(r.json, null, 2) : r.text)
+      return
+    }
+    const list = await client().call<{ id: string, reason: string, at: number | null, confirmed: number, total: number }[]>('GET', '/api/redactions')
+    if (!list.length) return console.log('Nessuna redazione nel team.')
+    for (const r of list) console.log(`${r.id.slice(0, 12)}  ${r.at ? new Date(r.at).toLocaleString() : '(data non registrata)'}  confermati ${r.confirmed}/${r.total}  ${r.reason}`)
   })
 
 program.command('metrics').description('metriche sintetiche del nodo (JSON)')

@@ -273,6 +273,26 @@ export const TeamEvent = z.discriminatedUnion('type', [
    * mistake is removed from the view of all nodes. Best-effort: the encrypted log blocks remain.
    */
   z.object({ ...base, type: z.literal('memory.redact'), id: z.string().regex(/^[0-9a-f]{64}$/), reason: z.string().max(500) }),
+  /**
+   * Ricevuta di redazione (B12): un nodo conferma di aver tolto dal proprio PC un ricordo redatto
+   * (indice, export, chat, Inbox, copie personali) e dichiara i backup precedenti rimasti. Firmata
+   * dall'identità personale se c'è. Ognuno conferma solo per sé (l'autore è chi firma il feed).
+   * I nodi di versioni precedenti non conoscono l'evento e lo ignorano.
+   *
+   * EN: Redaction receipt (B12): a node confirms it removed a redacted memory from its PC (index,
+   * export, chat, Inbox, personal copies) and declares the earlier backups left. Signed by the
+   * personal identity if there is one. Everyone confirms only for themselves (the author is whoever
+   * signs the feed). Nodes on older versions don't know the event and ignore it.
+   */
+  z.object({
+    ...base,
+    type: z.literal('redact.ack'),
+    id: z.string().regex(/^[0-9a-f]{64}$/),
+    cleaned: z.object({ chat: z.number().int().nonnegative(), inbox: z.number().int().nonnegative(), personal: z.number().int().nonnegative() }),
+    backups: z.number().int().nonnegative(),
+    person: hexKey.optional(),
+    sig: z.string().regex(/^[0-9a-f]{128}$/).optional()
+  }),
   /** Configurazione condivisa del team, es. `memory.language` (solo admin). / EN: Shared team configuration, e.g. `memory.language` (admin only). */
   z.object({ ...base, type: z.literal('team.config'), key: z.string().min(1).max(100), value: z.unknown() }),
   // ── Radici (Fase 8) ───────────────────────────────────────────────────────────────

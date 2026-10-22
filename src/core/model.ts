@@ -50,6 +50,28 @@ export interface MemoryRecord {
   supersededBy?: string
   /** Motivo dell'archiviazione o della sostituzione. / EN: Reason for archiving or superseding. */
   statusReason?: string
+  /** Redazione (B12): quando e da quale admin. Assenti nelle redazioni precedenti alla 0.6.0. / EN: Redaction (B12): when and by which admin. Missing in redactions before 0.6.0. */
+  redactedAt?: number
+  redactedBy?: string
+}
+
+/**
+ * Conferma di un nodo di aver tolto un ricordo redatto dal proprio PC (B12, evento `redact.ack`).
+ * `person` e `sig`: firma dell'identità personale (src/core/identity.ts), assenti se il nodo non ha
+ * un'identità; `sig` è tenuta solo se valida.
+ *
+ * EN: A node's confirmation that it removed a redacted memory from its PC (B12, `redact.ack`
+ * event). `person` and `sig`: signature of the personal identity (src/core/identity.ts), missing if
+ * the node has no identity; `sig` is kept only if valid.
+ */
+export interface RedactAck {
+  ts: number
+  /** Cosa ha ripulito oltre a indice ed export: risposte della chat, proposte in Inbox, copie personali. / EN: What it cleaned besides index and export: chat answers, Inbox proposals, personal copies. */
+  cleaned: { chat: number, inbox: number, personal: number }
+  /** Backup automatici precedenti alla redazione rimasti nella cartella dei backup. / EN: Automatic backups older than the redaction left in the backup folder. */
+  backups: number
+  person?: string
+  sig?: string
 }
 
 /** Un membro del team. I membri espulsi restano nella vista con `removed: true` (storico). / EN: A team member. Removed members stay in the view with `removed: true` (history). */

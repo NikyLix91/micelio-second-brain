@@ -606,6 +606,22 @@ export class PrivateStore {
       .map((r) => ({ id: r.id, chat: r.chat, role: r.role, text: r.text, data: r.data ? JSON.parse(r.data) : null, ts: r.ts }))
   }
 
+  /**
+   * Redazione (B12): le risposte della chat che citavano o mostravano il ricordo (nei riferimenti o
+   * nella mappa mentale) perdono testo e dati; restano come segnaposto `{ redacted: true }`, che la
+   * UI mostra nella lingua dell'utente. Le domande restano: sono testo dell'utente.
+   *
+   * EN: Redaction (B12): chat answers that cited or showed the memory (in the references or in the
+   * mind map) lose their text and data; they stay as a `{ redacted: true }` placeholder, which the UI
+   * shows in the user's language. Questions stay: they're the user's own text.
+   * @returns risposte ripulite
+   *          EN: answers cleaned
+   */
+  redactChats (memoryId: string): number {
+    return Number(this.db.prepare(`UPDATE chat_messages SET text = '[contenuto rimosso]', data = '{"redacted":true}'
+      WHERE role = 'assistant' AND data LIKE ? AND data NOT LIKE '{"redacted":true}'`).run(`%${memoryId}%`).changes)
+  }
+
   chatMessage (id: number): ChatMessage | null {
     const r = this.db.prepare('SELECT * FROM chat_messages WHERE id = ?').get(id) as any
     return r ? { id: r.id, chat: r.chat, role: r.role, text: r.text, data: r.data ? JSON.parse(r.data) : null, ts: r.ts } : null
