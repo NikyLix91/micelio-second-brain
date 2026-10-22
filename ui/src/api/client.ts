@@ -21,7 +21,7 @@ import type { ExplicitOutcome } from '../../../src/ingest/pipeline'
 import type { DistillQuality } from '../../../src/ingest/quality'
 import type { Graph, GraphLink, GraphNode } from '../../../src/graph/constellation'
 import type { Galaxy } from '../../../src/graph/communities'
-import type { ChatReply, EfficacyReport, GapView, IngestStatus, NetworkSettings, NodeSettings, RootReviewResult, RootView, SecurityFinding, SecurityRules, SecurityTestResult, StorageReport } from '../../../src/node/micelio-node'
+import type { ChatReply, EfficacyReport, GapView, IngestStatus, NetworkSettings, NodeSettings, RedactionView, RootReviewResult, RootView, SecurityFinding, SecurityRules, SecurityTestResult, StorageReport } from '../../../src/node/micelio-node'
 import type { Digest } from '../../../src/insight/digest'
 import type { BackupManifest } from '../../../src/backup/archive'
 import type { MapLink, MindMap } from '../../../src/insight/chat'
@@ -35,7 +35,7 @@ import { currentLang } from '../i18n'
 
 export type { DistillQuality, Galaxy, Graph, GraphLink, GraphNode }
 export type { NetworkCheck, NetworkSettings, RootReviewResult, RootView, SecurityFinding, SecurityLogEntry, SecurityRules, SecurityTestResult, StorageReport }
-export type { BackupManifest, ChatMessage, ChatReply, ChatSummary, Digest, EfficacyReport, GapView }
+export type { BackupManifest, ChatMessage, ChatReply, ChatSummary, Digest, EfficacyReport, GapView, RedactionView }
 /** Mappa mentale della chat (B10). / EN: Chat mind map (B10). */
 export type ChatMap = MindMap
 export type ChatMapMemory = MindMap['memories'][number]
@@ -222,6 +222,8 @@ export const api = {
   securityScan: () => call<SecurityFinding[]>('GET', '/api/security/scan'),
   securityClean: (id: string) => call<{ id: string }>('POST', `/api/security/clean/${enc(id)}`),
   securityLog: (limit = 100) => call<SecurityLogEntry[]>('GET', `/api/security/log?limit=${limit}`),
+  redactions: () => call<RedactionView[]>('GET', '/api/redactions'),
+  redactionReceipt: (id: string, lang: string) => call<{ name: string, text: string, json: unknown }>('GET', `/api/redactions/${enc(id)}/receipt?lang=${lang === 'en' ? 'en' : 'it'}`),
 
   // Radici (Fase 8)
   // EN: Roots (Phase 8)

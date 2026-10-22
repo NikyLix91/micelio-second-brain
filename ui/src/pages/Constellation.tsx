@@ -258,7 +258,7 @@ export function Constellation () {
             nodeLabel={(n: any) => n.title}
             // Collegamenti: più forti = più visibili. Spenti se uno dei due estremi è spento.
             // EN: Links: stronger = more visible. Dimmed if either end is dimmed.
-            linkColor={(l: any) => (isLit(l.source) && isLit(l.target) ? `rgba(170, 220, 180, ${0.12 + 0.5 * l.weight})` : 'rgba(120,130,120,0.05)')}
+            linkColor={(l: any) => (isLit(l.source) && isLit(l.target) ? (l.kind === 'use' ? `rgba(125, 255, 196, ${0.3 + 0.6 * l.weight})` : `rgba(170, 220, 180, ${0.12 + 0.5 * l.weight})`) : 'rgba(120,130,120,0.05)')}
             linkWidth={(l: any) => 0.4 + 2 * l.weight}
             cooldownTicks={120}
             onNodeClick={(n: any) => {

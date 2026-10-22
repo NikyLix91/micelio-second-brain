@@ -15,6 +15,8 @@
  * - pinned:     un ricordo fissato ha sempre attivazione massima;
  * - root:       una Radice (sapere fondante) non scende mai sotto ROOT_FLOOR, anche se nessuno
  *               la consulta da mesi; con l'uso sale come gli altri.
+ * - effort:     (B12) fatica del capitolo da cui è nato il ricordo: un vantaggio fino a EFFORT_BONUS
+ *               che decade con la recency, quindi sparisce se nessuno lo usa.
  *
  * EN: Inspired by the base level of the ACT-R model of human memory: what is used often and
  * recently is more accessible. Components:
@@ -28,6 +30,8 @@
  * - pinned:     a pinned memory always has maximum activation;
  * - root:       a Root (founding knowledge) never drops below ROOT_FLOOR, even if nobody has
  *               looked at it for months; with use it rises like the others.
+ * - effort:     (B12) effort of the chapter the memory was born from: a head start up to
+ *               EFFORT_BONUS that decays with recency, so it vanishes if nobody uses it.
  *
  * Calcolata AL MOMENTO della query con l'orologio locale: la vista replicata contiene solo gli
  * ingredienti (usi, voti, pin), quindi resta deterministica su tutti i nodi.
@@ -63,6 +67,8 @@ export interface ActivationInput {
   pinned: boolean
   /** È una Radice (Fase 8): attivazione mai sotto ROOT_FLOOR. / EN: It is a Root (Phase 8): activation never below ROOT_FLOOR. */
   root?: boolean
+  /** Fatica 0..1 del capitolo d'origine (B12, src/ingest/effort.ts). / EN: Effort 0..1 of the source chapter (B12, src/ingest/effort.ts). */
+  effort?: number
 }
 
 /**
@@ -79,6 +85,8 @@ export const ROOT_FLOOR = 0.75
 const DAY = 24 * 3600 * 1000
 /** Quanti usi semplici vale un uso utile (B11). / EN: How many plain uses a useful use is worth (B11). */
 export const USEFUL_WEIGHT = 3
+/** Vantaggio massimo per la fatica (B12): un ricordo sudato parte fino a +0.15. / EN: Maximum head start for effort (B12): a hard-won memory starts up to +0.15. */
+export const EFFORT_BONUS = 0.15
 
 /** Attivazione fra 0 e 1 (1 = massima). / EN: Activation between 0 and 1 (1 = maximum). */
 export function activation (m: ActivationInput, now = Date.now()): number {
@@ -88,6 +96,9 @@ export function activation (m: ActivationInput, now = Date.now()): number {
   const uses = Math.min(1, Math.log1p(m.uses + USEFUL_WEIGHT * (m.useful ?? 0)) / Math.log1p(50)) // 50 usi ≈ saturazione / EN: 50 uses ≈ saturation
   const votes = 0.5 + Math.max(-0.5, Math.min(0.5, m.votes / 10)) // 0 voti = 0.5 (neutro) / EN: 0 votes = 0.5 (neutral)
   const centrality = Math.min(1, m.degree / 8)
-  const a = WEIGHTS.recency * recency + WEIGHTS.uses * uses + WEIGHTS.votes * votes + WEIGHTS.centrality * centrality
+  // B12: il vantaggio della fatica segue la recency, quindi decade come il resto
+  // EN: B12: the effort head start follows recency, so it decays like the rest
+  const effort = EFFORT_BONUS * Math.max(0, Math.min(1, m.effort ?? 0)) * recency
+  const a = WEIGHTS.recency * recency + WEIGHTS.uses * uses + WEIGHTS.votes * votes + WEIGHTS.centrality * centrality + effort
   return Math.max(m.root ? ROOT_FLOOR : 0, Math.min(1, a))
 }

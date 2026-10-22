@@ -13,7 +13,13 @@ Inspired by the ACT-R model of human memory, it is the weighted sum of four comp
 | Votes | 20% | Sum of usefulness votes (0 votes = neutral) |
 | Centrality | 10% | How many links it has in the constellation |
 
-A **pinned** memory always has activation 1; a **Root** never drops below 0.75.
+A **pinned** memory always has activation 1; a **Root** never drops below 0.75. A memory born from a hard session starts with a small head start (see **Hard-won discoveries**).
+
+## Hard-won discoveries {#effort}
+
+A gotcha found after an hour of errors is worth more than an obvious fact. That's why a memory distilled from a session starts with a **head start** proportional to the effort of the chapter it comes from: up to **+0.15** activation. The head start follows recency, so it wears off over time: if nobody uses the memory, after a few months it's gone. When the effort is at least 0.5, the memory's details say "Born from a hard session" with errors and minutes.
+
+**How it works behind the scenes.** Effort (0 to 1) is computed from the chapter's transcript, with no extra LLM calls: half from **tool errors** (full at 15), a quarter from **duration** (full at 120 minutes), a quarter from **user messages** (full at 25). The thresholds were tuned on 196 real chapters: this way about one chapter in five turns out "hard". The value travels in the memory (`source.effort`, with errors and minutes), stays after the Inbox review, isn't part of the memory id and nodes on older versions ignore it. Only memories born from sessions count, not from documents or manual saves. Code: `src/ingest/effort.ts`.
 
 ## Votes {#votes}
 

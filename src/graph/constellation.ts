@@ -56,8 +56,14 @@ export interface GraphLink {
   target: string
   /** Forza del legame, normalizzata fra 0 e 1. / EN: Link strength, normalized between 0 and 1. */
   weight: number
-  /** Origine del legame: oggi solo "tags"; in futuro "semantic" e "dream". / EN: Link origin: today only "tags"; in the future "semantic" and "dream". */
-  kind: 'tags' | 'semantic' | 'dream'
+  /**
+   * Origine del legame: tag in comune, significato simile, dreaming, oppure "use" (B12): i due
+   * ricordi sono serviti insieme nelle stesse sessioni.
+   *
+   * EN: Link origin: shared tags, similar meaning, dreaming, or "use" (B12): the two memories
+   * helped together in the same sessions.
+   */
+  kind: 'tags' | 'semantic' | 'dream' | 'use'
 }
 
 export interface Graph {

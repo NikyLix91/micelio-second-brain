@@ -163,7 +163,9 @@ describe('IngestPipeline', () => {
       expect(published.map((m) => m.title)).toEqual(['Build Angular OOM su Azure DevOps'])
       // Fuori da un repository git il riferimento al codice è solo il nome della cartella di lavoro
       // EN: Outside a git repository the code reference is just the working folder name
-      expect(published[0].source).toEqual({ type: 'claude-code', ref: 'tech', code: { project: path.basename(dir), files: [], symbols: [], commits: [] }, rank: 1, batch: 1 })
+      // B12: anche la fatica del capitolo (un messaggio, nessun errore, nessuna durata: quasi zero)
+      // EN: B12: the chapter's effort too (one message, no errors, no duration: almost zero)
+      expect(published[0].source).toEqual({ type: 'claude-code', ref: 'tech', code: { project: path.basename(dir), files: [], symbols: [], commits: [] }, rank: 1, batch: 1, effort: { score: 0.01, errors: 0, minutes: 0 } })
       expect(store.jobStats()).toEqual({ done: 1 })
     })
 

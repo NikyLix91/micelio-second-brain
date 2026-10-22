@@ -13,7 +13,13 @@ Ispirata al modello della memoria umana ACT-R, è la somma pesata di quattro com
 | Voti | 20% | Somma dei voti di utilità (0 voti = neutro) |
 | Centralità | 10% | Quanti collegamenti ha nella costellazione |
 
-Un ricordo **fissato** ha sempre attivazione 1; una **Radice** non scende mai sotto 0,75.
+Un ricordo **fissato** ha sempre attivazione 1; una **Radice** non scende mai sotto 0,75. Un ricordo nato da una sessione faticosa parte con un piccolo vantaggio (vedi **Le scoperte sudate**).
+
+## Le scoperte sudate {#effort}
+
+Un gotcha trovato dopo un'ora di errori vale più di un fatto ovvio. Per questo un ricordo distillato da una sessione parte con un **vantaggio** proporzionale alla fatica del capitolo da cui nasce: fino a **+0,15** di attivazione. Il vantaggio segue la recenza, quindi si consuma col tempo: se nessuno usa il ricordo, dopo qualche mese è sparito. Quando la fatica è almeno 0,5, il dettaglio del ricordo dice «Nato da una sessione difficile» con errori e minuti.
+
+**Come funziona dietro.** La fatica (da 0 a 1) si calcola dalla trascrizione del capitolo, senza chiamate LLM in più: metà dagli **errori degli strumenti** (piena a 15), un quarto dalla **durata** (piena a 120 minuti), un quarto dai **messaggi dell'utente** (pieni a 25). Le soglie sono state tarate su 196 capitoli reali: così risulta «difficile» circa un capitolo su cinque. Il valore viaggia nel ricordo (`source.effort`, con errori e minuti), resta anche dopo la revisione in Inbox, non entra nell'id del ricordo e i nodi di versioni precedenti lo ignorano. Valgono solo i ricordi nati da sessioni, non da documenti o salvataggi a mano. Codice: `src/ingest/effort.ts`.
 
 ## I voti {#votes}
 

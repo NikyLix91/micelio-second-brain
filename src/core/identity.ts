@@ -122,3 +122,36 @@ export function verifyMembership (person: string, writerKeyHex: string, signatur
     return false
   }
 }
+
+// ── Ricevuta di redazione (B12) ─────────────────────────────────────────────────────
+// EN: ── Redaction receipt (B12) ──
+
+/** Dominio delle conferme di redazione: una firma di appartenenza non vale come conferma. / EN: Domain of redaction confirmations: a membership signature doesn't count as a confirmation. */
+const ACK_DOMAIN = 'micelio/redact-ack/v1:'
+
+/**
+ * Testo firmato da una persona per confermare di aver tolto un ricordo redatto dal proprio PC:
+ * ricordo, feed del nodo nel team e istante. È lo stesso testo che compare nella ricevuta, così
+ * chiunque può verificare la firma con la chiave pubblica della persona.
+ *
+ * EN: Text signed by a person to confirm they removed a redacted memory from their PC: memory,
+ * the node's feed in the team and time. It's the same text shown in the receipt, so anyone can
+ * verify the signature with the person's public key.
+ */
+export function redactAckMessage (memoryId: string, writerKeyHex: string, ts: number): string {
+  return `${ACK_DOMAIN}${memoryId.toLowerCase()}:${writerKeyHex.toLowerCase()}:${ts}`
+}
+
+/** Firma una conferma di redazione con l'identità personale. / EN: Signs a redaction confirmation with the personal identity. */
+export function signRedactAck (identity: Identity, memoryId: string, writerKeyHex: string, ts: number): string {
+  return hex(crypto.sign(b4a.from(redactAckMessage(memoryId, writerKeyHex, ts)), b4a.from(identity.secretKey, 'hex')))
+}
+
+/** Verifica una conferma di redazione (puro calcolo: usabile anche in apply). / EN: Verifies a redaction confirmation (pure computation: usable in apply too). */
+export function verifyRedactAck (person: string, memoryId: string, writerKeyHex: string, ts: number, signature: string): boolean {
+  try {
+    return crypto.verify(b4a.from(redactAckMessage(memoryId, writerKeyHex, ts)), b4a.from(signature, 'hex'), b4a.from(person, 'hex'))
+  } catch {
+    return false
+  }
+}

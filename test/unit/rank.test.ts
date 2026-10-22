@@ -109,4 +109,15 @@ describe('apply: voti, pin, uso', () => {
     ], view, host)
     expect(view.data.get(KEYS.usage(MEM, A))).toEqual({ count: 5, last: 100 })
   })
+
+  it('couse.report (B12) è un G-Counter per coppia, come usage.report', async () => {
+    const view = fakeView()
+    const pair = `${MEM}:${'b'.repeat(64)}`
+    await applyNodes([node({ type: 'team.init', name: 'T', founderName: 'a' })], view, host)
+    await applyNodes([
+      node({ type: 'couse.report', counts: { [pair]: { count: 4, last: 200 } } }),
+      node({ type: 'couse.report', counts: { [pair]: { count: 2, last: 100 } } }) // vecchio / EN: old
+    ], view, host)
+    expect(view.data.get(KEYS.couse(pair, A))).toEqual({ count: 4, last: 200 })
+  })
 })

@@ -158,6 +158,16 @@ export const MemoryInput = z.object({
     rank: z.number().int().min(1).max(100).optional(),
     batch: z.number().int().min(0).max(100).optional(),
     /**
+     * Solo per i ricordi distillati da una SESSIONE (B12): fatica del capitolo da cui nascono
+     * (src/ingest/effort.ts). Dà un vantaggio iniziale nell'attivazione. I nodi di versioni
+     * precedenti ignorano il campo; non entra nell'id del ricordo.
+     *
+     * EN: Only for memories distilled from a SESSION (B12): effort of the chapter they come from
+     * (src/ingest/effort.ts). It gives a head start in activation. Nodes on older versions ignore
+     * the field; it isn't part of the memory id.
+     */
+    effort: z.object({ score: z.number().min(0).max(1), errors: z.number().int().nonnegative(), minutes: z.number().int().nonnegative() }).optional(),
+    /**
      * Solo per i ricordi RIPRISTINATI da un backup (B7, src/backup): autore e data nel team
      * d'origine. L'autore per il team resta il nodo che ha ripristinato (il feed firmato non si
      * falsifica); questi dati servono a mostrare chi l'aveva scritto e a non far sembrare "nuovo"
@@ -241,6 +251,16 @@ export const TeamEvent = z.discriminatedUnion('type', [
    * node). Nodes on older versions don't know the event and ignore it.
    */
   z.object({ ...base, type: z.literal('useful.report'), counts: z.record(z.string().regex(/^[0-9a-f]{64}$/), z.object({ count: z.number().int().nonnegative(), last: z.number().int().nonnegative() })) }),
+  /**
+   * Sinapsi d'uso (B12): su questo nodo, in quante sessioni DUE ricordi sono serviti insieme.
+   * Chiave "idA:idB" con idA < idB. Stessa logica di usage.report (massimo per coppia e nodo,
+   * G-Counter). I nodi di versioni precedenti non conoscono l'evento e lo ignorano.
+   *
+   * EN: Use synapses (B12): on this node, in how many sessions TWO memories helped together.
+   * Key "idA:idB" with idA < idB. Same logic as usage.report (maximum per pair and node,
+   * G-Counter). Nodes on older versions don't know the event and ignore it.
+   */
+  z.object({ ...base, type: z.literal('couse.report'), counts: z.record(z.string().regex(/^[0-9a-f]{64}:[0-9a-f]{64}$/), z.object({ count: z.number().int().nonnegative(), last: z.number().int().nonnegative() })) }),
   // ── Dreaming (Fase 6, DESIGN §10) ─────────────────────────────────────────────────
   // EN: ── Dreaming (Phase 6, DESIGN §10) ──
   /** Più ricordi sostituiti da uno nuovo (fusione di duplicati). I vecchi restano come storico. / EN: Several memories replaced by a new one (merging duplicates). The old ones stay as history. */
@@ -263,6 +283,26 @@ export const TeamEvent = z.discriminatedUnion('type', [
    * mistake is removed from the view of all nodes. Best-effort: the encrypted log blocks remain.
    */
   z.object({ ...base, type: z.literal('memory.redact'), id: z.string().regex(/^[0-9a-f]{64}$/), reason: z.string().max(500) }),
+  /**
+   * Ricevuta di redazione (B12): un nodo conferma di aver tolto dal proprio PC un ricordo redatto
+   * (indice, export, chat, Inbox, copie personali) e dichiara i backup precedenti rimasti. Firmata
+   * dall'identità personale se c'è. Ognuno conferma solo per sé (l'autore è chi firma il feed).
+   * I nodi di versioni precedenti non conoscono l'evento e lo ignorano.
+   *
+   * EN: Redaction receipt (B12): a node confirms it removed a redacted memory from its PC (index,
+   * export, chat, Inbox, personal copies) and declares the earlier backups left. Signed by the
+   * personal identity if there is one. Everyone confirms only for themselves (the author is whoever
+   * signs the feed). Nodes on older versions don't know the event and ignore it.
+   */
+  z.object({
+    ...base,
+    type: z.literal('redact.ack'),
+    id: z.string().regex(/^[0-9a-f]{64}$/),
+    cleaned: z.object({ chat: z.number().int().nonnegative(), inbox: z.number().int().nonnegative(), personal: z.number().int().nonnegative() }),
+    backups: z.number().int().nonnegative(),
+    person: hexKey.optional(),
+    sig: z.string().regex(/^[0-9a-f]{128}$/).optional()
+  }),
   /** Configurazione condivisa del team, es. `memory.language` (solo admin). / EN: Shared team configuration, e.g. `memory.language` (admin only). */
   z.object({ ...base, type: z.literal('team.config'), key: z.string().min(1).max(100), value: z.unknown() }),
   // ── Radici (Fase 8) ───────────────────────────────────────────────────────────────

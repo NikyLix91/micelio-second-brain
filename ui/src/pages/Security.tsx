@@ -11,6 +11,7 @@
  * - RICORDI DA RIPULIRE: scansione dei ricordi già pubblicati con le regole attuali; un admin può
  *   "ripulire" (versione redatta pubblicata, originale rimosso).
  * - REGISTRO: cosa il filtro ha tolto su QUESTO PC, da dove e di che tipo. Mai i valori.
+ * - REDAZIONI (B12): ricordi tolti da un admin, con le conferme di ogni PC e la ricevuta da esportare.
  *
  * EN:
  * - TEST BENCH: paste a text (or type a file name) and see what the filter would remove,
@@ -21,6 +22,7 @@
  * - MEMORIES TO CLEAN: scan of the already published memories with the current rules; an admin can
  *   "clean" them (redacted version published, original removed).
  * - LOG: what the filter removed on THIS PC, from where and of what kind. Never the values.
+ * - REDACTIONS (B12): memories removed by an admin, with every PC's confirmation and the receipt to export.
  *
  * Le descrizioni dei riconoscitori fissi arrivano dal daemon in italiano: in inglese si mostra il
  * loro tipo tecnico (es. "github-token"), che è già comprensibile.
@@ -30,7 +32,7 @@
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { api, type SecurityRules } from '../api/client'
+import { api, type RedactionView, type SecurityRules } from '../api/client'
 import { Card, ConfirmButton, Empty, ErrorBox, PageHeader } from '../components/ui'
 import { dateTime } from '../format'
 import { defineStrings, useLang, useStrings } from '../i18n'
@@ -82,7 +84,22 @@ const S = defineStrings({
     logEmpty: 'Ancora nulla da registrare.',
     cols: ['Quando', 'Da', 'Contenuto', 'Tolto'],
     omitted: 'file omessi:',
-    source: { 'claude-code': 'sessione', document: 'documento', clean: 'ripulitura', cli: 'CLI', mcp: 'agente', api: 'app' } as Record<string, string>
+    source: { 'claude-code': 'sessione', document: 'documento', clean: 'ripulitura', cli: 'CLI', mcp: 'agente', api: 'app' } as Record<string, string>,
+    redactions: 'Redazioni',
+    redactionsIntro: "Ricordi tolti da un admin per tutto il team. Ogni PC, appena riceve la redazione, toglie il ricordo anche da chat, Inbox e copie personali e lo conferma con una firma. La ricevuta si può esportare per chi deve sapere che il dato è stato tolto.",
+    noRedactions: 'Nessuna redazione nel team.',
+    progress: (c: number, t: number) => `${c} su ${t} PC confermati`,
+    unknownDate: 'data non registrata',
+    by: (name: string) => `da ${name}`,
+    confirmedAt: (when: string) => `confermato il ${when}`,
+    pending: 'in attesa (PC spento o versione precedente)',
+    left: 'uscito dal team senza confermare',
+    cleaned: (chat: number, inbox: number, personal: number) => `ripuliti: ${chat} risposte della chat, ${inbox} proposte in Inbox, ${personal} copie personali`,
+    backups: (n: number) => `${n} backup precedenti restano nella cartella dei backup`,
+    signed: 'firmato',
+    unsigned: 'non firmato',
+    exportText: 'Esporta ricevuta (testo)',
+    exportJson: 'Esporta ricevuta (JSON firmato)'
   },
   en: {
     title: 'Security',
@@ -125,7 +142,22 @@ const S = defineStrings({
     logEmpty: 'Nothing recorded yet.',
     cols: ['When', 'From', 'Content', 'Removed'],
     omitted: 'files omitted:',
-    source: { 'claude-code': 'session', document: 'document', clean: 'cleaning', cli: 'CLI', mcp: 'agent', api: 'app' } as Record<string, string>
+    source: { 'claude-code': 'session', document: 'document', clean: 'cleaning', cli: 'CLI', mcp: 'agent', api: 'app' } as Record<string, string>,
+    redactions: 'Redactions',
+    redactionsIntro: 'Memories removed by an admin for the whole team. As soon as it receives the redaction, every PC also removes the memory from chat, Inbox and personal copies and confirms with a signature. The receipt can be exported for whoever must know the data was removed.',
+    noRedactions: 'No redaction in the team.',
+    progress: (c: number, t: number) => `${c} of ${t} PCs confirmed`,
+    unknownDate: 'date not recorded',
+    by: (name: string) => `by ${name}`,
+    confirmedAt: (when: string) => `confirmed on ${when}`,
+    pending: 'pending (PC off or older version)',
+    left: 'left the team without confirming',
+    cleaned: (chat: number, inbox: number, personal: number) => `cleaned: ${chat} chat answers, ${inbox} Inbox proposals, ${personal} personal copies`,
+    backups: (n: number) => `${n} earlier backups remain in the backup folder`,
+    signed: 'signed',
+    unsigned: 'not signed',
+    exportText: 'Export receipt (text)',
+    exportJson: 'Export receipt (signed JSON)'
   }
 })
 
@@ -140,6 +172,7 @@ export function Security () {
         <TestBench />
         <RulesCard isAdmin={isAdmin} />
         <ScanCard isAdmin={isAdmin} />
+        <RedactionsCard />
         <LogCard />
       </div>
     </>
@@ -283,6 +316,74 @@ function ScanCard ({ isAdmin }: { isAdmin: boolean }) {
           ))}
         </div>
       )}
+    </Card>
+  )
+}
+
+/** Scarica un testo come file (ricevuta). / EN: Downloads a text as a file (receipt). */
+function download (name: string, text: string, type: string): void {
+  const url = URL.createObjectURL(new Blob([text], { type }))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = name
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+/**
+ * Redazioni del team con le conferme di ogni PC (B12) e la ricevuta da esportare. Visibile a tutti:
+ * sapere che un dato è stato tolto davvero interessa l'intero team, non solo l'admin.
+ *
+ * EN: The team's redactions with every PC's confirmation (B12) and the receipt to export. Visible
+ * to everyone: knowing that some data was really removed matters to the whole team, not just the admin.
+ */
+function RedactionsCard () {
+  const s = useStrings(S)
+  const { lang } = useLang()
+  const list = useQuery({ queryKey: ['security', 'redactions'], queryFn: api.redactions })
+  const [open, setOpen] = useState<string | null>(null)
+  const exportReceipt = useMutation({
+    mutationFn: async ({ id, json }: { id: string, json: boolean }) => {
+      const r = await api.redactionReceipt(id, lang)
+      if (json) download(`${r.name}.json`, JSON.stringify(r.json, null, 2), 'application/json')
+      else download(`${r.name}.txt`, r.text, 'text/plain')
+    }
+  })
+  const row = (m: RedactionView['members'][number]) => (
+    <li key={m.key}>
+      <b>{m.name}</b>{' '}
+      {m.ack
+        ? <span className='muted small'>· {s.confirmedAt(dateTime(m.ack.ts))} · {m.ack.sig ? s.signed : s.unsigned}<div>{s.cleaned(m.ack.cleaned.chat, m.ack.cleaned.inbox, m.ack.cleaned.personal)}{m.ack.backups ? ` · ${s.backups(m.ack.backups)}` : ''}</div></span>
+        : <span className='muted small'>· {m.status === 'left' ? s.left : s.pending}</span>}
+    </li>
+  )
+  return (
+    <Card help='security#redactions' title={s.redactions}>
+      <p className='muted' style={{ marginTop: 0 }}>{s.redactionsIntro}</p>
+      <ErrorBox error={list.error ?? exportReceipt.error} />
+      {list.data?.length === 0 && <Empty>{s.noRedactions}</Empty>}
+      <div className='list'>
+        {list.data?.map((r) => (
+          <div key={r.id} className='list-item'>
+            <div className='row clickable' onClick={() => setOpen(open === r.id ? null : r.id)}>
+              <span className='mono small'>{r.id.slice(0, 12)}</span>
+              <span className='small'>{r.at ? dateTime(r.at) : s.unknownDate}{r.by ? ` · ${s.by(r.by.name)}` : ''}</span>
+              <span className='spacer' />
+              <span className={`badge ${r.confirmed === r.total ? 'ok' : 'warn'}`}>{s.progress(r.confirmed, r.total)}</span>
+            </div>
+            {r.reason && <div className='muted small'>{r.reason}</div>}
+            {open === r.id && (
+              <>
+                <ul className='plain small'>{r.members.map(row)}</ul>
+                <div className='row'>
+                  <button className='btn small' disabled={exportReceipt.isPending} onClick={() => exportReceipt.mutate({ id: r.id, json: false })}>{s.exportText}</button>
+                  <button className='btn small' disabled={exportReceipt.isPending} onClick={() => exportReceipt.mutate({ id: r.id, json: true })}>{s.exportJson}</button>
+                </div>
+              </>
+            )}
+          </div>
+        ))}
+      </div>
     </Card>
   )
 }
