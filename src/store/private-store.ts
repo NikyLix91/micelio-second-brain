@@ -489,6 +489,17 @@ export class PrivateStore {
       .map((r) => ({ session: r.session, memory: r.memory, verdict: r.verdict, judge: r.judge, evidence: r.evidence, project: r.project, ts: r.ts, voted: !!r.voted }))
   }
 
+  /**
+   * Solo ricordo ed esito, dal più VECCHIO: è ciò che serve all'abituazione (B12,
+   * src/rank/habituation.ts). Leggero anche con decine di migliaia di righe (due colonne, indice su ts).
+   *
+   * EN: Only memory and verdict, OLDEST first: it's what habituation needs (B12,
+   * src/rank/habituation.ts). Light even with tens of thousands of rows (two columns, index on ts).
+   */
+  outcomeVerdicts (since = 0): { memory: string, verdict: OutcomeVerdict }[] {
+    return this.db.prepare('SELECT memory, verdict FROM outcomes WHERE ts >= ? ORDER BY ts ASC').all(since) as any[]
+  }
+
   /** Il pollice in su automatico per questo esito è stato dato (o deciso di non darlo). / EN: The automatic thumbs-up for this outcome was given (or we decided not to give it). */
   markOutcomeVoted (session: string, memory: string): void {
     this.db.prepare('UPDATE outcomes SET voted = 1 WHERE session = ? AND memory = ?').run(session, memory)

@@ -130,6 +130,24 @@ export interface RecallHit {
   stale?: { commits: number, missing: number }
   /** Presente se il ricordo è una Radice: categoria e stato di revisione. / EN: Present if the memory is a Root: category and review status. */
   root?: { category: RootCategory, status: 'ok' | 'review' }
+  /**
+   * Abituazione (B12, src/rank/habituation.ts): presente se il ricordo è stato fornito agli agenti
+   * più volte di fila senza servire. `streak` = esiti senza uso dall'ultimo utile (su questo PC),
+   * `factor` = quanto pesa ora nelle classifiche (1 = pieno).
+   *
+   * EN: Habituation (B12, src/rank/habituation.ts): present if the memory was delivered to agents
+   * several times in a row without helping. `streak` = outcomes with no use since the last useful one
+   * (on this PC), `factor` = how much it weighs in rankings now (1 = full).
+   */
+  habituation?: { streak: number, factor: number }
+  /**
+   * Arrivato nei risultati grazie a una sinapsi d'uso (B12): id del ricordo trovato dalla ricerca
+   * che lo ha "portato con sé", perché di solito servono insieme.
+   *
+   * EN: Reached the results through a use synapse (B12): id of the memory found by the search that
+   * "brought it along", because they're usually needed together.
+   */
+  broughtBy?: string
 }
 
 /** Segnalazione su una Radice: perché andrebbe rivista. / EN: Report on a Root: why it should be reviewed. */

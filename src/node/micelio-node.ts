@@ -84,6 +84,7 @@ import { distillQuality, type DistillQuality, MAX_MEMORIES_RANGE, maxMemoriesOf 
 import { localRepos, reviewRoots, type ReviewNote } from '../roots/review'
 import { computeStaleness, stalenessFactor } from '../rank/code-staleness'
 import { SemanticNeighbors } from '../rank/semantic-neighbors'
+import { habituationFactor, habituationStreaks, softHabituation } from '../rank/habituation'
 import { detectCommunities, galaxyLinks, OTHER_GALAXY } from '../graph/communities'
 import { promptContext, sessionContext } from '../context/agent-context'
 import { computeDigest, type Digest } from '../insight/digest'
@@ -185,7 +186,8 @@ export interface EfficacyReport {
   consultations: (Consultation & { memories: EfficacyMemory[] })[]
   outcomes: (Omit<Outcome, 'memory'> & { memory: EfficacyMemory })[]
   topUseful: (EfficacyMemory & { returned: number, useful: number, unused: number, wrong: number })[]
-  noisy: (EfficacyMemory & { returned: number, useful: number, unused: number, wrong: number })[]
+  /** `factor`: peso attuale nelle classifiche per l'abituazione (B12), 1 = pieno. / EN: `factor`: current weight in rankings due to habituation (B12), 1 = full. */
+  noisy: (EfficacyMemory & { returned: number, useful: number, unused: number, wrong: number, factor: number })[]
   wrong: (EfficacyMemory & { reason: string | null, session: string, ts: number })[]
   unanswered: { query: string, count: number }[]
 }
@@ -510,6 +512,14 @@ export class MicelioNode extends EventEmitter {
   private semanticRedo = false
   /** Ricordi il cui codice citato è cambiato (B4, src/rank/code-staleness.ts), da private.db. / EN: Memories whose cited code changed (B4, src/rank/code-staleness.ts), from private.db. */
   private staleness = new Map<string, { commits: number, missing: number, checked: number }>()
+  /**
+   * Abituazione (B12, src/rank/habituation.ts): per ricordo, esiti senza uso di fila dall'ultimo
+   * utile, dagli esiti di questo PC. Ricalcolata solo quando arrivano esiti nuovi.
+   *
+   * EN: Habituation (B12, src/rank/habituation.ts): per memory, outcomes with no use in a row since
+   * the last useful one, from this PC's outcomes. Recomputed only when new outcomes arrive.
+   */
+  private habituation = new Map<string, number>()
   private staleTimer: NodeJS.Timeout | null = null
   /** Timer del backup automatico (B7). / EN: Automatic backup timer (B7). */
   private backupTimer: NodeJS.Timeout | null = null
@@ -677,6 +687,7 @@ export class MicelioNode extends EventEmitter {
     // EN: B4: memories that age with the code. First check shortly after startup (it doesn't slow it down),
     //     then at intervals: repositories change with everyday work.
     this.staleness = this.privateStore.staleness()
+    this.refreshHabituation()
     const firstCheck = setTimeout(() => { this.checkStaleness() }, STALE_FIRST_CHECK_MS)
     firstCheck.unref()
     this.staleTimer = setInterval(() => { this.checkStaleness() }, STALE_CHECK_MS)
@@ -998,7 +1009,12 @@ export class MicelioNode extends EventEmitter {
     }
     const signals = this.index.signals()
     const act = (id: string) => this.activationOf(id, signals)
-    const ranked = hybridRank(keyword, semantic, act).slice(0, limit)
+    // B12: abituazione attenuata (ricerca esplicita), poi si riordina
+    // EN: B12: softened habituation (explicit search), then re-sort
+    const ranked = hybridRank(keyword, semantic, act)
+      .map((r) => ({ ...r, score: r.score * softHabituation(this.habitFactor(r.id, signals)) }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit)
     const hits = this.enrich(this.index.getMany(ranked.map((r) => r.id)), signals)
     ranked.forEach((r, i) => { if (hits[i]) hits[i].score = r.score })
     // L'uso dei ricordi personali non si conta: verrebbe pubblicato al team (usage.report)
@@ -1676,7 +1692,7 @@ export class MicelioNode extends EventEmitter {
     }
     let changed = false
     for (const [id, b] of best) changed = this.privateStore.setOutcome({ session: sessionId, memory: id, verdict: b.verdict, judge: 'heuristic', evidence: b.evidence, project }) || changed
-    if (changed) this.changed('efficacy')
+    if (changed) { this.refreshHabituation(); this.changed('efficacy') }
     return [...best].map(([id, b]) => ({ id, short: b.short, title: b.title }))
   }
 
@@ -1701,7 +1717,7 @@ export class MicelioNode extends EventEmitter {
       }
       if (v.verdict === 'wrong') this.log(`ricordo forse sbagliato o superato (sessione ${sessionId.slice(0, 8)}): ${rec.title}`)
     }
-    if (changed) this.changed('efficacy')
+    if (changed) { this.refreshHabituation(); this.changed('efficacy') }
   }
 
   /** Voto +1 automatico, solo se questo nodo non ha già votato quel ricordo (decisione dell'utente). / EN: Automatic +1 vote, only if this node hasn't already voted on that memory (user's decision). */
@@ -1774,7 +1790,7 @@ export class MicelioNode extends EventEmitter {
       topUseful: [...stats].filter(([, s]) => s.useful > 0).sort((a, b) => b[1].useful - a[1].useful).slice(0, 10).map(([id, s]) => ({ ...mem(id), ...s })),
       // Rumore: restituiti spesso ma mai utili (almeno 5 volte e qualche esito senza uso)
       // EN: Noise: often returned but never useful (at least 5 times and some outcomes with no use)
-      noisy: [...stats].filter(([, s]) => s.returned >= 5 && s.useful === 0 && s.unused > 0).sort((a, b) => b[1].returned - a[1].returned).slice(0, 10).map(([id, s]) => ({ ...mem(id), ...s })),
+      noisy: [...stats].filter(([, s]) => s.returned >= 5 && s.useful === 0 && s.unused > 0).sort((a, b) => b[1].returned - a[1].returned).slice(0, 10).map(([id, s]) => ({ ...mem(id), ...s, factor: this.habitFactor(id) })),
       wrong: outs.filter((o) => o.verdict === 'wrong').slice(0, 20).map((o) => ({ ...mem(o.memory), reason: o.evidence, session: o.session, ts: o.ts })),
       unanswered: [...misses].sort((a, b) => b[1] - a[1]).slice(0, 15).map(([query, count]) => ({ query, count }))
     }
@@ -1825,6 +1841,29 @@ export class MicelioNode extends EventEmitter {
     return root || s?.pinned ? a : a * stalenessFactor(this.staleness.get(id))
   }
 
+  /** Ricalcola l'abituazione dagli esiti degli ultimi 90 giorni (B12). / EN: Recomputes habituation from the last 90 days of outcomes (B12). */
+  private refreshHabituation (): void {
+    try {
+      this.habituation = habituationStreaks(this.privateStore.outcomeVerdicts(Date.now() - EFFICACY_KEEP_MS))
+    } catch (err) {
+      this.log(`abituazione non calcolata: ${(err as Error).message}`)
+    }
+  }
+
+  /** Fattore di abituazione 0..1 (B12); 1 per i ricordi fissati, che sono una scelta del team. / EN: Habituation factor 0..1 (B12); 1 for pinned memories, which are a team choice. */
+  private habitFactor (id: string, signals = this.index.signals()): number {
+    const streak = this.habituation.get(id)
+    return !streak || signals.get(id)?.pinned ? 1 : habituationFactor(streak)
+  }
+
+  /** Campo `habituation` di RecallHit, solo se il ricordo pesa meno del pieno. / EN: RecallHit's `habituation` field, only if the memory weighs less than full. */
+  private habituationOf (id: string, pinned: boolean): { habituation?: { streak: number, factor: number } } {
+    const streak = this.habituation.get(id)
+    if (!streak || pinned) return {}
+    const factor = habituationFactor(streak)
+    return factor < 1 ? { habituation: { streak, factor } } : {}
+  }
+
   /**
    * Controlla quanto è cambiato il codice citato dai ricordi del team (B4), sui repository di
    * questo PC (cartelle abilitate e loro sotto-cartelle). Sincrono ma con UNA chiamata a git per
@@ -1872,7 +1911,8 @@ export class MicelioNode extends EventEmitter {
         pinned: !!s?.pinned,
         ...(r ? { root: { category: r.category, status: r.status } } : {}),
         ...(this.personalIds.has(h.id) ? { personal: true } : {}),
-        ...this.staleOf(h.id)
+        ...this.staleOf(h.id),
+        ...this.habituationOf(h.id, !!s?.pinned)
       }
     })
   }
@@ -2031,7 +2071,9 @@ export class MicelioNode extends EventEmitter {
         const rootIds = new Set(roots.map((r) => r.id))
         const memories = this.enrich(this.index.all())
           .filter((h) => !rootIds.has(h.id) && (h.source?.code?.project?.toLowerCase() === project.toLowerCase() || h.tags.includes(project.toLowerCase())))
-          .sort((a, b) => (b.activation ?? 0) - (a.activation ?? 0)).slice(0, CONTEXT_MEMORIES)
+          // B12: l'abituazione pesa per intero nel contesto automatico
+          // EN: B12: habituation weighs in full in automatic context
+          .sort((a, b) => (b.activation ?? 0) * (b.habituation?.factor ?? 1) - (a.activation ?? 0) * (a.habituation?.factor ?? 1)).slice(0, CONTEXT_MEMORIES)
         text = sessionContext({ team, project, roots, memories, maxChars: cfg.maxChars })
         shown = [...roots, ...memories]
       } else {
@@ -2206,7 +2248,13 @@ export class MicelioNode extends EventEmitter {
     const [q] = await this.embedder.embed([text.slice(0, 2000)], 'query')
     const all = nearest(q, this.index.vectors(this.embedder.model), Number.MAX_SAFE_INTEGER)
     const cutoff = relevanceCutoff(all.map((x) => x.score), promptThreshold(this.embedder.model))
-    const ids = all.filter((r) => r.score >= cutoff).slice(0, n).map((r) => r.id)
+    // B12: abituazione piena PRIMA della soglia: un ricordo che è stato solo rumore ne esce.
+    // La soglia si calcola sui punteggi originali, così l'abituazione non la sposta.
+    // EN: B12: full habituation BEFORE the threshold: a memory that has only been noise drops out.
+    //     The threshold is computed on the original scores, so habituation doesn't move it.
+    const signals = this.index.signals()
+    const ids = all.map((r) => ({ id: r.id, score: r.score * this.habitFactor(r.id, signals) }))
+      .filter((r) => r.score >= cutoff).sort((a, b) => b.score - a.score).slice(0, n).map((r) => r.id)
     return this.enrich(this.index.getMany(ids))
   }
 
