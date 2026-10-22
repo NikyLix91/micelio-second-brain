@@ -22,7 +22,13 @@ Watched folders for PDF, Office, Markdown and diagrams. For each: **originals do
 
 ## Claude Code {#claude-code}
 
-Registers Micelio as an **MCP server** of Claude Code (with `claude mcp add`, user level: valid in every project) and, if you want, the end-of-session **hook** in `~/.claude/settings.json`, saving a backup copy first. From the terminal: `micelio setup claude-code`. See **Agents and MCP**.
+Registers Micelio as an **MCP server** of Claude Code (user level: valid in every project) and, if you want, the **hooks** in `~/.claude/settings.json`, saving a backup copy first. From the terminal: `micelio setup claude-code`. See **Agents and MCP**.
+
+**How it works behind the scenes.** Micelio uses the `claude mcp add` command and looks for `claude` outside the PATH too: in the native install (`~/.local/bin`), in the npm one (it runs its `cli.js` with its own Node, because `claude.cmd` can't be started without a shell), in WinGet and inside the Claude Code extension for VS Code, Cursor and Windsurf (the most recent version). If it can't find it anywhere, it writes the same entry directly into `~/.claude.json` (or into the `CLAUDE_CONFIG_DIR` folder), after saving a copy as `.claude.json.micelio-backup`: for Claude Code the result is identical. The message after the click says which way it went. The same executable is also used for distillation (Intelligence).
+
+**After registering** close and reopen your Claude Code sessions (or reload the VS Code window): Claude Code reads MCP servers only at startup.
+
+**One user, one configuration.** Claude Code reads its configuration from the profile of the system user running it. If you start it with a different user from the one Micelio runs as (for example Claude Code installed and used by an admin account because of company policy), it will never see Micelio, and Micelio won't be able to read its sessions. Micelio notices when there's no trace of Claude Code in this profile (neither sessions nor the fields Claude Code writes on first start) and shows a warning. The fix is to open Micelio with the same user you use Claude Code with (right click → "Run as different user"), join the team with an invite and run the setup again.
 
 ## The configuration file {#config-file}
 

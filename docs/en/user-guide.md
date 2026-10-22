@@ -544,7 +544,7 @@ A removed member can no longer write to the team. **Inherent limitation:** whate
 | `join` times out | No team member is online, or the invite hasn't reached any online member yet. Try again when someone is on |
 | `Peer: 0 connessi` for a long time | No other member online, or the network blocks UDP, or the PCs use different DHTs. Check with `micelio network` (same DHT on all of them?) and `micelio network check` (§4-bis) |
 | Claude Code sessions aren't collected | Is the folder enabled (`micelio watch`)? Is the daemon running? Hook errors in `~/.micelio/logs/hook.log`; ignored sessions are reported in `daemon.log` |
-| `ingest status` says LLM "NOT available" | Claude Code isn't in the PATH or isn't signed in. Set `llm.command` in `config.json` to the full path of `claude` |
+| `ingest status` says LLM "NOT available" | Claude Code wasn't found (neither in the PATH nor in the known installs, VS Code extension included) or isn't signed in. Set `llm.command` in `config.json` to the full path of `claude` |
 | Everything ends up in the inbox | Budget exhausted or LLM not available (when in doubt, nothing is published): check `micelio ingest status` |
 | Port 7337 in use | Set `"port"` in `~/.micelio/config.json`, then run `micelio setup claude-code` again |
-| Claude Code doesn't see the tools | The daemon must be running. Check with `claude mcp list` |
+| Claude Code doesn't see the tools (Micelio missing from `/mcp`) | Press "Connect Claude Code" in Settings and read the message, then close and reopen the session. If the warning about the user appears, Claude Code runs as another system user: open Micelio with that same user. The daemon must be running. Check with `claude mcp list` |

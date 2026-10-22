@@ -4,7 +4,7 @@ Gli agenti AI (Claude Code, Codex, VS Code, WebStorm…) usano Micelio tramite *
 
 ## Come si collega un agente {#mcp}
 
-Il daemon espone un server MCP su `http://127.0.0.1:7337/mcp`, protetto dal token. `micelio setup claude-code` (o il pulsante in Impostazioni) lo registra con `claude mcp add` a **livello utente**: da quel momento ogni sessione di Claude Code, in qualunque cartella, vede gli strumenti di Micelio. Per i client che usano MCP via processo c'è lo shim `micelio mcp`; `micelio setup codex|vscode|webstorm` stampa la configurazione da incollare.
+Il daemon espone un server MCP su `http://127.0.0.1:7337/mcp`, protetto dal token. `micelio setup claude-code` (o il pulsante in Impostazioni) lo registra a **livello utente** (con `claude mcp add`, trovato anche fuori dal PATH, oppure scrivendo direttamente `~/.claude.json`: vedi **Impostazioni**): da quel momento ogni sessione di Claude Code, in qualunque cartella, vede gli strumenti di Micelio. Per i client che usano MCP via processo c'è lo shim `micelio mcp`; `micelio setup codex|vscode|webstorm` stampa la configurazione da incollare.
 
 Con più team, l'MCP di Claude Code sceglie il team dalla cartella del progetto: il team che l'ha abilitata, altrimenti il **team predefinito**. Ogni risposta di `remember` dice in quale team è finito il ricordo. `/mcp/<team>` lavora sempre su un team preciso: per forzarlo in un progetto si usa «Collega Claude Code» accanto alla cartella (Impostazioni) o `micelio --team <team> setup claude-code --project <cartella>`. Vedi **Più team**.
 

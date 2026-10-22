@@ -5,6 +5,7 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { z } from 'zod'
+import { type ClaudeCommand, locateClaude } from '../node/claude-locator'
 import { type LlmAdapter, type LlmTask, LlmUnavailableError } from './types'
 
 export class ClaudeCliAdapter implements LlmAdapter {
@@ -13,12 +14,22 @@ export class ClaudeCliAdapter implements LlmAdapter {
   // EN: Empty, isolated folder: the agent must not see or touch any project.
   private readonly sandbox = mkdtempSync(path.join(tmpdir(), 'micelio-llm-'))
   private availability: Promise<boolean> | null = null
+  /**
+   * Eseguibile trovato da locateClaude: anche `claude.cmd` di npm (lanciato come "node cli.js") o
+   * quello dell'estensione di VS Code, che con un semplice spawn("claude") non partirebbero.
+   *
+   * EN: Executable found by locateClaude: also npm's `claude.cmd` (run as "node cli.js") or the VS
+   * Code extension's one, which a plain spawn("claude") wouldn't start.
+   */
+  private resolved: ClaudeCommand | null = null
 
   constructor (private readonly command = 'claude') {}
 
   available (): Promise<boolean> {
     this.availability ??= new Promise((resolve) => {
-      const child = spawn(this.command, ['--version'], { windowsHide: true, stdio: 'ignore' })
+      this.resolved = locateClaude(this.command)
+      if (!this.resolved) return resolve(false)
+      const child = spawn(this.resolved.command, [...this.resolved.prefix, '--version'], { windowsHide: true, stdio: 'ignore' })
       child.on('error', () => resolve(false))
       child.on('close', (code) => resolve(code === 0))
     })
@@ -43,7 +54,8 @@ export class ClaudeCliAdapter implements LlmAdapter {
     const stdout = await new Promise<string>((resolve, reject) => {
       // Niente shell: su Windows shell:true concatena gli argomenti senza escape (spike B).
       // EN: No shell: on Windows shell:true joins the arguments without escaping (spike B).
-      const child = spawn(this.command, args, {
+      const c = this.resolved!
+      const child = spawn(c.command, [...c.prefix, ...args], {
         cwd: this.sandbox,
         env: { ...process.env, MICELIO_INTERNAL: '1' },
         windowsHide: true
