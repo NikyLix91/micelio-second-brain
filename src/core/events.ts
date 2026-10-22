@@ -158,6 +158,16 @@ export const MemoryInput = z.object({
     rank: z.number().int().min(1).max(100).optional(),
     batch: z.number().int().min(0).max(100).optional(),
     /**
+     * Solo per i ricordi distillati da una SESSIONE (B12): fatica del capitolo da cui nascono
+     * (src/ingest/effort.ts). Dà un vantaggio iniziale nell'attivazione. I nodi di versioni
+     * precedenti ignorano il campo; non entra nell'id del ricordo.
+     *
+     * EN: Only for memories distilled from a SESSION (B12): effort of the chapter they come from
+     * (src/ingest/effort.ts). It gives a head start in activation. Nodes on older versions ignore
+     * the field; it isn't part of the memory id.
+     */
+    effort: z.object({ score: z.number().min(0).max(1), errors: z.number().int().nonnegative(), minutes: z.number().int().nonnegative() }).optional(),
+    /**
      * Solo per i ricordi RIPRISTINATI da un backup (B7, src/backup): autore e data nel team
      * d'origine. L'autore per il team resta il nodo che ha ripristinato (il feed firmato non si
      * falsifica); questi dati servono a mostrare chi l'aveva scritto e a non far sembrare "nuovo"

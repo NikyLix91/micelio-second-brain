@@ -21,6 +21,8 @@ export interface MemorySource {
   type: string, ref?: string, name?: string, size?: number, mime?: string, code?: CodeRefs, rank?: number, batch?: number
   /** Ricordo ripristinato da un backup (B7): autore, chiave, data e team d'origine. / EN: Memory restored from a backup (B7): original author, key, date and team. */
   origin?: { author?: string, key?: string, ts?: number, team?: string }
+  /** Fatica del capitolo da cui è nato (B12, src/ingest/effort.ts). / EN: Effort of the chapter it came from (B12, src/ingest/effort.ts). */
+  effort?: { score: number, errors: number, minutes: number }
 }
 
 /** Un ricordo del team come appare nella vista. / EN: A team memory as it appears in the view. */

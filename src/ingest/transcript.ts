@@ -45,6 +45,8 @@ export interface TranscriptExtract {
   lines: number
   /** Numero di messaggi dell'utente nella parte nuova. / EN: Number of user messages in the new part. */
   userTurns: number
+  /** Esiti di strumenti segnati come errore nella parte nuova (fatica, B12). / EN: Tool outcomes marked as error in the new part (effort, B12). */
+  errors: number
   /**
    * Istante (ms) del primo e dell'ultimo messaggio della parte nuova, dai campi `timestamp` delle
    * righe; null se assenti. Servono a ritrovare in git le modifiche fatte durante il capitolo.
@@ -99,6 +101,7 @@ export function extractTranscript (file: string, fromLine = 0, sensitiveFiles: s
   const all = fs.readFileSync(file, 'utf8').split('\n').filter((l) => l.trim())
   const parts: string[] = []
   let userTurns = 0
+  let errors = 0
   let firstAt: number | null = null
   let lastAt: number | null = null
 
@@ -144,6 +147,7 @@ export function extractTranscript (file: string, fromLine = 0, sensitiveFiles: s
         for (const b of content) {
           if (b.type === 'text' && b.text?.trim()) { parts.push(`UTENTE: ${b.text.trim()}`); userTurns++ }
           if (b.type === 'tool_result') {
+            if (b.is_error) errors++
             const files = sensitiveTools.get(b.tool_use_id)
             parts.push(`  [esito strumento${b.is_error ? ' (errore)' : ''}] ${files ? note(files) : clip(blockText(b), TOOL_RESULT_CHARS)}`)
           }
@@ -168,5 +172,5 @@ export function extractTranscript (file: string, fromLine = 0, sensitiveFiles: s
     // EN: Start (the problem) + end (the solution): the middle part is often intermediate attempts.
     text = text.slice(0, MAX_CHARS * 0.25) + '\n[… parte centrale omessa …]\n' + text.slice(-MAX_CHARS * 0.75)
   }
-  return { text, lines: all.length, userTurns, firstAt, lastAt, omitted: [...omitted] }
+  return { text, lines: all.length, userTurns, errors, firstAt, lastAt, omitted: [...omitted] }
 }

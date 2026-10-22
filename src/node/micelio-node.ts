@@ -546,6 +546,8 @@ export class MicelioNode extends EventEmitter {
   private coUsePairs = new Map<string, { count: number, last: number }>()
   /** Vicini d'uso per ricordo, dal più forte, ricalcolati con la costellazione. / EN: Use neighbors per memory, strongest first, recomputed with the constellation. */
   private coUseNear = new Map<string, { id: string, weight: number }[]>()
+  /** Fatica del capitolo d'origine per ricordo (B12), solo per chi ce l'ha. / EN: Effort of the source chapter per memory (B12), only for those that have it. */
+  private effortById = new Map<string, number>()
   /** Redazioni per cui la conferma è già stata inviata (evita doppi invii prima che la vista la mostri). / EN: Redactions whose confirmation was already sent (avoids double sends before the view shows it). */
   private acking = new Set<string>()
   private staleTimer: NodeJS.Timeout | null = null
@@ -2033,7 +2035,7 @@ export class MicelioNode extends EventEmitter {
     const rec = known ?? this.index.get(id)
     if (!rec) return 0
     const root = this.rootsById.has(id)
-    const a = activation({ kind: rec.kind, createdAt: rec.ts, lastUsed: s?.lastUsed ?? undefined, uses: s?.uses ?? 0, useful: this.usefulCounts.get(id) ?? 0, votes: s?.votes ?? 0, degree: this.degrees.get(id) ?? 0, pinned: !!s?.pinned, root })
+    const a = activation({ kind: rec.kind, createdAt: rec.ts, lastUsed: s?.lastUsed ?? undefined, uses: s?.uses ?? 0, useful: this.usefulCounts.get(id) ?? 0, votes: s?.votes ?? 0, degree: this.degrees.get(id) ?? 0, pinned: !!s?.pinned, root, effort: this.effortById.get(id) })
     return root || s?.pinned ? a : a * stalenessFactor(this.staleness.get(id))
   }
 
@@ -3405,6 +3407,9 @@ export class MicelioNode extends EventEmitter {
       //     doesn't become "new" again (activation, sorting, digests)
       for (let i = 0; i < all.length; i++) { const o = all[i].source?.origin?.ts; if (o) all[i] = { ...all[i], ts: o } }
       const memories = all.filter((m) => (m.status ?? 'active') === 'active')
+      // B12: fatica per l'attivazione (anche dove il chiamante conosce solo tipo e data)
+      // EN: B12: effort for activation (also where the caller only knows kind and date)
+      this.effortById = new Map(memories.filter((m) => m.source?.effort).map((m) => [m.id, m.source!.effort!.score]))
       this.inactive = all.filter((m) => (m.status ?? 'active') !== 'active')
       this.dreamLinks = links
       // Nell'indice anche i ricordi personali (B4), così ricerca e agenti li trovano insieme a quelli
