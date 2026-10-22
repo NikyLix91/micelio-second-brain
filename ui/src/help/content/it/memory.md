@@ -9,7 +9,8 @@ La schermata **Memoria** cerca nel sapere del team e mostra il dettaglio dei ric
 1. **Parole chiave**: indice FTS5 di SQLite con punteggio BM25; una parola nel titolo vale 3 volte una nel corpo, nei tag 2 volte. Accenti ignorati, prefissi accettati.
 2. **Significato**: la domanda e i ricordi sono trasformati in **vettori** da un modello di embedding locale e multilingue (`multilingual-e5-small`): una domanda in inglese trova ricordi in italiano.
 3. **Fusione**: le due classifiche si uniscono con la *Reciprocal Rank Fusion* (k = 60).
-4. **Priorità**: a parità di pertinenza vincono i ricordi più "vivi" (attivazione: usati, votati, collegati, fissati).
+4. **Priorità**: a parità di pertinenza vincono i ricordi più "vivi" (attivazione: usati, votati, collegati, fissati). I ricordi forniti più volte senza servire pesano un po' meno (**Abituazione**, nella guida Efficacia).
+5. **Serve insieme**: i primi risultati si portano dietro fino a 2 ricordi che nel team servono di solito insieme a loro, marcati «⇄ serve insieme» (vedi **Le sinapsi d'uso**).
 
 Ogni risultato restituito conta come un **uso** del ricordo.
 

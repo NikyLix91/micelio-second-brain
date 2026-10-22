@@ -36,6 +36,8 @@ export const SPHERE_RADIUS = 120
 export const HOLO = {
   amber: '#ffb347',
   gold: '#ffd27a',
+  /** Sinapsi d'uso (B12): verde acqua, distinta da ambra (argomento) e oro (dreaming). / EN: Use synapses (B12): aqua green, distinct from amber (topic) and gold (dreaming). */
+  use: '#7dffc4',
   deep: '#ff8c1a',
   // Nero puro: con la catena di post-processing (bloom) qualunque altro colore di fondo viene
   // schiarito (grigio-blu), mentre il nero resta nero. Verificato con le catture dell'app.

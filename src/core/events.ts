@@ -241,6 +241,16 @@ export const TeamEvent = z.discriminatedUnion('type', [
    * node). Nodes on older versions don't know the event and ignore it.
    */
   z.object({ ...base, type: z.literal('useful.report'), counts: z.record(z.string().regex(/^[0-9a-f]{64}$/), z.object({ count: z.number().int().nonnegative(), last: z.number().int().nonnegative() })) }),
+  /**
+   * Sinapsi d'uso (B12): su questo nodo, in quante sessioni DUE ricordi sono serviti insieme.
+   * Chiave "idA:idB" con idA < idB. Stessa logica di usage.report (massimo per coppia e nodo,
+   * G-Counter). I nodi di versioni precedenti non conoscono l'evento e lo ignorano.
+   *
+   * EN: Use synapses (B12): on this node, in how many sessions TWO memories helped together.
+   * Key "idA:idB" with idA < idB. Same logic as usage.report (maximum per pair and node,
+   * G-Counter). Nodes on older versions don't know the event and ignore it.
+   */
+  z.object({ ...base, type: z.literal('couse.report'), counts: z.record(z.string().regex(/^[0-9a-f]{64}:[0-9a-f]{64}$/), z.object({ count: z.number().int().nonnegative(), last: z.number().int().nonnegative() })) }),
   // ── Dreaming (Fase 6, DESIGN §10) ─────────────────────────────────────────────────
   // EN: ── Dreaming (Phase 6, DESIGN §10) ──
   /** Più ricordi sostituiti da uno nuovo (fusione di duplicati). I vecchi restano come storico. / EN: Several memories replaced by a new one (merging duplicates). The old ones stay as history. */

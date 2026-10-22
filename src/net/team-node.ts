@@ -708,6 +708,24 @@ export class TeamNode extends EventEmitter {
     return out
   }
 
+  /**
+   * Sinapsi d'uso (B12): per coppia "idA:idB", sessioni in cui sono serviti insieme (somma su tutti
+   * i nodi) e ultima volta.
+   *
+   * EN: Use synapses (B12): per pair "idA:idB", sessions in which they helped together (sum over all
+   * nodes) and the last time.
+   */
+  async coUse (): Promise<Map<string, { count: number, last: number }>> {
+    const out = new Map<string, { count: number, last: number }>()
+    for await (const { key, value } of this.base.view.createReadStream(RANGES.couse)) {
+      const pair = String(key).split('/')[1]
+      const v = value as { count: number, last: number }
+      const prev = out.get(pair) ?? { count: 0, last: 0 }
+      out.set(pair, { count: prev.count + v.count, last: Math.max(prev.last, v.last) })
+    }
+    return out
+  }
+
   /** Volte in cui ogni ricordo è stato utile a un agente, sommate su tutti i nodi (B11). / EN: Times each memory was useful to an agent, summed over all nodes (B11). */
   async useful (): Promise<Map<string, number>> {
     const out = new Map<string, number>()

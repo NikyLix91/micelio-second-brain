@@ -95,6 +95,11 @@ CREATE TABLE IF NOT EXISTS outcomes (session TEXT NOT NULL, memory TEXT NOT NULL
 CREATE INDEX IF NOT EXISTS outcomes_ts ON outcomes(ts);
 -- B11: volte in cui un ricordo è stato UTILE (confermato dall'LLM), contatori cumulativi pubblicati al team.
 CREATE TABLE IF NOT EXISTS useful_local (id TEXT PRIMARY KEY, count INTEGER NOT NULL, last INTEGER NOT NULL, reported INTEGER NOT NULL DEFAULT 0);
+-- B12: sinapsi d'uso. Coppie di ricordi serviti nella stessa sessione (a < b): contatori cumulativi
+-- pubblicati al team (couse.report). couse_sessions ricorda le coppie già contate per sessione,
+-- così una sessione elaborata a pezzi conta ogni coppia una volta sola.
+CREATE TABLE IF NOT EXISTS couse_local (a TEXT NOT NULL, b TEXT NOT NULL, count INTEGER NOT NULL, last INTEGER NOT NULL, reported INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (a, b));
+CREATE TABLE IF NOT EXISTS couse_sessions (session TEXT NOT NULL, a TEXT NOT NULL, b TEXT NOT NULL, PRIMARY KEY (session, a, b));
 -- B10: chat sulla memoria. Conversazioni e messaggi restano su questo PC (decisione dell'utente).
 -- data (JSON): per le risposte, ricordi citati, mappa, "non lo so"; per le domande nulla.
 CREATE TABLE IF NOT EXISTS chats (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, created INTEGER NOT NULL, updated INTEGER NOT NULL);
@@ -518,6 +523,61 @@ export class PrivateStore {
   markUsefulReported (counts: Record<string, { count: number }>): void {
     const up = this.db.prepare('UPDATE useful_local SET reported = ? WHERE id = ?')
     for (const [id, c] of Object.entries(counts)) up.run(c.count, id)
+  }
+
+  /**
+   * Ricordi serviti in una sessione ("usato" o "probabilmente utile"), prima quelli confermati
+   * dall'LLM e poi i più recenti: è l'ordine con cui si scelgono le coppie (B12).
+   *
+   * EN: Memories that helped in a session ("used" or "probably useful"), the ones confirmed by the
+   * LLM first and then the most recent: it's the order used to pick the pairs (B12).
+   */
+  sessionUseful (session: string): string[] {
+    return (this.db.prepare("SELECT memory FROM outcomes WHERE session = ? AND verdict IN ('used', 'likely') ORDER BY verdict = 'used' DESC, ts DESC").all(session) as any[]).map((r) => r.memory)
+  }
+
+  /**
+   * Conta le coppie di una sessione (B12), ognuna una volta sola per sessione.
+   *
+   * EN: Counts a session's pairs (B12), each only once per session.
+   * @param pairs coppie [a, b] con a < b
+   *        EN: pairs [a, b] with a < b
+   * @returns quante coppie erano nuove per la sessione
+   *          EN: how many pairs were new for the session
+   */
+  countCoUse (session: string, pairs: [string, string][], now = Date.now()): number {
+    const seen = this.db.prepare('INSERT OR IGNORE INTO couse_sessions (session, a, b) VALUES (?, ?, ?)')
+    const up = this.db.prepare('INSERT INTO couse_local (a, b, count, last) VALUES (?, ?, 1, ?) ON CONFLICT(a, b) DO UPDATE SET count = count + 1, last = excluded.last')
+    let added = 0
+    // Una transazione: le coppie di una sessione si contano tutte o nessuna
+    // EN: One transaction: a session's pairs are counted all or none
+    this.db.exec('BEGIN')
+    try {
+      for (const [a, b] of pairs) {
+        if (Number(seen.run(session, a, b).changes) === 0) continue
+        up.run(a, b, now)
+        added++
+      }
+      this.db.exec('COMMIT')
+    } catch (err) {
+      this.db.exec('ROLLBACK')
+      throw err
+    }
+    return added
+  }
+
+  /** Coppie con contatori non ancora pubblicati, chiave "a:b". / EN: Pairs with counters not yet published, key "a:b". */
+  unreportedCoUse (): Record<string, { count: number, last: number }> {
+    const rows = this.db.prepare('SELECT a, b, count, last FROM couse_local WHERE count > reported').all() as any[]
+    return Object.fromEntries(rows.map((r) => [`${r.a}:${r.b}`, { count: r.count, last: r.last }]))
+  }
+
+  markCoUseReported (counts: Record<string, { count: number }>): void {
+    const up = this.db.prepare('UPDATE couse_local SET reported = ? WHERE a = ? AND b = ?')
+    for (const [pair, c] of Object.entries(counts)) {
+      const [a, b] = pair.split(':')
+      up.run(c.count, a, b)
+    }
   }
 
   /** Toglie consultazioni ed esiti più vecchi di `before` (conservazione: vedi EFFICACY_KEEP_MS). / EN: Removes queries and outcomes older than `before` (retention: see EFFICACY_KEEP_MS). */

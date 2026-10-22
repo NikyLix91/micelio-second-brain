@@ -64,12 +64,17 @@ function formatHit (h: RecallHit, full = false): string {
   // Ricordi distillati da una sessione di codice: dove guardare per approfondire.
   // EN: Memories distilled from a coding session: where to look to dig deeper.
   const code = formatCodeRefs(h.source?.code, full).map((l) => '\n' + l).join('')
-  return `### ${h.title}\n[${h.kind}] id:${h.id.slice(0, 12)} · ${who} · ${new Date(h.ts).toISOString().slice(0, 10)}${tags}${rootLine(h)}${personalLine(h)}${staleLine(h)}${doc}${code}\n\n${h.body}`
+  return `### ${h.title}\n[${h.kind}] id:${h.id.slice(0, 12)} · ${who} · ${new Date(h.ts).toISOString().slice(0, 10)}${tags}${rootLine(h)}${personalLine(h)}${broughtLine(h)}${staleLine(h)}${doc}${code}\n\n${h.body}`
 }
 
 /** Ricordo personale (B4): solo sul PC dell'utente. / EN: Personal memory (B4): only on the user's PC. */
 function personalLine (h: RecallHit): string {
   return h.personal ? '\nPERSONALE · solo sul PC dell\'utente, il team non lo vede' : ''
+}
+
+/** Portato da una sinapsi d'uso (B12): non contiene per forza le parole cercate. / EN: Brought by a use synapse (B12): it doesn't necessarily contain the searched words. */
+function broughtLine (h: RecallHit): string {
+  return h.broughtBy ? `\nPORTATO DA id:${h.broughtBy.slice(0, 12)} · nel team serve di solito insieme a quel ricordo` : ''
 }
 
 /** Il codice citato è cambiato dopo il ricordo (B4): l'agente deve verificare. / EN: The cited code changed after the memory (B4): the agent must verify. */

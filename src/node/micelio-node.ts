@@ -85,6 +85,7 @@ import { localRepos, reviewRoots, type ReviewNote } from '../roots/review'
 import { computeStaleness, stalenessFactor } from '../rank/code-staleness'
 import { SemanticNeighbors } from '../rank/semantic-neighbors'
 import { habituationFactor, habituationStreaks, softHabituation } from '../rank/habituation'
+import { CO_USE_BRING_MAX, CO_USE_BRING_MIN, coUseLinks, coUseNeighbors, sessionPairs } from '../rank/co-use'
 import { detectCommunities, galaxyLinks, OTHER_GALAXY } from '../graph/communities'
 import { promptContext, sessionContext } from '../context/agent-context'
 import { computeDigest, type Digest } from '../insight/digest'
@@ -520,6 +521,10 @@ export class MicelioNode extends EventEmitter {
    * the last useful one, from this PC's outcomes. Recomputed only when new outcomes arrive.
    */
   private habituation = new Map<string, number>()
+  /** Sinapsi d'uso del team (B12, src/rank/co-use.ts): per coppia "idA:idB", sessioni insieme. / EN: The team's use synapses (B12, src/rank/co-use.ts): per pair "idA:idB", sessions together. */
+  private coUsePairs = new Map<string, { count: number, last: number }>()
+  /** Vicini d'uso per ricordo, dal più forte, ricalcolati con la costellazione. / EN: Use neighbors per memory, strongest first, recomputed with the constellation. */
+  private coUseNear = new Map<string, { id: string, weight: number }[]>()
   private staleTimer: NodeJS.Timeout | null = null
   /** Timer del backup automatico (B7). / EN: Automatic backup timer (B7). */
   private backupTimer: NodeJS.Timeout | null = null
@@ -668,7 +673,7 @@ export class MicelioNode extends EventEmitter {
     this.sweepSourceCache()
     // Pubblicazione periodica dell'uso locale dei ricordi (Fase 5).
     // EN: Periodic publishing of local memory usage (Phase 5).
-    this.usageTimer = setInterval(() => { this.flushUsage().catch(() => {}); this.flushUseful().catch(() => {}) }, USAGE_FLUSH_MS)
+    this.usageTimer = setInterval(() => { this.flushUsage().catch(() => {}); this.flushUseful().catch(() => {}); this.flushCoUse().catch(() => {}) }, USAGE_FLUSH_MS)
     // B11: conservazione di consultazioni ed esiti (all'avvio basta: il daemon si riavvia spesso)
     // EN: B11: retention of queries and outcomes (at startup is enough: the daemon restarts often)
     try { this.privateStore.pruneEfficacy(Date.now() - EFFICACY_KEEP_MS) } catch { /* archivio non ancora pronto / EN: private store not ready yet */ }
@@ -730,6 +735,7 @@ export class MicelioNode extends EventEmitter {
     while (this.dreamer.busy) await new Promise((r) => setTimeout(r, 200))
     await this.flushUsage().catch(() => {})
     await this.flushUseful().catch(() => {})
+    await this.flushCoUse().catch(() => {})
     await this.embedding.catch(() => {})
     // Si chiude solo l'embedder creato qui: quello passato da fuori è condiviso con altri team.
     // EN: Only close the embedder created here: one passed from outside is shared with other teams.
@@ -946,7 +952,11 @@ export class MicelioNode extends EventEmitter {
   private computeGraph (): void {
     const lap = phaseTimer()
     const memories = this.teamMemories()
-    const extra = [...this.semanticLinks(), ...this.explicitLinks()]
+    // B12: sinapsi d'uso, solo fra ricordi del team ancora attivi
+    // EN: B12: use synapses, only between team memories still active
+    const use = coUseLinks(this.coUsePairs, new Set(memories.map((m) => m.id)))
+    this.coUseNear = coUseNeighbors(use)
+    const extra = [...this.semanticLinks(), ...this.explicitLinks(), ...use]
     lap('vicini')
     const g = buildGraph(memories, extra)
     lap('costellazione')
@@ -1015,8 +1025,35 @@ export class MicelioNode extends EventEmitter {
       .map((r) => ({ ...r, score: r.score * softHabituation(this.habitFactor(r.id, signals)) }))
       .sort((a, b) => b.score - a.score)
       .slice(0, limit)
-    const hits = this.enrich(this.index.getMany(ranked.map((r) => r.id)), signals)
-    ranked.forEach((r, i) => { if (hits[i]) hits[i].score = r.score })
+    // B12: i primi risultati si portano dietro i vicini d'uso più forti (servono di solito insieme),
+    // al massimo CO_USE_BRING_MAX, subito dopo il ricordo che li porta. Punteggio: quello del
+    // ricordo che li porta per la forza del legame.
+    // EN: B12: the top results bring along their strongest use neighbors (usually needed together),
+    //     at most CO_USE_BRING_MAX, right after the memory that brings them. Score: the bringing
+    //     memory's score times the link strength.
+    const present = new Set(ranked.map((r) => r.id))
+    const brought = new Map<string, { score: number, by: string }>()
+    for (const r of ranked.slice(0, 3)) {
+      for (const n of this.coUseNear.get(r.id) ?? []) {
+        if (brought.size >= CO_USE_BRING_MAX || n.weight < CO_USE_BRING_MIN) break
+        if (present.has(n.id) || brought.has(n.id)) continue
+        brought.set(n.id, { score: r.score * n.weight, by: r.id })
+      }
+    }
+    const order: { id: string, score: number, by?: string }[] = []
+    for (const r of ranked) {
+      order.push(r)
+      for (const [id, b] of brought) if (b.by === r.id) order.push({ id, score: b.score, by: r.id })
+    }
+    const hits = this.enrich(this.index.getMany(order.map((r) => r.id)), signals)
+    // getMany salta gli id non più presenti: si riallinea per id, non per posizione
+    // EN: getMany skips ids no longer present: realign by id, not by position
+    const meta = new Map(order.map((r) => [r.id, r]))
+    for (const h of hits) {
+      const m = meta.get(h.id)!
+      h.score = m.score
+      if (m.by) h.broughtBy = m.by
+    }
     // L'uso dei ricordi personali non si conta: verrebbe pubblicato al team (usage.report)
     // EN: Usage of personal memories isn't counted: it would be published to the team (usage.report)
     const used = hits.filter((h) => !this.personalIds.has(h.id)).map((h) => h.id)
@@ -1637,6 +1674,32 @@ export class MicelioNode extends EventEmitter {
     this.privateStore.markUsefulReported(counts)
   }
 
+  /** Pubblica al team le sinapsi d'uso nuove (B12, couse.report). / EN: Publishes the new use synapses to the team (B12, couse.report). */
+  async flushCoUse (): Promise<void> {
+    if (!this.team?.writable) return
+    const counts = this.privateStore.unreportedCoUse()
+    if (Object.keys(counts).length === 0) return
+    await this.team.append({ type: 'couse.report', counts })
+    this.privateStore.markCoUseReported(counts)
+  }
+
+  /**
+   * Sinapsi d'uso di una sessione (B12): ogni coppia di ricordi del team serviti nella sessione si
+   * rafforza di uno, una volta sola per sessione. Chiamata quando cambiano gli esiti della sessione.
+   *
+   * EN: A session's use synapses (B12): every pair of team memories that helped in the session gets
+   * one stronger, only once per session. Called when the session's outcomes change.
+   */
+  private recordCoUse (sessionId: string): void {
+    try {
+      const ids = this.privateStore.sessionUseful(sessionId).filter((id) => !this.personalIds.has(id) && this.index.get(id))
+      const added = this.privateStore.countCoUse(sessionId, sessionPairs(ids))
+      if (added) this.log(`sinapsi d'uso: ${added} coppie rafforzate (sessione ${sessionId.slice(0, 8)})`)
+    } catch (err) {
+      this.log(`sinapsi d'uso non registrate: ${(err as Error).message}`)
+    }
+  }
+
   // ═══════════════════════════ Efficacia (B11) ═══════════════════════════
   // EN: Efficacy (B11)
 
@@ -1692,7 +1755,7 @@ export class MicelioNode extends EventEmitter {
     }
     let changed = false
     for (const [id, b] of best) changed = this.privateStore.setOutcome({ session: sessionId, memory: id, verdict: b.verdict, judge: 'heuristic', evidence: b.evidence, project }) || changed
-    if (changed) { this.refreshHabituation(); this.changed('efficacy') }
+    if (changed) { this.refreshHabituation(); this.recordCoUse(sessionId); this.changed('efficacy') }
     return [...best].map(([id, b]) => ({ id, short: b.short, title: b.title }))
   }
 
@@ -1717,7 +1780,7 @@ export class MicelioNode extends EventEmitter {
       }
       if (v.verdict === 'wrong') this.log(`ricordo forse sbagliato o superato (sessione ${sessionId.slice(0, 8)}): ${rec.title}`)
     }
-    if (changed) { this.refreshHabituation(); this.changed('efficacy') }
+    if (changed) { this.refreshHabituation(); this.recordCoUse(sessionId); this.changed('efficacy') }
   }
 
   /** Voto +1 automatico, solo se questo nodo non ha già votato quel ricordo (decisione dell'utente). / EN: Automatic +1 vote, only if this node hasn't already voted on that memory (user's decision). */
@@ -3195,8 +3258,9 @@ export class MicelioNode extends EventEmitter {
       // Tempi per fase: finiscono nel log solo se l'aggiornamento è lento (vedi in fondo)
       // EN: Per-phase timings: they go to the log only if the update is slow (see below)
       const lap = phaseTimer()
-      const [all, members, votes, pins, usage, links, roots, useful] = await Promise.all([team.memories(), team.members(), team.votes(), team.pins(), team.usage(), team.links(), team.roots(), team.useful()])
+      const [all, members, votes, pins, usage, links, roots, useful, coUse] = await Promise.all([team.memories(), team.members(), team.votes(), team.pins(), team.usage(), team.links(), team.roots(), team.useful(), team.coUse()])
       this.usefulCounts = useful
+      this.coUsePairs = coUse
       lap('vista')
       this.rootsById = roots
       this.teamNameCache = (await team.team())?.name ?? this.teamNameCache

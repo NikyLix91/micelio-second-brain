@@ -9,7 +9,8 @@ It is a **hybrid** search, computed on your PC:
 1. **Keywords**: SQLite FTS5 index with BM25 scoring; a word in the title counts 3 times a word in the body, in the tags 2 times. Accents ignored, prefixes accepted.
 2. **Meaning**: the question and the memories are turned into **vectors** by a local, multilingual embedding model (`multilingual-e5-small`): a question in English finds memories in Italian.
 3. **Fusion**: the two rankings are merged with *Reciprocal Rank Fusion* (k = 60).
-4. **Priority**: with equal relevance, the most "alive" memories win (activation: used, voted, linked, pinned).
+4. **Priority**: with equal relevance, the most "alive" memories win (activation: used, voted, linked, pinned). Memories delivered several times without helping weigh a bit less (**Habituation**, in the Effectiveness guide).
+5. **Used together**: the top results bring along up to 2 memories that in the team are usually needed together with them, marked "⇄ used together" (see **Use synapses**).
 
 Every result returned counts as a **use** of the memory.
 

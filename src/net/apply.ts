@@ -65,6 +65,8 @@ export const KEYS = {
   usage: (id: string, node: string) => `usage/${id}/${node}`,
   /** Volte in cui un ricordo è stato utile a un agente su un nodo (B11). / EN: Times a memory was useful to an agent on a node (B11). */
   useful: (id: string, node: string) => `useful/${id}/${node}`,
+  /** Sessioni in cui due ricordi sono serviti insieme, su un nodo (B12). `pair` = "idA:idB". / EN: Sessions in which two memories helped together, on a node (B12). `pair` = "idA:idB". */
+  couse: (pair: string, node: string) => `couse/${pair}/${node}`,
   /** Collegamento esplicito fra ricordi (dreaming). / EN: Explicit link between memories (dreaming). */
   link: (from: string, to: string) => `link/${from}/${to}`,
   /** Chi ha "vinto" il sogno di un'epoca. / EN: Who "won" the dream of an epoch. */
@@ -91,6 +93,7 @@ export const RANGES = {
   roots: { gt: 'root/', lt: 'root0' },
   usage: { gt: 'usage/', lt: 'usage0' },
   useful: { gt: 'useful/', lt: 'useful0' },
+  couse: { gt: 'couse/', lt: 'couse0' },
   links: { gt: 'link/', lt: 'link0' },
   dreamLogs: { gt: 'dreamlog/', lt: 'dreamlog0' },
   gaps: { gt: 'gap/', lt: 'gap0' },
@@ -401,9 +404,10 @@ async function applyEvent (ev: TeamEvent, author: string, view: any, host: any):
     // EN: G-Counter: for each (memory, node authoring the report) we keep the MAXIMUM of the
     //     cumulative counters received. Repeated or out-of-order reports don't change the total.
     case 'usage.report':
-    case 'useful.report': {
+    case 'useful.report':
+    case 'couse.report': {
       for (const [id, u] of Object.entries(ev.counts)) {
-        const key = ev.type === 'usage.report' ? KEYS.usage(id, author) : KEYS.useful(id, author)
+        const key = ev.type === 'usage.report' ? KEYS.usage(id, author) : ev.type === 'useful.report' ? KEYS.useful(id, author) : KEYS.couse(id, author)
         const prev = await get<{ count: number, last: number }>(view, key)
         if (!prev || u.count > prev.count || u.last > prev.last) {
           await view.put(key, { count: Math.max(u.count, prev?.count ?? 0), last: Math.max(u.last, prev?.last ?? 0) })
