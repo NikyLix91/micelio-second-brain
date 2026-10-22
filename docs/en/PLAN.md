@@ -340,6 +340,7 @@ User requests of 2026-10-18 (B1–B3) and brainstorming on competitors on the sa
 | B10 | **AI chat over the memory, with a mind map of knowledge** | `feature/chat-memoria` | ✅ Done. "Ask" page: LLM answer written only from the team's memories with clickable [n] references, "I don't know" without calling the LLM and reporting of the knowledge gap, instant mind map (themes as link communities, memories with their first line, dreaming links, expand), follow-up questions, "Save as memory", local-only history. Map over 5,000 memories in ~0.1 s. See "B10 in detail" |
 | B11 | **Measuring the system's effectiveness** | `feature/efficacia` | ✅ Done. "Effectiveness" page: agent lookups in real time (MCP tools and automatic context, with response time), per-memory outcomes once the session is over (heuristic always, LLM in the same call as distillation), automatic thumbs-up on memories confirmed useful (never over a manual vote), usefulness shared with the team (`useful.report`, weight 3 in activation), noise, wrong memories, unanswered questions, desktop notifications only for useful/wrong. See "B11 in detail" |
 | B12 | **Memory that learns from use** (ideas from Spector) | `feature/memoria-dall-uso` | To do. Four changes to how memories rise and fall: (1) habituation, memories offered often and never useful drop in the ranking; (2) co-use synapses, two memories useful in the same session strengthen their link; (3) weight for hard-won discoveries, more importance to memories born from a long struggle; (4) redaction receipt, every node confirms it removed the content. See "B12 in detail" |
+| B13 | **Over-the-air app updates** | to be defined | Noted on 2026-10-22, to be explored. The app updates itself instead of having everyone download and install each new version by hand: today every fix (0.5.1, 0.5.2, 0.5.3) means passing the installer to every colleague |
 
 ### B7 in detail: backup and restore of a team's knowledge
 
@@ -421,7 +422,8 @@ User requests of 2026-10-18 (B1–B3) and brainstorming on competitors on the sa
 - A habituation factor is added to activation: the more often a memory has been returned without being useful, the lower it goes. A useful outcome resets it, because the memory has proven its worth.
 - It applies mostly to automatic context (`SessionStart`, `UserPromptSubmit`), where the agent didn't ask for anything. An explicit `recall` applies it more lightly, because there the question is precise.
 - Roots don't go below the current floor, pinned memories aren't affected.
-- Shared data: the team's "returned" and "useful" counters already exist (`usage.report`, `useful.report`), so the effect applies to the whole team with no new events.
+- Data: the run of outcomes with no use since the last useful one, read from THIS PC's outcomes (Effectiveness page), not from the team counters. Decision of 2026-10-22: the team counters (`usage.report`, `useful.report`) are cumulative and have no order in time, so they can't be reset after a useful outcome, and they also count deliveries never evaluated.
+- Weights: up to 2 outcomes with no use 100%, then minus 15% per outcome, minimum 30% (3 → 85%, 5 → 55%, 7 or more → 30%). It doesn't touch activation: constellation and dreaming stay the same.
 - Success measure: the share of useful memories on the Effectiveness page must go up in the weeks after release, for the same number of lookups.
 
 **2. Co-use synapses (Hebbian learning).**

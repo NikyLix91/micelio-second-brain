@@ -338,6 +338,7 @@ Richieste dell'utente del 2026-10-18 (B1–B3) e brainstorming sui concorrenti d
 | B10 | **Chat AI sulla memoria, con mappa mentale del sapere** | `feature/chat-memoria` | ✅ Fatto. Pagina «Chiedi»: risposta dell'LLM scritta solo sui ricordi del team con riferimenti [n] cliccabili, «non lo so» senza chiamare l'LLM e segnalazione della lacuna, mappa mentale istantanea (temi come comunità dei collegamenti, ricordi con prima riga, collegamenti del dreaming, espandi), domande che seguono, «Salva come ricordo», cronologia solo locale. Mappa su 5 000 ricordi in ~0,1 s. Vedi «B10 in dettaglio» |
 | B11 | **Misurazione dell'efficienza del sistema** | `feature/efficacia` | ✅ Fatto. Pagina «Efficacia»: consultazioni degli agenti in tempo reale (tool MCP e contesto automatico, con il tempo di risposta), esiti per ricordo a sessione finita (euristica sempre, LLM nella stessa chiamata della distillazione), pollice in su automatico sui ricordi confermati utili (mai sopra un voto a mano), utilità condivisa con il team (`useful.report`, peso 3 nell'attivazione), rumore, sbagliati, domande senza risposta, notifiche del desktop solo per utile/sbagliato. Vedi «B11 in dettaglio» |
 | B12 | **Memoria che impara dall'uso** (idee da Spector) | `feature/memoria-dall-uso` | Da fare. Quattro interventi sul modo in cui i ricordi salgono e scendono: (1) abituazione, i ricordi proposti spesso e mai utili scendono in classifica; (2) sinapsi da uso congiunto, due ricordi utili nella stessa sessione rafforzano il loro legame; (3) peso alle scoperte sudate, più importanza ai ricordi nati da una lunga lotta; (4) ricevuta di redazione, ogni nodo conferma di aver tolto il contenuto. Vedi «B12 in dettaglio» |
+| B13 | **Aggiornamenti dell'app in OTA** | da definire | Appuntato il 2026-10-22, da approfondire. L'app si aggiorna da sola invece di far scaricare e installare a mano ogni nuova versione: oggi ogni correzione (0.5.1, 0.5.2, 0.5.3) richiede di passare l'installer a tutti i colleghi |
 
 ### B7 in dettaglio: backup e ripristino del sapere di un team
 
@@ -419,7 +420,8 @@ Richieste dell'utente del 2026-10-18 (B1–B3) e brainstorming sui concorrenti d
 - Si aggiunge all'attivazione un fattore di abituazione: più volte un ricordo è stato restituito senza essere utile, più scende. Un esito utile lo azzera, perché il ricordo ha dimostrato di servire.
 - Vale soprattutto per il contesto automatico (`SessionStart`, `UserPromptSubmit`), dove l'agente non ha chiesto niente. Una `recall` esplicita lo applica più leggero, perché lì la domanda è precisa.
 - Le Radici non scendono sotto la soglia attuale, i ricordi fissati non sono toccati.
-- Dati condivisi: i contatori «restituito» e «utile» del team esistono già (`usage.report`, `useful.report`), quindi l'effetto vale per tutto il team senza eventi nuovi.
+- Dati: la serie di esiti senza uso dall'ultimo esito utile, letta dagli esiti di QUESTO PC (pagina Efficacia), non dai contatori di team. Decisione del 2026-10-22: i contatori di team (`usage.report`, `useful.report`) sono cumulativi e senza ordine nel tempo, quindi non permettono di azzerare dopo un esito utile, e contano anche le consegne mai valutate.
+- Pesi: fino a 2 esiti senza uso 100%, poi meno 15% a esito, minimo 30% (3 → 85%, 5 → 55%, 7 o più → 30%). Non tocca l'attivazione: costellazione e dreaming restano uguali.
 - Misura del successo: la percentuale di ricordi utili nella pagina Efficacia deve salire nelle settimane dopo il rilascio, a parità di consultazioni.
 
 **2. Sinapsi da uso congiunto (apprendimento hebbiano).**
