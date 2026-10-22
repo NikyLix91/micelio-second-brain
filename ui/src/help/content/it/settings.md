@@ -22,7 +22,13 @@ Cartelle sorvegliate per PDF, Office, Markdown e diagrammi. Per ognuna: **origin
 
 ## Claude Code {#claude-code}
 
-Registra Micelio come **server MCP** di Claude Code (con `claude mcp add`, livello utente: vale in ogni progetto) e, se vuoi, l'**hook** di fine sessione in `~/.claude/settings.json`, salvandone prima una copia di backup. Da terminale: `micelio setup claude-code`. Vedi **Agenti e MCP**.
+Registra Micelio come **server MCP** di Claude Code (livello utente: vale in ogni progetto) e, se vuoi, gli **hook** in `~/.claude/settings.json`, salvandone prima una copia di backup. Da terminale: `micelio setup claude-code`. Vedi **Agenti e MCP**.
+
+**Come funziona dietro.** Micelio usa il comando `claude mcp add` e cerca `claude` anche fuori dal PATH: nell'installazione nativa (`~/.local/bin`), in quella di npm (lancia il suo `cli.js` con il proprio Node, perché `claude.cmd` non si può avviare senza shell), in WinGet e dentro l'estensione di Claude Code per VS Code, Cursor e Windsurf (la versione più recente). Se non lo trova da nessuna parte, scrive la stessa voce direttamente in `~/.claude.json` (o nella cartella di `CLAUDE_CONFIG_DIR`), dopo averne salvato una copia in `.claude.json.micelio-backup`: per Claude Code il risultato è identico. Il messaggio dopo il clic dice quale strada ha preso. Lo stesso eseguibile serve anche alla distillazione (Intelligenza).
+
+**Dopo la registrazione** chiudi e riapri le sessioni di Claude Code (o ricarica la finestra di VS Code): Claude Code legge i server MCP solo all'avvio.
+
+**Un utente, una configurazione.** Claude Code legge la configurazione dal profilo dell'utente del sistema che lo esegue. Se lo avvii con un utente diverso da quello con cui gira Micelio (per esempio Claude Code installato e usato da un'utenza amministrativa per policy aziendale), non vedrà mai Micelio, e Micelio non potrà leggere le sue sessioni. Micelio se ne accorge quando in questo profilo non c'è traccia di Claude Code (né sessioni né i campi che Claude Code scrive al primo avvio) e lo segnala con un avviso. La soluzione è aprire Micelio con lo stesso utente con cui usi Claude Code (tasto destro → «Esegui come altro utente»), entrare nel team con un invito e ripetere la configurazione.
 
 ## Il file di configurazione {#config-file}
 

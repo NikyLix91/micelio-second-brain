@@ -35,7 +35,7 @@ import type { DistillQuality } from '../ingest/quality'
 import { checkNetwork } from '../net/diagnose'
 import { autostartOff, autostartOn, autostartStatus } from '../node/autostart'
 import { BOOTSTRAP_RE, dhtBootstrap, loadConfig, networkMode, type NetworkMode, updateConfig } from '../node/config'
-import { claudeSettingsFile, hookCommand, IntegrationError, mcpAddArgs, setupClaudeCode } from '../node/integrations'
+import { claudeConfigFile, claudeSettingsFile, hookCommand, IntegrationError, mcpAddArgs, setupClaudeCode } from '../node/integrations'
 import type { TeamSummary } from '../node/micelio-host'
 import type { GapView, IngestStatus, NetworkSettings, RootReviewResult, RootView, SecurityFinding, SecurityRules, SecurityTestResult } from '../node/micelio-node'
 import type { Digest } from '../insight/digest'
@@ -1264,7 +1264,11 @@ program.command('setup')
       // EN: Same logic as the button in the UI Settings (src/node/integrations.ts).
       const r = setupClaudeCode({ mcpUrl: c.mcpUrl, token: c.config.token, home: p.home, hook: o.hook, context: o.context })
       console.log(`Server MCP registrato (shim stdio verso ${r.mcpUrl}; il team si sceglie dalla cartella del progetto)`)
+      // Senza CLI di Claude Code la voce si scrive direttamente in .claude.json (stesso risultato)
+      // EN: Without the Claude Code CLI the entry is written directly into .claude.json (same result)
+      console.log(r.via === 'file' ? `Claude Code non trovato: registrazione scritta in ${claudeConfigFile()}` : `Usato Claude Code in ${r.claude}`)
       if (r.hookFile) console.log(`Hook di fine sessione installato in ${r.hookFile} (copia di backup accanto)`)
+      if (r.otherUser) console.log(`\nAttenzione: Claude Code non risulta mai usato dall'utente "${r.user}". Claude Code legge la configurazione dal profilo di chi lo esegue: se lo avvii con un altro utente, esegui questo comando con quell'utente.`)
     } catch (err) {
       throw err instanceof IntegrationError ? new DaemonError(err.message + '\nProva `micelio setup claude-code --print` ed esegui i comandi a mano.') : err
     }
