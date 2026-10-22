@@ -33,6 +33,7 @@ import { defineStrings, useStrings } from '../i18n'
 const S = defineStrings({
   it: {
     title: 'Chiedi',
+    redactedAnswer: 'Risposta rimossa: citava un ricordo che un admin ha redatto per tutto il team.',
     subtitle: 'Fai una domanda alla memoria del team: risposta con le fonti e mappa del sapere sull\'argomento.',
     newChat: '+ Nuova conversazione',
     history: 'Conversazioni',
@@ -60,6 +61,7 @@ const S = defineStrings({
   },
   en: {
     title: 'Ask',
+    redactedAnswer: 'Answer removed: it cited a memory that an admin redacted for the whole team.',
     subtitle: 'Ask the team memory a question: an answer with its sources and a map of what the team knows on the topic.',
     newChat: '+ New conversation',
     history: 'Conversations',
@@ -88,7 +90,7 @@ const S = defineStrings({
 })
 
 /** Una risposta come la mostra la pagina (dalla cronologia o appena arrivata). / EN: An answer as the page shows it (from history or just arrived). */
-interface Answer { messageId: number, text: string, unknown: boolean, cited: string[], refs: { n: number, id: string, title: string }[], map: ChatMap, saved?: { outcome: string } }
+interface Answer { messageId: number, text: string, unknown: boolean, cited: string[], refs: { n: number, id: string, title: string }[], map: ChatMap, saved?: { outcome: string }, redacted?: boolean }
 
 export function Ask () {
   const s = useStrings(S)
@@ -218,6 +220,9 @@ export function Ask () {
 /** Una risposta: testo con i riferimenti [n] cliccabili, fonti, azioni. / EN: An answer: text with clickable [n] references, sources, actions. */
 function AnswerView ({ a, onRef, onSave, saving, reported, onReport }: { a: Answer, onRef: (id: string) => void, onSave: () => void, saving: boolean, reported: boolean, onReport: () => void }) {
   const s = useStrings(S)
+  // B12: risposta che citava un ricordo poi redatto da un admin: testo e mappa sono stati tolti
+  // EN: B12: answer that cited a memory later redacted by an admin: text and map were removed
+  if (a.redacted) return <div className='ask-a muted'>{s.redactedAnswer}</div>
   const idOf = (n: number) => a.refs.find((r) => r.n === n)?.id
   // [n] → link interno, poi reso come pulsante che illumina il ricordo nella mappa
   // EN: [n] → internal link, then rendered as a button that highlights the memory in the map
@@ -260,7 +265,7 @@ function pairUp (msgs: ChatMessage[]): { question: ChatMessage, answer: Answer |
   for (const m of msgs) {
     if (m.role === 'user') out.push({ question: m, answer: null })
     else if (out.length) {
-      out[out.length - 1].answer = { messageId: m.id, text: m.text, unknown: !!m.data?.unknown, cited: m.data?.cited ?? [], refs: m.data?.refs ?? [], map: m.data?.map ?? { question: '', themes: [], memories: [], links: [] }, ...(m.data?.saved ? { saved: m.data.saved } : {}) }
+      out[out.length - 1].answer = { messageId: m.id, text: m.text, unknown: !!m.data?.unknown, cited: m.data?.cited ?? [], refs: m.data?.refs ?? [], map: m.data?.map ?? { question: '', themes: [], memories: [], links: [] }, ...(m.data?.saved ? { saved: m.data.saved } : {}), ...(m.data?.redacted ? { redacted: true } : {}) }
     }
   }
   return out

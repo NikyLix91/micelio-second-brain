@@ -61,6 +61,7 @@ import { CHUNK_CHARS, chunkText, extractText, MAX_CHUNKS, mimeOf } from './extra
 import { CLASSIFY_SYSTEM, Classification, Distilled, distillSystem, MICELIO_DELIVERED_HEADER, MICELIO_JUDGE_RULE } from './prompts'
 import { type ChangeSummary, codeRefs, repoInfo, type RepoInfo, summarizeChanges } from './git-changes'
 import { readTranscript } from './transcript-worker'
+import { sessionEffort } from './effort'
 
 /** Sotto questa soglia di confidenza il classificatore non decide da solo: si va in inbox. / EN: Below this confidence threshold the classifier does not decide on its own: it goes to the Inbox. */
 export const CONFIDENCE_THRESHOLD = 0.8
@@ -315,6 +316,9 @@ export class IngestPipeline {
     //        is a git repository. They are appended to the conversation and go through the same filter.
     const changes = this.codeChanges(cwd, ex.firstAt, ex.lastAt, sensitive)
     const material = ex.text + changes.suffix
+    // B12: fatica del capitolo, per il vantaggio iniziale dei ricordi che ne nascono
+    // EN: B12: the chapter's effort, for the head start of the memories born from it
+    const effort = sessionEffort(ex)
 
     // 1) Filtro deterministico: se blocca, il contenuto non lascia mai la macchina.
     // EN: 1) Deterministic filter: if it blocks, the content never leaves the machine.
@@ -362,7 +366,7 @@ export class IngestPipeline {
       // Riferimenti al codice (progetto, file, simboli, commit): dicono a chi legge dove approfondire.
       // EN: Code references (project, files, symbols, commits): they tell the reader where to dig deeper.
       const code = codeRefs(raw, cwd, changes.info, changes.summary)
-      const parsed = MemoryInput.safeParse({ ...raw, source: { type: 'claude-code', ref: sessionId, ...(code ? { code } : {}), rank: raw.rank, batch: raw.batch } })
+      const parsed = MemoryInput.safeParse({ ...raw, source: { type: 'claude-code', ref: sessionId, ...(code ? { code } : {}), rank: raw.rank, batch: raw.batch, effort } })
       if (!parsed.success) continue // ricordo malformato prodotto dal modello: lo ignoriamo / EN: malformed memory produced by the model: we ignore it
       // Secondo passaggio di filtro sul ricordo distillato (il modello potrebbe aver
       // riportato un dato sensibile sfuggito alla prima redazione).
@@ -617,7 +621,9 @@ export class IngestPipeline {
    */
   async approve (id: string, overrides: Partial<Pick<MemoryData, 'title' | 'body' | 'kind' | 'tags'>> = {}): Promise<{ id: string, duplicate: boolean, memory: MemoryData }> {
     const item = this.requireInbox(id)
-    const memory = MemoryInput.parse({ ...item.memory, ...overrides, source: { type: 'inbox', ref: item.source.ref } })
+    // La fatica (B12) resta anche dopo la revisione in Inbox / EN: Effort (B12) stays after the Inbox review too
+    const effort = item.memory.source?.effort
+    const memory = MemoryInput.parse({ ...item.memory, ...overrides, source: { type: 'inbox', ref: item.source.ref, ...(effort ? { effort } : {}) } })
     const redacted = filterMemory(memory, await this.deps.rules()).memory
     const res = await this.deps.publish(redacted)
     this.deps.store.removeInbox(id)

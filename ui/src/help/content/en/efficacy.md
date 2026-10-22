@@ -24,7 +24,27 @@ The memories with the most useful outcomes in the period. For each one: how many
 
 ## Noise {#noise}
 
-Memories returned often, at least 5 times, but never useful. The title probably makes them look relevant to unrelated questions, or they state the obvious. They can be rewritten, merged or archived.
+Memories returned often, at least 5 times, but never useful. The title probably makes them look relevant to unrelated questions, or they state the obvious. They can be rewritten, merged or archived. Meanwhile Micelio offers them less: see **Habituation**.
+
+## Habituation {#habituation}
+
+A memory delivered to agents several times in a row without ever helping is offered **less**, as happens in the brain with a stimulus that repeats without consequences. It removes noise from the context: every useless memory distracts the agent and uses up tokens.
+
+| Times in a row without helping | Weight |
+|---|---|
+| up to 2 | 100% |
+| 3 | 85% |
+| 5 | 55% |
+| 7 or more | 30% (minimum) |
+
+- **Automatic context** (session start and every request): full weight. A memory that has only been noise can drop out of a request's context entirely.
+- **Explicit searches** (`recall`, search in the app, chat): half the effect, 65% at the lowest, because there the question is precise.
+- **One useful outcome** ("used" or "probably useful") is enough to go back to 100%. A "wrong" outcome counts as not helping.
+- **Pinned memories are not touched.** Activation doesn't change: constellation, dreaming and archiving stay the same.
+
+The memory's details say how many times in a row it didn't help and how much it weighs now; the **Noise** list shows the current weight.
+
+**How it works behind the scenes.** The run is read from **this PC's** outcomes (`outcomes` table in `private.db`, last 90 days), in time order: every outcome with no use adds one, a useful outcome resets it. The team counters (`usage.report`, `useful.report`) are not used: they are cumulative, have no order in time, and also count deliveries nobody evaluated. The computation is redone only when new outcomes arrive; in search the factor multiplies the final score, in per-request context it multiplies the similarity before the relevance threshold (the threshold is still computed on the original scores). Code: `src/rank/habituation.ts`.
 
 ## Wrong or outdated {#wrong}
 

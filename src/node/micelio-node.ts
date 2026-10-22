@@ -54,7 +54,7 @@ import { type Embedder, HashEmbedder, LocalEmbedder } from '../embed/embedder'
 import { activation } from '../rank/activation'
 import { hybridRank, nearest } from '../rank/hybrid'
 import { currentEpoch, Dreamer, type DreamReport, dreamOrder } from '../dream/dreamer'
-import type { MemoryRecord } from '../core/model'
+import type { MemoryRecord, RedactAck } from '../core/model'
 import os from 'node:os'
 import { BACKUP_EXT, type BackupContent, type BackupManifest, backupFileName, countsOf, decodeBackup, encodeBackup } from '../backup/archive'
 import { planRestore } from '../backup/restore-plan'
@@ -84,6 +84,8 @@ import { distillQuality, type DistillQuality, MAX_MEMORIES_RANGE, maxMemoriesOf 
 import { localRepos, reviewRoots, type ReviewNote } from '../roots/review'
 import { computeStaleness, stalenessFactor } from '../rank/code-staleness'
 import { SemanticNeighbors } from '../rank/semantic-neighbors'
+import { habituationFactor, habituationStreaks, softHabituation } from '../rank/habituation'
+import { CO_USE_BRING_MAX, CO_USE_BRING_MIN, coUseLinks, coUseNeighbors, sessionPairs } from '../rank/co-use'
 import { detectCommunities, galaxyLinks, OTHER_GALAXY } from '../graph/communities'
 import { promptContext, sessionContext } from '../context/agent-context'
 import { computeDigest, type Digest } from '../insight/digest'
@@ -91,7 +93,8 @@ import { gapId, gapKey } from '../insight/gaps'
 import { AGENT_FILE_FORMATS, type AgentFileFormat, renderRootsBlock, writeAgentFile } from '../roots/agent-files'
 import { type ImportItem, readImport } from '../roots/import'
 import { repoInfo } from '../ingest/git-changes'
-import { type Identity, signMembership } from '../core/identity'
+import { type Identity, signMembership, signRedactAck } from '../core/identity'
+import { buildReceipt } from '../insight/redaction-receipt'
 import { checkDecision, WRITE_CANDIDATES, WriteDecision, writeUpdateInput, writeUpdateSystem } from '../ingest/write-update'
 
 export interface MicelioNodeOptions {
@@ -162,6 +165,26 @@ export interface ChatReply {
   map: MindMap
 }
 
+/**
+ * Una redazione con le conferme dei membri (B12, ricevuta di redazione).
+ * Stato per membro: "confirmed" = il suo PC ha tolto il ricordo; "pending" = non ancora (spento o
+ * versione precedente alla 0.6.0); "left" = uscito dal team senza confermare (non conta nel totale).
+ *
+ * EN: A redaction with the members' confirmations (B12, redaction receipt).
+ * Status per member: "confirmed" = their PC removed the memory; "pending" = not yet (off or a version
+ * older than 0.6.0); "left" = left the team without confirming (not counted in the total).
+ */
+export interface RedactionView {
+  id: string
+  reason: string
+  /** Quando e da chi (null per le redazioni precedenti alla 0.6.0). / EN: When and by whom (null for redactions before 0.6.0). */
+  at: number | null
+  by: { key: string, name: string } | null
+  confirmed: number
+  total: number
+  members: { key: string, name: string, status: 'confirmed' | 'pending' | 'left', ack: RedactAck | null }[]
+}
+
 /** Un ricordo nel resoconto di efficacia (B11). / EN: A memory in the efficacy report (B11). */
 export interface EfficacyMemory { id: string, title: string, root: boolean, teamUseful: number }
 /** Resoconto per la pagina «Efficacia» (B11, vedi MicelioNode.efficacyReport). / EN: Report for the "Efficacy" page (B11, see MicelioNode.efficacyReport). */
@@ -185,7 +208,8 @@ export interface EfficacyReport {
   consultations: (Consultation & { memories: EfficacyMemory[] })[]
   outcomes: (Omit<Outcome, 'memory'> & { memory: EfficacyMemory })[]
   topUseful: (EfficacyMemory & { returned: number, useful: number, unused: number, wrong: number })[]
-  noisy: (EfficacyMemory & { returned: number, useful: number, unused: number, wrong: number })[]
+  /** `factor`: peso attuale nelle classifiche per l'abituazione (B12), 1 = pieno. / EN: `factor`: current weight in rankings due to habituation (B12), 1 = full. */
+  noisy: (EfficacyMemory & { returned: number, useful: number, unused: number, wrong: number, factor: number })[]
   wrong: (EfficacyMemory & { reason: string | null, session: string, ts: number })[]
   unanswered: { query: string, count: number }[]
 }
@@ -510,6 +534,22 @@ export class MicelioNode extends EventEmitter {
   private semanticRedo = false
   /** Ricordi il cui codice citato è cambiato (B4, src/rank/code-staleness.ts), da private.db. / EN: Memories whose cited code changed (B4, src/rank/code-staleness.ts), from private.db. */
   private staleness = new Map<string, { commits: number, missing: number, checked: number }>()
+  /**
+   * Abituazione (B12, src/rank/habituation.ts): per ricordo, esiti senza uso di fila dall'ultimo
+   * utile, dagli esiti di questo PC. Ricalcolata solo quando arrivano esiti nuovi.
+   *
+   * EN: Habituation (B12, src/rank/habituation.ts): per memory, outcomes with no use in a row since
+   * the last useful one, from this PC's outcomes. Recomputed only when new outcomes arrive.
+   */
+  private habituation = new Map<string, number>()
+  /** Sinapsi d'uso del team (B12, src/rank/co-use.ts): per coppia "idA:idB", sessioni insieme. / EN: The team's use synapses (B12, src/rank/co-use.ts): per pair "idA:idB", sessions together. */
+  private coUsePairs = new Map<string, { count: number, last: number }>()
+  /** Vicini d'uso per ricordo, dal più forte, ricalcolati con la costellazione. / EN: Use neighbors per memory, strongest first, recomputed with the constellation. */
+  private coUseNear = new Map<string, { id: string, weight: number }[]>()
+  /** Fatica del capitolo d'origine per ricordo (B12), solo per chi ce l'ha. / EN: Effort of the source chapter per memory (B12), only for those that have it. */
+  private effortById = new Map<string, number>()
+  /** Redazioni per cui la conferma è già stata inviata (evita doppi invii prima che la vista la mostri). / EN: Redactions whose confirmation was already sent (avoids double sends before the view shows it). */
+  private acking = new Set<string>()
   private staleTimer: NodeJS.Timeout | null = null
   /** Timer del backup automatico (B7). / EN: Automatic backup timer (B7). */
   private backupTimer: NodeJS.Timeout | null = null
@@ -658,7 +698,7 @@ export class MicelioNode extends EventEmitter {
     this.sweepSourceCache()
     // Pubblicazione periodica dell'uso locale dei ricordi (Fase 5).
     // EN: Periodic publishing of local memory usage (Phase 5).
-    this.usageTimer = setInterval(() => { this.flushUsage().catch(() => {}); this.flushUseful().catch(() => {}) }, USAGE_FLUSH_MS)
+    this.usageTimer = setInterval(() => { this.flushUsage().catch(() => {}); this.flushUseful().catch(() => {}); this.flushCoUse().catch(() => {}) }, USAGE_FLUSH_MS)
     // B11: conservazione di consultazioni ed esiti (all'avvio basta: il daemon si riavvia spesso)
     // EN: B11: retention of queries and outcomes (at startup is enough: the daemon restarts often)
     try { this.privateStore.pruneEfficacy(Date.now() - EFFICACY_KEEP_MS) } catch { /* archivio non ancora pronto / EN: private store not ready yet */ }
@@ -677,6 +717,7 @@ export class MicelioNode extends EventEmitter {
     // EN: B4: memories that age with the code. First check shortly after startup (it doesn't slow it down),
     //     then at intervals: repositories change with everyday work.
     this.staleness = this.privateStore.staleness()
+    this.refreshHabituation()
     const firstCheck = setTimeout(() => { this.checkStaleness() }, STALE_FIRST_CHECK_MS)
     firstCheck.unref()
     this.staleTimer = setInterval(() => { this.checkStaleness() }, STALE_CHECK_MS)
@@ -719,6 +760,7 @@ export class MicelioNode extends EventEmitter {
     while (this.dreamer.busy) await new Promise((r) => setTimeout(r, 200))
     await this.flushUsage().catch(() => {})
     await this.flushUseful().catch(() => {})
+    await this.flushCoUse().catch(() => {})
     await this.embedding.catch(() => {})
     // Si chiude solo l'embedder creato qui: quello passato da fuori è condiviso con altri team.
     // EN: Only close the embedder created here: one passed from outside is shared with other teams.
@@ -935,7 +977,11 @@ export class MicelioNode extends EventEmitter {
   private computeGraph (): void {
     const lap = phaseTimer()
     const memories = this.teamMemories()
-    const extra = [...this.semanticLinks(), ...this.explicitLinks()]
+    // B12: sinapsi d'uso, solo fra ricordi del team ancora attivi
+    // EN: B12: use synapses, only between team memories still active
+    const use = coUseLinks(this.coUsePairs, new Set(memories.map((m) => m.id)))
+    this.coUseNear = coUseNeighbors(use)
+    const extra = [...this.semanticLinks(), ...this.explicitLinks(), ...use]
     lap('vicini')
     const g = buildGraph(memories, extra)
     lap('costellazione')
@@ -998,9 +1044,41 @@ export class MicelioNode extends EventEmitter {
     }
     const signals = this.index.signals()
     const act = (id: string) => this.activationOf(id, signals)
-    const ranked = hybridRank(keyword, semantic, act).slice(0, limit)
-    const hits = this.enrich(this.index.getMany(ranked.map((r) => r.id)), signals)
-    ranked.forEach((r, i) => { if (hits[i]) hits[i].score = r.score })
+    // B12: abituazione attenuata (ricerca esplicita), poi si riordina
+    // EN: B12: softened habituation (explicit search), then re-sort
+    const ranked = hybridRank(keyword, semantic, act)
+      .map((r) => ({ ...r, score: r.score * softHabituation(this.habitFactor(r.id, signals)) }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit)
+    // B12: i primi risultati si portano dietro i vicini d'uso più forti (servono di solito insieme),
+    // al massimo CO_USE_BRING_MAX, subito dopo il ricordo che li porta. Punteggio: quello del
+    // ricordo che li porta per la forza del legame.
+    // EN: B12: the top results bring along their strongest use neighbors (usually needed together),
+    //     at most CO_USE_BRING_MAX, right after the memory that brings them. Score: the bringing
+    //     memory's score times the link strength.
+    const present = new Set(ranked.map((r) => r.id))
+    const brought = new Map<string, { score: number, by: string }>()
+    for (const r of ranked.slice(0, 3)) {
+      for (const n of this.coUseNear.get(r.id) ?? []) {
+        if (brought.size >= CO_USE_BRING_MAX || n.weight < CO_USE_BRING_MIN) break
+        if (present.has(n.id) || brought.has(n.id)) continue
+        brought.set(n.id, { score: r.score * n.weight, by: r.id })
+      }
+    }
+    const order: { id: string, score: number, by?: string }[] = []
+    for (const r of ranked) {
+      order.push(r)
+      for (const [id, b] of brought) if (b.by === r.id) order.push({ id, score: b.score, by: r.id })
+    }
+    const hits = this.enrich(this.index.getMany(order.map((r) => r.id)), signals)
+    // getMany salta gli id non più presenti: si riallinea per id, non per posizione
+    // EN: getMany skips ids no longer present: realign by id, not by position
+    const meta = new Map(order.map((r) => [r.id, r]))
+    for (const h of hits) {
+      const m = meta.get(h.id)!
+      h.score = m.score
+      if (m.by) h.broughtBy = m.by
+    }
     // L'uso dei ricordi personali non si conta: verrebbe pubblicato al team (usage.report)
     // EN: Usage of personal memories isn't counted: it would be published to the team (usage.report)
     const used = hits.filter((h) => !this.personalIds.has(h.id)).map((h) => h.id)
@@ -1076,6 +1154,116 @@ export class MicelioNode extends EventEmitter {
     const rec = this.requireMemory(id)
     await this.requireTeam().append({ type: 'memory.redact', id: rec.id, reason: reason || 'rimosso da un admin' })
     await this.sync()
+  }
+
+  // ═══════════════════════════ Ricevuta di redazione (B12) ═══════════════════════════
+  // EN: Redaction receipt (B12)
+
+  /**
+   * Per ogni ricordo redatto non ancora confermato da questo nodo: toglie le copie locali rimaste
+   * fuori da indice ed export (risposte della chat, proposte in Inbox, copie personali), conta i
+   * backup automatici precedenti e pubblica `redact.ack`, firmato dall'identità personale se c'è.
+   * Chiamata a ogni materializzazione: vale anche per le redazioni arrivate mentre il PC era spento
+   * o prima dell'aggiornamento alla 0.6.0.
+   *
+   * EN: For each redacted memory not yet confirmed by this node: removes the local copies left
+   * outside the index and export (chat answers, Inbox proposals, personal copies), counts the earlier
+   * automatic backups and publishes `redact.ack`, signed by the personal identity if there is one.
+   * Called on every materialization: it also covers redactions that arrived while the PC was off or
+   * before the update to 0.6.0.
+   */
+  private confirmRedactions (inactive: MemoryRecord[], acks: Map<string, Map<string, RedactAck>>): void {
+    const team = this.team
+    if (!team?.writable || !team.localKey) return
+    for (const m of inactive) {
+      if (m.status !== 'redacted' || acks.get(m.id)?.has(team.localKey) || this.acking.has(m.id)) continue
+      this.acking.add(m.id)
+      try {
+        const cleaned = this.cleanRedacted(m.id)
+        const backups = this.backupsBefore(m.redactedAt ?? Date.now())
+        const ts = Date.now()
+        const identity = this.opts.identity?.()
+        const sig = identity ? { person: identity.publicKey, sig: signRedactAck(identity, m.id, team.localKey, ts) } : {}
+        team.append({ type: 'redact.ack', id: m.id, cleaned, backups, ...sig }, ts)
+          .then(() => this.log(`redazione confermata per ${m.id.slice(0, 8)} (chat ${cleaned.chat}, inbox ${cleaned.inbox}, personali ${cleaned.personal}, backup precedenti ${backups})`))
+          .catch((err) => { this.acking.delete(m.id); this.log(`conferma di redazione non inviata: ${(err as Error).message}`) })
+      } catch (err) {
+        this.acking.delete(m.id)
+        this.log(`redazione non ripulita su questo PC: ${(err as Error).message}`)
+      }
+    }
+  }
+
+  /** Copie locali di un ricordo redatto fuori da indice ed export. / EN: Local copies of a redacted memory outside the index and export. */
+  private cleanRedacted (id: string): RedactAck['cleaned'] {
+    const chat = this.privateStore.redactChats(id)
+    let inbox = 0
+    for (const item of this.privateStore.listInbox()) {
+      if (memoryId(item.memory) !== id) continue
+      this.privateStore.removeInbox(item.id)
+      this.privateStore.logDecision(item.source, 'rejected', 'redatto da un admin del team', '[contenuto rimosso]')
+      inbox++
+    }
+    const personal = this.privateStore.personal().some((p) => p.id === id) ? 1 : 0
+    if (personal) this.privateStore.removePersonal(id)
+    if (chat || inbox) this.changed('inbox')
+    return { chat, inbox, personal }
+  }
+
+  /**
+   * Backup automatici di questo team fatti prima della redazione, ancora nella cartella dei backup:
+   * possono contenere il ricordo. Non si toccano (cancellarli o riscriverli è troppo rischioso), ma
+   * si dichiarano nella ricevuta. I backup fatti a mano altrove non si possono conoscere.
+   *
+   * EN: Automatic backups of this team made before the redaction, still in the backup folder: they
+   * may contain the memory. They are not touched (deleting or rewriting them is too risky), but
+   * they're declared in the receipt. Backups made by hand elsewhere can't be known.
+   */
+  private backupsBefore (at: number): number {
+    const folder = this.config.backup.folder
+    if (!folder || !this.teamNameCache || !fs.existsSync(folder)) return 0
+    const prefix = backupFileName(this.teamNameCache).replace(/-\d{4}-\d{2}-\d{2}-\d{4}\.micelio-backup$/, '-')
+    try {
+      return fs.readdirSync(folder).filter((f) => f.startsWith(prefix) && f.endsWith(BACKUP_EXT) && fs.statSync(path.join(folder, f)).mtimeMs < at).length
+    } catch {
+      return 0
+    }
+  }
+
+  /** Redazioni del team con le conferme dei membri, dalla più recente. / EN: The team's redactions with the members' confirmations, newest first. */
+  async redactions (): Promise<RedactionView[]> {
+    const team = this.requireTeam()
+    const [all, members, acks] = await Promise.all([team.memories(), team.members(), team.redactAcks()])
+    const names = new Map(members.map((m) => [m.key, m.name]))
+    return all.filter((m) => m.status === 'redacted').map((m) => {
+      const mine = acks.get(m.id) ?? new Map<string, RedactAck>()
+      const rows = members.map((mem) => {
+        const ack = mine.get(mem.key) ?? null
+        const status = ack ? 'confirmed' as const : mem.removed ? 'left' as const : 'pending' as const
+        return { key: mem.key, name: mem.name, status, ack }
+      })
+      // Chi è uscito senza confermare resta in elenco ma non conta: non può più confermare
+      // EN: Whoever left without confirming stays listed but doesn't count: they can't confirm anymore
+      const counted = rows.filter((r) => r.status !== 'left')
+      return {
+        id: m.id,
+        reason: m.statusReason ?? '',
+        at: m.redactedAt ?? null,
+        by: m.redactedBy ? { key: m.redactedBy, name: names.get(m.redactedBy) ?? m.redactedBy.slice(0, 8) } : null,
+        confirmed: counted.filter((r) => r.status === 'confirmed').length,
+        total: counted.length,
+        members: rows
+      }
+    }).sort((a, b) => (b.at ?? 0) - (a.at ?? 0))
+  }
+
+  /** Ricevuta di una redazione (testo leggibile e JSON verificabile, src/insight/redaction-receipt.ts). / EN: Receipt of a redaction (readable text and verifiable JSON, src/insight/redaction-receipt.ts). */
+  async redactionReceipt (id: string, lang: 'it' | 'en' = 'it'): Promise<{ name: string, text: string, json: unknown }> {
+    const r = (await this.redactions()).find((x) => x.id === id || x.id.startsWith(id.toLowerCase()))
+    if (!r) throw new UserError(`Nessuna redazione per il ricordo ${id}`, `No redaction for memory ${id}`)
+    const team = this.requireTeam()
+    const me = (await team.members()).find((m) => m.key === team.localKey)
+    return buildReceipt({ redaction: r, team: this.teamNameCache ?? '', by: { name: me?.name ?? '', key: team.localKey ?? '' }, lang })
   }
 
   // ═══════════════════════════ Backup e ripristino (B7) ═══════════════════════════
@@ -1621,6 +1809,32 @@ export class MicelioNode extends EventEmitter {
     this.privateStore.markUsefulReported(counts)
   }
 
+  /** Pubblica al team le sinapsi d'uso nuove (B12, couse.report). / EN: Publishes the new use synapses to the team (B12, couse.report). */
+  async flushCoUse (): Promise<void> {
+    if (!this.team?.writable) return
+    const counts = this.privateStore.unreportedCoUse()
+    if (Object.keys(counts).length === 0) return
+    await this.team.append({ type: 'couse.report', counts })
+    this.privateStore.markCoUseReported(counts)
+  }
+
+  /**
+   * Sinapsi d'uso di una sessione (B12): ogni coppia di ricordi del team serviti nella sessione si
+   * rafforza di uno, una volta sola per sessione. Chiamata quando cambiano gli esiti della sessione.
+   *
+   * EN: A session's use synapses (B12): every pair of team memories that helped in the session gets
+   * one stronger, only once per session. Called when the session's outcomes change.
+   */
+  private recordCoUse (sessionId: string): void {
+    try {
+      const ids = this.privateStore.sessionUseful(sessionId).filter((id) => !this.personalIds.has(id) && this.index.get(id))
+      const added = this.privateStore.countCoUse(sessionId, sessionPairs(ids))
+      if (added) this.log(`sinapsi d'uso: ${added} coppie rafforzate (sessione ${sessionId.slice(0, 8)})`)
+    } catch (err) {
+      this.log(`sinapsi d'uso non registrate: ${(err as Error).message}`)
+    }
+  }
+
   // ═══════════════════════════ Efficacia (B11) ═══════════════════════════
   // EN: Efficacy (B11)
 
@@ -1676,7 +1890,7 @@ export class MicelioNode extends EventEmitter {
     }
     let changed = false
     for (const [id, b] of best) changed = this.privateStore.setOutcome({ session: sessionId, memory: id, verdict: b.verdict, judge: 'heuristic', evidence: b.evidence, project }) || changed
-    if (changed) this.changed('efficacy')
+    if (changed) { this.refreshHabituation(); this.recordCoUse(sessionId); this.changed('efficacy') }
     return [...best].map(([id, b]) => ({ id, short: b.short, title: b.title }))
   }
 
@@ -1701,7 +1915,7 @@ export class MicelioNode extends EventEmitter {
       }
       if (v.verdict === 'wrong') this.log(`ricordo forse sbagliato o superato (sessione ${sessionId.slice(0, 8)}): ${rec.title}`)
     }
-    if (changed) this.changed('efficacy')
+    if (changed) { this.refreshHabituation(); this.recordCoUse(sessionId); this.changed('efficacy') }
   }
 
   /** Voto +1 automatico, solo se questo nodo non ha già votato quel ricordo (decisione dell'utente). / EN: Automatic +1 vote, only if this node hasn't already voted on that memory (user's decision). */
@@ -1774,7 +1988,7 @@ export class MicelioNode extends EventEmitter {
       topUseful: [...stats].filter(([, s]) => s.useful > 0).sort((a, b) => b[1].useful - a[1].useful).slice(0, 10).map(([id, s]) => ({ ...mem(id), ...s })),
       // Rumore: restituiti spesso ma mai utili (almeno 5 volte e qualche esito senza uso)
       // EN: Noise: often returned but never useful (at least 5 times and some outcomes with no use)
-      noisy: [...stats].filter(([, s]) => s.returned >= 5 && s.useful === 0 && s.unused > 0).sort((a, b) => b[1].returned - a[1].returned).slice(0, 10).map(([id, s]) => ({ ...mem(id), ...s })),
+      noisy: [...stats].filter(([, s]) => s.returned >= 5 && s.useful === 0 && s.unused > 0).sort((a, b) => b[1].returned - a[1].returned).slice(0, 10).map(([id, s]) => ({ ...mem(id), ...s, factor: this.habitFactor(id) })),
       wrong: outs.filter((o) => o.verdict === 'wrong').slice(0, 20).map((o) => ({ ...mem(o.memory), reason: o.evidence, session: o.session, ts: o.ts })),
       unanswered: [...misses].sort((a, b) => b[1] - a[1]).slice(0, 15).map(([query, count]) => ({ query, count }))
     }
@@ -1821,8 +2035,31 @@ export class MicelioNode extends EventEmitter {
     const rec = known ?? this.index.get(id)
     if (!rec) return 0
     const root = this.rootsById.has(id)
-    const a = activation({ kind: rec.kind, createdAt: rec.ts, lastUsed: s?.lastUsed ?? undefined, uses: s?.uses ?? 0, useful: this.usefulCounts.get(id) ?? 0, votes: s?.votes ?? 0, degree: this.degrees.get(id) ?? 0, pinned: !!s?.pinned, root })
+    const a = activation({ kind: rec.kind, createdAt: rec.ts, lastUsed: s?.lastUsed ?? undefined, uses: s?.uses ?? 0, useful: this.usefulCounts.get(id) ?? 0, votes: s?.votes ?? 0, degree: this.degrees.get(id) ?? 0, pinned: !!s?.pinned, root, effort: this.effortById.get(id) })
     return root || s?.pinned ? a : a * stalenessFactor(this.staleness.get(id))
+  }
+
+  /** Ricalcola l'abituazione dagli esiti degli ultimi 90 giorni (B12). / EN: Recomputes habituation from the last 90 days of outcomes (B12). */
+  private refreshHabituation (): void {
+    try {
+      this.habituation = habituationStreaks(this.privateStore.outcomeVerdicts(Date.now() - EFFICACY_KEEP_MS))
+    } catch (err) {
+      this.log(`abituazione non calcolata: ${(err as Error).message}`)
+    }
+  }
+
+  /** Fattore di abituazione 0..1 (B12); 1 per i ricordi fissati, che sono una scelta del team. / EN: Habituation factor 0..1 (B12); 1 for pinned memories, which are a team choice. */
+  private habitFactor (id: string, signals = this.index.signals()): number {
+    const streak = this.habituation.get(id)
+    return !streak || signals.get(id)?.pinned ? 1 : habituationFactor(streak)
+  }
+
+  /** Campo `habituation` di RecallHit, solo se il ricordo pesa meno del pieno. / EN: RecallHit's `habituation` field, only if the memory weighs less than full. */
+  private habituationOf (id: string, pinned: boolean): { habituation?: { streak: number, factor: number } } {
+    const streak = this.habituation.get(id)
+    if (!streak || pinned) return {}
+    const factor = habituationFactor(streak)
+    return factor < 1 ? { habituation: { streak, factor } } : {}
   }
 
   /**
@@ -1872,7 +2109,8 @@ export class MicelioNode extends EventEmitter {
         pinned: !!s?.pinned,
         ...(r ? { root: { category: r.category, status: r.status } } : {}),
         ...(this.personalIds.has(h.id) ? { personal: true } : {}),
-        ...this.staleOf(h.id)
+        ...this.staleOf(h.id),
+        ...this.habituationOf(h.id, !!s?.pinned)
       }
     })
   }
@@ -2031,7 +2269,9 @@ export class MicelioNode extends EventEmitter {
         const rootIds = new Set(roots.map((r) => r.id))
         const memories = this.enrich(this.index.all())
           .filter((h) => !rootIds.has(h.id) && (h.source?.code?.project?.toLowerCase() === project.toLowerCase() || h.tags.includes(project.toLowerCase())))
-          .sort((a, b) => (b.activation ?? 0) - (a.activation ?? 0)).slice(0, CONTEXT_MEMORIES)
+          // B12: l'abituazione pesa per intero nel contesto automatico
+          // EN: B12: habituation weighs in full in automatic context
+          .sort((a, b) => (b.activation ?? 0) * (b.habituation?.factor ?? 1) - (a.activation ?? 0) * (a.habituation?.factor ?? 1)).slice(0, CONTEXT_MEMORIES)
         text = sessionContext({ team, project, roots, memories, maxChars: cfg.maxChars })
         shown = [...roots, ...memories]
       } else {
@@ -2206,7 +2446,13 @@ export class MicelioNode extends EventEmitter {
     const [q] = await this.embedder.embed([text.slice(0, 2000)], 'query')
     const all = nearest(q, this.index.vectors(this.embedder.model), Number.MAX_SAFE_INTEGER)
     const cutoff = relevanceCutoff(all.map((x) => x.score), promptThreshold(this.embedder.model))
-    const ids = all.filter((r) => r.score >= cutoff).slice(0, n).map((r) => r.id)
+    // B12: abituazione piena PRIMA della soglia: un ricordo che è stato solo rumore ne esce.
+    // La soglia si calcola sui punteggi originali, così l'abituazione non la sposta.
+    // EN: B12: full habituation BEFORE the threshold: a memory that has only been noise drops out.
+    //     The threshold is computed on the original scores, so habituation doesn't move it.
+    const signals = this.index.signals()
+    const ids = all.map((r) => ({ id: r.id, score: r.score * this.habitFactor(r.id, signals) }))
+      .filter((r) => r.score >= cutoff).sort((a, b) => b.score - a.score).slice(0, n).map((r) => r.id)
     return this.enrich(this.index.getMany(ids))
   }
 
@@ -3147,8 +3393,9 @@ export class MicelioNode extends EventEmitter {
       // Tempi per fase: finiscono nel log solo se l'aggiornamento è lento (vedi in fondo)
       // EN: Per-phase timings: they go to the log only if the update is slow (see below)
       const lap = phaseTimer()
-      const [all, members, votes, pins, usage, links, roots, useful] = await Promise.all([team.memories(), team.members(), team.votes(), team.pins(), team.usage(), team.links(), team.roots(), team.useful()])
+      const [all, members, votes, pins, usage, links, roots, useful, coUse, acks] = await Promise.all([team.memories(), team.members(), team.votes(), team.pins(), team.usage(), team.links(), team.roots(), team.useful(), team.coUse(), team.redactAcks()])
       this.usefulCounts = useful
+      this.coUsePairs = coUse
       lap('vista')
       this.rootsById = roots
       this.teamNameCache = (await team.team())?.name ?? this.teamNameCache
@@ -3160,6 +3407,9 @@ export class MicelioNode extends EventEmitter {
       //     doesn't become "new" again (activation, sorting, digests)
       for (let i = 0; i < all.length; i++) { const o = all[i].source?.origin?.ts; if (o) all[i] = { ...all[i], ts: o } }
       const memories = all.filter((m) => (m.status ?? 'active') === 'active')
+      // B12: fatica per l'attivazione (anche dove il chiamante conosce solo tipo e data)
+      // EN: B12: effort for activation (also where the caller only knows kind and date)
+      this.effortById = new Map(memories.filter((m) => m.source?.effort).map((m) => [m.id, m.source!.effort!.score]))
       this.inactive = all.filter((m) => (m.status ?? 'active') !== 'active')
       this.dreamLinks = links
       // Nell'indice anche i ricordi personali (B4), così ricerca e agenti li trovano insieme a quelli
@@ -3173,6 +3423,9 @@ export class MicelioNode extends EventEmitter {
       lap('indice')
       writeExport(this.paths.export, memories, members)
       lap('export')
+      // B12: indice ed export sono già senza i redatti; si ripulisce il resto e si conferma
+      // EN: B12: index and export are already free of redacted ones; clean the rest and confirm
+      this.confirmRedactions(this.inactive, acks)
       // Costellazione, galassie e collegamenti per ricordo: in sottofondo, fuori dalla scrittura.
       // Intanto graph() restituisce la versione precedente (vecchia di pochi secondi): la UI riceve
       // "memories" quando quella nuova è pronta e la ricarica.

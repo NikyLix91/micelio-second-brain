@@ -66,8 +66,9 @@ const S = defineStrings({
     topRow: (here: number, team: number) => `utile ${here} ${here === 1 ? 'volta' : 'volte'} qui · ${team} nel team`,
     noTop: 'Ancora nessun ricordo utile in questo periodo.',
     noisy: 'Rumore',
-    noisyIntro: 'Restituiti spesso, mai utili: forse vanno riscritti, accorpati o archiviati.',
+    noisyIntro: 'Restituiti spesso, mai utili: forse vanno riscritti, accorpati o archiviati. Intanto Micelio li propone meno (abituazione).',
     noisyRow: (returned: number) => `restituito ${returned} volte, mai usato`,
+    noisyFactor: (pct: number) => ` · ora pesa il ${pct}%`,
     noNoisy: 'Nessun ricordo rumoroso.',
     wrongTitle: 'Sbagliati o superati',
     wrongIntro: 'L\'LLM li ha trovati contraddetti da ciò che è emerso nella sessione. Aprili e decidi: correggi, vota giù o archivia (per una Radice: segnala da rivedere).',
@@ -109,8 +110,9 @@ const S = defineStrings({
     topRow: (here: number, team: number) => `useful ${here} ${here === 1 ? 'time' : 'times'} here · ${team} in the team`,
     noTop: 'No useful memory in this period yet.',
     noisy: 'Noise',
-    noisyIntro: 'Returned often, never useful: they may need rewriting, merging or archiving.',
+    noisyIntro: 'Returned often, never useful: they may need rewriting, merging or archiving. Meanwhile Micelio offers them less (habituation).',
     noisyRow: (returned: number) => `returned ${returned} times, never used`,
+    noisyFactor: (pct: number) => ` · now weighs ${pct}%`,
     noNoisy: 'No noisy memory.',
     wrongTitle: 'Wrong or outdated',
     wrongIntro: 'The LLM found them contradicted by what came out in the session. Open them and decide: fix, vote down or archive (for a Root: flag for review).',
@@ -222,7 +224,7 @@ export function Efficacy () {
               <p className='muted small' style={{ marginTop: 0 }}>{s.noisyIntro}</p>
               {r.noisy.length === 0
                 ? <Empty>{s.noNoisy}</Empty>
-                : <ul className='plain'>{r.noisy.map((m) => <li key={m.id}>{link(m)} <span className='muted small'>· {s.noisyRow(m.returned)}</span></li>)}</ul>}
+                : <ul className='plain'>{r.noisy.map((m) => <li key={m.id}>{link(m)} <span className='muted small'>· {s.noisyRow(m.returned)}{m.factor < 1 ? s.noisyFactor(Math.round(m.factor * 100)) : ''}</span></li>)}</ul>}
             </Card>
             <Card help='efficacy#wrong' title={s.wrongTitle}>
               <p className='muted small' style={{ marginTop: 0 }}>{s.wrongIntro}</p>

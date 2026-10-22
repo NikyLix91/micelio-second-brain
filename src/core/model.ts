@@ -21,6 +21,8 @@ export interface MemorySource {
   type: string, ref?: string, name?: string, size?: number, mime?: string, code?: CodeRefs, rank?: number, batch?: number
   /** Ricordo ripristinato da un backup (B7): autore, chiave, data e team d'origine. / EN: Memory restored from a backup (B7): original author, key, date and team. */
   origin?: { author?: string, key?: string, ts?: number, team?: string }
+  /** Fatica del capitolo da cui è nato (B12, src/ingest/effort.ts). / EN: Effort of the chapter it came from (B12, src/ingest/effort.ts). */
+  effort?: { score: number, errors: number, minutes: number }
 }
 
 /** Un ricordo del team come appare nella vista. / EN: A team memory as it appears in the view. */
@@ -50,6 +52,28 @@ export interface MemoryRecord {
   supersededBy?: string
   /** Motivo dell'archiviazione o della sostituzione. / EN: Reason for archiving or superseding. */
   statusReason?: string
+  /** Redazione (B12): quando e da quale admin. Assenti nelle redazioni precedenti alla 0.6.0. / EN: Redaction (B12): when and by which admin. Missing in redactions before 0.6.0. */
+  redactedAt?: number
+  redactedBy?: string
+}
+
+/**
+ * Conferma di un nodo di aver tolto un ricordo redatto dal proprio PC (B12, evento `redact.ack`).
+ * `person` e `sig`: firma dell'identità personale (src/core/identity.ts), assenti se il nodo non ha
+ * un'identità; `sig` è tenuta solo se valida.
+ *
+ * EN: A node's confirmation that it removed a redacted memory from its PC (B12, `redact.ack`
+ * event). `person` and `sig`: signature of the personal identity (src/core/identity.ts), missing if
+ * the node has no identity; `sig` is kept only if valid.
+ */
+export interface RedactAck {
+  ts: number
+  /** Cosa ha ripulito oltre a indice ed export: risposte della chat, proposte in Inbox, copie personali. / EN: What it cleaned besides index and export: chat answers, Inbox proposals, personal copies. */
+  cleaned: { chat: number, inbox: number, personal: number }
+  /** Backup automatici precedenti alla redazione rimasti nella cartella dei backup. / EN: Automatic backups older than the redaction left in the backup folder. */
+  backups: number
+  person?: string
+  sig?: string
 }
 
 /** Un membro del team. I membri espulsi restano nella vista con `removed: true` (storico). / EN: A team member. Removed members stay in the view with `removed: true` (history). */
@@ -130,6 +154,24 @@ export interface RecallHit {
   stale?: { commits: number, missing: number }
   /** Presente se il ricordo è una Radice: categoria e stato di revisione. / EN: Present if the memory is a Root: category and review status. */
   root?: { category: RootCategory, status: 'ok' | 'review' }
+  /**
+   * Abituazione (B12, src/rank/habituation.ts): presente se il ricordo è stato fornito agli agenti
+   * più volte di fila senza servire. `streak` = esiti senza uso dall'ultimo utile (su questo PC),
+   * `factor` = quanto pesa ora nelle classifiche (1 = pieno).
+   *
+   * EN: Habituation (B12, src/rank/habituation.ts): present if the memory was delivered to agents
+   * several times in a row without helping. `streak` = outcomes with no use since the last useful one
+   * (on this PC), `factor` = how much it weighs in rankings now (1 = full).
+   */
+  habituation?: { streak: number, factor: number }
+  /**
+   * Arrivato nei risultati grazie a una sinapsi d'uso (B12): id del ricordo trovato dalla ricerca
+   * che lo ha "portato con sé", perché di solito servono insieme.
+   *
+   * EN: Reached the results through a use synapse (B12): id of the memory found by the search that
+   * "brought it along", because they're usually needed together.
+   */
+  broughtBy?: string
 }
 
 /** Segnalazione su una Radice: perché andrebbe rivista. / EN: Report on a Root: why it should be reviewed. */

@@ -45,7 +45,7 @@ import crypto from 'hypercore-crypto'
 import b4a from 'b4a'
 import z32 from 'z32'
 import { envelope, type EventPayload } from '../core/events'
-import type { GapRecord, InviteRecord, MemberRecord, MemoryRecord, RootRecord, TeamRecord } from '../core/model'
+import type { GapRecord, InviteRecord, MemberRecord, MemoryRecord, RedactAck, RootRecord, TeamRecord } from '../core/model'
 import { KEYS, RANGES, applyNodes, openView } from './apply'
 import { relayKeyFor } from './relay-key'
 
@@ -416,9 +416,13 @@ export class TeamNode extends EventEmitter {
    * @throws se il nodo non è writer (non ancora accettato, o espulso)
    *         EN: if the node is not a writer (not yet accepted, or removed)
    */
-  async append (payload: EventPayload): Promise<void> {
+  /**
+   * @param ts istante dell'evento, se deve essere noto prima (es. una firma che lo include, B12)
+   *        EN: time of the event, if it must be known in advance (e.g. a signature covering it, B12)
+   */
+  async append (payload: EventPayload, ts?: number): Promise<void> {
     if (!this.base?.writable) throw new Error('Questo nodo non è (ancora) un writer del team')
-    await this.base.append(envelope(payload))
+    await this.base.append(envelope(payload, ts))
   }
 
   /**
@@ -704,6 +708,35 @@ export class TeamNode extends EventEmitter {
       const v = value as { count: number, last: number }
       const prev = out.get(id) ?? { count: 0, last: 0 }
       out.set(id, { count: prev.count + v.count, last: Math.max(prev.last, v.last) })
+    }
+    return out
+  }
+
+  /**
+   * Sinapsi d'uso (B12): per coppia "idA:idB", sessioni in cui sono serviti insieme (somma su tutti
+   * i nodi) e ultima volta.
+   *
+   * EN: Use synapses (B12): per pair "idA:idB", sessions in which they helped together (sum over all
+   * nodes) and the last time.
+   */
+  async coUse (): Promise<Map<string, { count: number, last: number }>> {
+    const out = new Map<string, { count: number, last: number }>()
+    for await (const { key, value } of this.base.view.createReadStream(RANGES.couse)) {
+      const pair = String(key).split('/')[1]
+      const v = value as { count: number, last: number }
+      const prev = out.get(pair) ?? { count: 0, last: 0 }
+      out.set(pair, { count: prev.count + v.count, last: Math.max(prev.last, v.last) })
+    }
+    return out
+  }
+
+  /** Conferme di redazione (B12): per ricordo, per nodo. / EN: Redaction confirmations (B12): per memory, per node. */
+  async redactAcks (): Promise<Map<string, Map<string, RedactAck>>> {
+    const out = new Map<string, Map<string, RedactAck>>()
+    for await (const { key, value } of this.base.view.createReadStream(RANGES.redactAcks)) {
+      const [, id, node] = String(key).split('/')
+      if (!out.has(id)) out.set(id, new Map())
+      out.get(id)!.set(node, value as RedactAck)
     }
     return out
   }

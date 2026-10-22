@@ -518,6 +518,16 @@ micelio redact <id> --reason "conteneva un dato di un cliente"
 
 Titolo e contenuto spariscono dalla vista di tutti i nodi e il ricordo non si può ripristinare.
 
+Dalla 0.6.0 ogni PC, appena riceve la redazione, toglie il ricordo anche da risposte della chat, Inbox e copie personali e lo **conferma** (con una firma, se ha un'identità personale). Chi ha confermato e la ricevuta da consegnare, per esempio a un cliente:
+
+```bash
+micelio redactions                 # elenco, con quanti PC hanno confermato
+micelio redactions <id>            # ricevuta leggibile
+micelio redactions <id> --json     # ricevuta con le firme verificabili
+```
+
+La stessa cosa si vede in **Sicurezza → Redazioni**. I backup automatici fatti prima della redazione non si toccano: la ricevuta dice quanti ne restano su ogni PC.
+
 **Limite:** chi l'aveva già letto, esportato o scaricato ne conserva una copia, e i blocchi cifrati restano nei log replicati. Per questo la difesa principale resta il filtro in ingresso.
 
 ### Metriche

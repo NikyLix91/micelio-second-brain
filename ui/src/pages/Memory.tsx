@@ -41,6 +41,8 @@ const S = defineStrings({
     filters: { all: 'Tutti', personal: '🔒 Personali', stale: '⚠ Codice cambiato' },
     personalBadge: 'personale',
     staleBadge: 'codice cambiato',
+    broughtBadge: 'serve insieme',
+    broughtTitle: "Portato da una sinapsi d'uso: nel team serve di solito insieme a un altro risultato, anche se non contiene le parole cercate",
     noPersonal: 'Nessun ricordo personale. Salvane uno con «Nuovo ricordo» → «Solo per me».',
     noStale: 'Nessun ricordo con il codice cambiato (o nessun repository su questo PC).',
     recheck: 'Ricontrolla i repository',
@@ -80,6 +82,8 @@ const S = defineStrings({
     filters: { all: 'All', personal: '🔒 Personal', stale: '⚠ Code changed' },
     personalBadge: 'personal',
     staleBadge: 'code changed',
+    broughtBadge: 'used together',
+    broughtTitle: "Brought by a use synapse: in the team it is usually needed together with another result, even if it doesn't contain the searched words",
     noPersonal: 'No personal memory. Save one with "New memory" → "Just for me".',
     noStale: 'No memory with changed code (or no repository on this PC).',
     recheck: 'Check the repositories again',
@@ -180,6 +184,7 @@ export function Memory () {
                     <span>· {dateTime(h.ts)}</span>
                     {h.personal && <span className='badge'>🔒 {s.personalBadge}</span>}
                     {h.stale && <span className='badge warn'>⚠ {s.staleBadge}</span>}
+                    {h.broughtBy && <span className='badge' title={s.broughtTitle}>⇄ {s.broughtBadge}</span>}
                   </div>
                 </div>
               ))}

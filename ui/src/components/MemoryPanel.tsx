@@ -56,7 +56,9 @@ const S = defineStrings({
     shared: (o: string): string => o === 'team' ? 'Condiviso con il team.' : o === 'inbox' ? 'Messo in inbox per una verifica.' : 'Non condiviso: il filtro lo trattiene come privato.',
     remove: 'Cancella',
     removeConfirm: 'Sì, cancella',
-    stale: (commits: number, missing: number) => `Il codice citato è cambiato dopo questo ricordo: ${commits} commit sui file citati${missing ? `, ${missing} file non più presenti` : ''}. Verifica sul codice attuale prima di fidarti.`
+    stale: (commits: number, missing: number) => `Il codice citato è cambiato dopo questo ricordo: ${commits} commit sui file citati${missing ? `, ${missing} file non più presenti` : ''}. Verifica sul codice attuale prima di fidarti.`,
+    hard: (errors: number, minutes: number) => `Nato da una sessione difficile: ${errors} errori, ${minutes} minuti. Parte con un po' più di peso, che si perde se nessuno lo usa.`,
+    habituation: (streak: number, pct: number) => `Fornito agli agenti ${streak} volte di fila senza servire: nel contesto automatico ora pesa il ${pct}%, nelle ricerche un po' di più. Torna al pieno appena serve una volta.`
   },
   en: {
     fromDocument: 'From document:',
@@ -98,7 +100,9 @@ const S = defineStrings({
     shared: (o: string): string => o === 'team' ? 'Shared with the team.' : o === 'inbox' ? 'Sent to the inbox for a check.' : 'Not shared: the filter keeps it private.',
     remove: 'Delete',
     removeConfirm: 'Yes, delete',
-    stale: (commits: number, missing: number) => `The cited code changed after this memory: ${commits} commits on the cited files${missing ? `, ${missing} files no longer present` : ''}. Check the current code before trusting it.`
+    stale: (commits: number, missing: number) => `The cited code changed after this memory: ${commits} commits on the cited files${missing ? `, ${missing} files no longer present` : ''}. Check the current code before trusting it.`,
+    hard: (errors: number, minutes: number) => `Born from a hard session: ${errors} errors, ${minutes} minutes. It starts with a bit more weight, which fades if nobody uses it.`,
+    habituation: (streak: number, pct: number) => `Delivered to agents ${streak} times in a row without helping: in automatic context it now weighs ${pct}%, a bit more in searches. It goes back to full as soon as it helps once.`
   }
 })
 
@@ -307,6 +311,14 @@ export function MemoryPanel ({ node, onClose }: { node: GraphNode, onClose: () =
       </dl>
       {full.data?.stale && (
         <div className='notice warn small' style={{ marginTop: 10 }}>{s.stale(full.data.stale.commits, full.data.stale.missing)} <HelpButton topic='memory#stale' /></div>
+      )}
+      {/* B12: scoperta sudata (soglia HARD_EFFORT di src/ingest/effort.ts) / EN: B12: hard-won discovery (HARD_EFFORT threshold in src/ingest/effort.ts) */}
+      {(full.data?.source?.effort?.score ?? 0) >= 0.5 && (
+        <div className='notice small' style={{ marginTop: 10 }}>{s.hard(full.data!.source!.effort!.errors, full.data!.source!.effort!.minutes)} <HelpButton topic='priority#effort' /></div>
+      )}
+      {/* B12: abituazione, il ricordo viene proposto meno / EN: B12: habituation, the memory is offered less */}
+      {full.data?.habituation && (
+        <div className='notice small' style={{ marginTop: 10 }}>{s.habituation(full.data.habituation.streak, Math.round(full.data.habituation.factor * 100))} <HelpButton topic='efficacy#habituation' /></div>
       )}
       {full.data?.personal && <PersonalBox id={node.id} onDone={onClose} />}
       {full.data && !full.data.personal && <Signals id={node.id} activation={full.data.activation ?? 0} votes={full.data.votes ?? 0} uses={full.data.uses ?? 0} useful={full.data.useful ?? 0} pinned={!!full.data.pinned} />}

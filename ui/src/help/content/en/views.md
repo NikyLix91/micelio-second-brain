@@ -4,7 +4,17 @@ Two ways of looking at the team knowledge as a constellation: every memory is a 
 
 ## Links {#links}
 
-Two memories are linked when they share **tags** (weighted: rare tags count more), when they are **close in meaning** (similar vectors) or when **dreaming** linked them explicitly. The most linked and most used memories are bigger stars.
+Two memories are linked when they share **tags** (weighted: rare tags count more), when they are **close in meaning** (similar vectors), when **dreaming** linked them explicitly or when they are **needed together** (use synapses, in aqua green). The most linked and most used memories are bigger stars.
+
+## Use synapses {#use-synapses}
+
+The other synapses say that two memories **talk** about the same thing; this one says they are **needed together** in real work. When two memories helped in a Claude Code session (outcome "used" or "probably useful", see **Effectiveness**), their link gets stronger. It's Hebbian learning: what fires together wires together. Whoever touches the gateway configuration, for example, usually also needs the release procedure, even if the two texts aren't alike.
+
+- **Strength:** it grows with the sessions in which the two memories helped together (1 session 32%, 3 sessions 63%, 8 or more 100%) and halves every 90 days without new reinforcement. Below 25% the link isn't shown.
+- **In search:** the top three results bring along their use neighbors with strength of at least 50%, at most 2 per search, right after the memory that brings them. In the app's search they carry the label "⇄ used together"; the agent gets them with the line "PORTATO DA" (brought by). Automatic context doesn't use them for now.
+- **In the constellation** they count like the other links, so they raise a little the activation of memories often needed together with others.
+
+**How it works behind the scenes.** When a session's outcomes change, Micelio takes the team memories that helped in it (at most 6, the ones confirmed by the LLM first: so at most 15 pairs) and counts each pair **only once per session** (tables `couse_local` and `couse_sessions` in `private.db`). The counters go to the team with the `couse.report` event every few minutes: cumulative counters per pair and per PC, summed over all PCs (like uses), so repeated or out-of-order reports don't skew the total. Nodes on older versions ignore it. Each memory keeps at most its 10 strongest use links; the computation happens with the constellation, in the background. Personal memories never enter the pairs. Code: `src/rank/co-use.ts`.
 
 ## The Nucleus {#nucleus}
 

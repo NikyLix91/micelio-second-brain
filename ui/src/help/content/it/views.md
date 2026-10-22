@@ -4,7 +4,17 @@ Due modi di guardare il sapere del team come una costellazione: ogni ricordo è 
 
 ## I collegamenti {#links}
 
-Due ricordi sono collegati quando hanno **tag in comune** (pesati: i tag rari contano di più), quando sono **vicini di significato** (vettori simili) o quando il **dreaming** li ha collegati esplicitamente. I ricordi più collegati e più usati sono stelle più grandi.
+Due ricordi sono collegati quando hanno **tag in comune** (pesati: i tag rari contano di più), quando sono **vicini di significato** (vettori simili), quando il **dreaming** li ha collegati esplicitamente o quando **servono insieme** (sinapsi d'uso, in verde acqua). I ricordi più collegati e più usati sono stelle più grandi.
+
+## Le sinapsi d'uso {#use-synapses}
+
+Le altre sinapsi dicono che due ricordi **parlano** della stessa cosa; questa dice che **servono insieme** nel lavoro vero. Quando in una sessione di Claude Code sono serviti due ricordi (esito «usato» o «probabilmente utile», vedi **Efficacia**), il loro legame si rafforza. È l'apprendimento hebbiano: ciò che si attiva insieme si collega. Chi tocca la configurazione del gateway, per esempio, di solito ha bisogno anche della procedura di rilascio, anche se i due testi non si somigliano.
+
+- **Forza:** cresce con le sessioni in cui i due ricordi sono serviti insieme (1 sessione 32%, 3 sessioni 63%, 8 o più 100%) e si dimezza ogni 90 giorni senza nuovi rinforzi. Sotto il 25% il legame non si mostra.
+- **Nella ricerca:** i primi tre risultati si portano dietro i vicini d'uso con forza almeno del 50%, al massimo 2 per ricerca, subito dopo il ricordo che li porta. Nella ricerca dell'app hanno l'etichetta «⇄ serve insieme»; all'agente arrivano con la riga «PORTATO DA». Il contesto automatico per ora non li usa.
+- **Nella costellazione** contano come gli altri collegamenti, quindi alzano un poco l'attivazione dei ricordi che servono spesso insieme ad altri.
+
+**Come funziona dietro.** Quando cambiano gli esiti di una sessione, Micelio prende i ricordi del team che vi sono serviti (al massimo 6, prima quelli confermati dall'LLM: quindi al massimo 15 coppie) e conta ogni coppia **una volta sola per sessione** (tabelle `couse_local` e `couse_sessions` in `private.db`). I contatori vanno al team con l'evento `couse.report` ogni pochi minuti: contatori cumulativi per coppia e per PC, sommati su tutti i PC (come gli usi), così report ripetuti o fuori ordine non falsano il totale. I nodi di versioni precedenti lo ignorano. Ogni ricordo tiene al massimo i 10 legami d'uso più forti; il calcolo avviene con la costellazione, in sottofondo. I ricordi personali non entrano mai nelle coppie. Codice: `src/rank/co-use.ts`.
 
 ## Il Nucleo {#nucleus}
 

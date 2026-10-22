@@ -782,6 +782,18 @@ export class ApiController {
     return { ok: true }
   }
 
+  /** Redazioni del team con le conferme dei membri (B12). Visibili a tutti i membri. / EN: The team's redactions with the members' confirmations (B12). Visible to every member. */
+  @Get('redactions')
+  redactions () {
+    return this.node.redactions()
+  }
+
+  /** Ricevuta di una redazione: testo leggibile (nella lingua chiesta) e JSON verificabile. / EN: Receipt of a redaction: readable text (in the requested language) and verifiable JSON. */
+  @Get('redactions/:id/receipt')
+  redactionReceipt (@Param('id') id: string, @Query('lang') lang?: string) {
+    return this.node.redactionReceipt(id, lang === 'en' ? 'en' : 'it')
+  }
+
   /** Metriche sintetiche del nodo. / EN: Summary metrics of the node. */
   @Get('metrics')
   metrics () {

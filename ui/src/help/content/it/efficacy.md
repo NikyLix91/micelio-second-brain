@@ -24,7 +24,27 @@ I ricordi con più esiti utili nel periodo. Per ognuno: quante volte è stato ut
 
 ## Rumore {#noise}
 
-Ricordi restituiti spesso, almeno 5 volte, ma mai utili. Probabilmente il titolo li fa sembrare pertinenti a domande che non c'entrano, oppure ripetono cose ovvie. Si possono riscrivere, accorpare o archiviare.
+Ricordi restituiti spesso, almeno 5 volte, ma mai utili. Probabilmente il titolo li fa sembrare pertinenti a domande che non c'entrano, oppure ripetono cose ovvie. Si possono riscrivere, accorpare o archiviare. Intanto Micelio li propone meno: vedi **Abituazione**.
+
+## Abituazione {#habituation}
+
+Un ricordo fornito agli agenti più volte di fila senza mai servire viene proposto **meno**, come succede nel cervello con uno stimolo che si ripete senza conseguenze. Serve a togliere rumore dal contesto: ogni ricordo inutile distrae l'agente e consuma token.
+
+| Volte di fila senza servire | Peso |
+|---|---|
+| fino a 2 | 100% |
+| 3 | 85% |
+| 5 | 55% |
+| 7 o più | 30% (minimo) |
+
+- **Contesto automatico** (inizio sessione e ogni richiesta): peso pieno. Un ricordo che è stato solo rumore può uscire del tutto dal contesto di una richiesta.
+- **Ricerche esplicite** (`recall`, ricerca nell'app, chat): metà dell'effetto, al minimo il 65%, perché lì la domanda è precisa.
+- **Basta un esito utile** («usato» o «probabilmente utile») per tornare al 100%. Un esito «sbagliato» conta come non servito.
+- **I ricordi fissati non si toccano.** L'attivazione non cambia: costellazione, dreaming e archiviazione restano uguali.
+
+Il dettaglio del ricordo dice quante volte di fila non è servito e quanto pesa ora; la lista **Rumore** mostra il peso attuale.
+
+**Come funziona dietro.** La serie si legge dagli esiti di **questo PC** (tabella `outcomes` di `private.db`, ultimi 90 giorni), in ordine di tempo: ogni esito senza uso aggiunge uno, un esito utile azzera. Non si usano i contatori del team (`usage.report`, `useful.report`): sono cumulativi, senza ordine nel tempo, e contano anche consegne che nessuno ha valutato. Il calcolo si rifà solo quando arrivano esiti nuovi; nella ricerca il fattore moltiplica il punteggio finale, nel contesto per richiesta moltiplica la somiglianza prima della soglia di pertinenza (la soglia resta calcolata sui punteggi originali). Codice: `src/rank/habituation.ts`.
 
 ## Sbagliati o superati {#wrong}
 

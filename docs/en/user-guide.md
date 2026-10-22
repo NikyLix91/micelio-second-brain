@@ -520,6 +520,16 @@ micelio redact <id> --reason "contained a client's data"
 
 Title and content disappear from the view of all nodes and the memory cannot be restored.
 
+Since 0.6.0 every PC, as soon as it receives the redaction, also removes the memory from chat answers, Inbox and personal copies and **confirms** it (with a signature, if it has a personal identity). Who confirmed, and the receipt to hand over, for example to a customer:
+
+```bash
+micelio redactions                 # list, with how many PCs confirmed
+micelio redactions <id>            # readable receipt
+micelio redactions <id> --json     # receipt with verifiable signatures
+```
+
+The same is shown in **Security → Redactions**. Automatic backups made before the redaction are not touched: the receipt says how many remain on each PC.
+
 **Limitation:** anyone who had already read, exported or downloaded it keeps a copy, and the encrypted blocks remain in the replicated logs. That's why the main defense remains the input filter.
 
 ### Metrics
