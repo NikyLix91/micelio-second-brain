@@ -2,9 +2,9 @@
 
 # Phase 0 spike
 
-Throwaway experiments (folder [spikes/](../../spikes)) to validate the technical choices before writing the product. The spike code isn't maintained: the value is in the lessons, recorded in [DESIGN.md](DESIGN.md).
+Throwaway experiments to validate the technical choices before writing the product. The spike code isn't maintained and was removed from the repository (it is still in the git history, branch `phase-0-spikes`): the value is in the lessons, recorded in [DESIGN.md](DESIGN.md).
 
-## A: P2P network ([spikes/a-p2p](../../spikes/a-p2p))
+## A: P2P network
 
 **Question:** can Autobase + Hyperswarm handle a team of nodes that join, leave and write at the same time, over the internet?
 
@@ -16,9 +16,9 @@ Throwaway experiments (folder [spikes/](../../spikes)) to validate the technical
 - With `store.replicate(conn)` (as in the Autobase README) new writers are never discovered. You need `base.replicate(conn)`, which hooks up the *wakeup* protocol.
 - Hyperswarm rarely repeats the peer lookup: if the "bridge" node drops, the others stay isolated. A periodic discovery refresh is needed.
 
-**How to run it again:** `cd spikes/a-p2p && npm ci && docker compose up -d && bash scenario.sh`
+**How to run it again** (from the `phase-0-spikes` branch): `cd spikes/a-p2p && npm ci && docker compose up -d && bash scenario.sh`
 
-## B: Headless Claude CLI ([spikes/b-claude-cli](../../spikes/b-claude-cli))
+## B: Headless Claude CLI
 
 **Question:** can we use the user's Claude subscription (no API key) to classify and distill?
 
@@ -32,7 +32,7 @@ Throwaway experiments (folder [spikes/](../../spikes)) to validate the technical
 
 **Not verified:** Codex CLI (no subscription available).
 
-## C: Local embeddings ([spikes/c-embeddings](../../spikes/c-embeddings))
+## C: Local embeddings
 
 **Question:** can semantic search run locally, without APIs, on Windows?
 

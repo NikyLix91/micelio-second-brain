@@ -1,8 +1,8 @@
 # Spike della Fase 0
 
-Esperimenti usa e getta (cartella [spikes/](../spikes)) per validare le scelte tecniche prima di scrivere il prodotto. Il codice degli spike non viene mantenuto: il valore sta nelle lezioni, riportate in [DESIGN.md](DESIGN.md).
+Esperimenti usa e getta per validare le scelte tecniche prima di scrivere il prodotto. Il codice degli spike non viene mantenuto ed è stato tolto dalla repository (resta nella storia git, branch `phase-0-spikes`): il valore sta nelle lezioni, riportate in [DESIGN.md](DESIGN.md).
 
-## A — Rete P2P ([spikes/a-p2p](../spikes/a-p2p))
+## A — Rete P2P
 
 **Domanda:** Autobase + Hyperswarm reggono un team di nodi che entrano, escono e scrivono in contemporanea, su internet?
 
@@ -14,9 +14,9 @@ Esperimenti usa e getta (cartella [spikes/](../spikes)) per validare le scelte t
 - Con `store.replicate(conn)` (come nel README di Autobase) i nuovi writer non vengono mai scoperti. Serve `base.replicate(conn)`, che aggancia il protocollo *wakeup*.
 - Hyperswarm rifà la ricerca dei peer di rado: se cade il nodo "ponte", gli altri restano isolati. Serve un refresh periodico della discovery.
 
-**Come rieseguirlo:** `cd spikes/a-p2p && npm ci && docker compose up -d && bash scenario.sh`
+**Come rieseguirlo** (dal branch `phase-0-spikes`): `cd spikes/a-p2p && npm ci && docker compose up -d && bash scenario.sh`
 
-## B — Claude CLI headless ([spikes/b-claude-cli](../spikes/b-claude-cli))
+## B — Claude CLI headless
 
 **Domanda:** possiamo usare l'abbonamento Claude dell'utente (niente API key) per classificare e distillare?
 
@@ -30,7 +30,7 @@ Esperimenti usa e getta (cartella [spikes/](../spikes)) per validare le scelte t
 
 **Non verificato:** Codex CLI (nessun abbonamento disponibile).
 
-## C — Embedding locali ([spikes/c-embeddings](../spikes/c-embeddings))
+## C — Embedding locali
 
 **Domanda:** la ricerca semantica può girare in locale, senza API, su Windows?
 

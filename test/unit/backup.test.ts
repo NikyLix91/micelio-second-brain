@@ -49,7 +49,7 @@ describe('file di backup', () => {
   })
 
   it('nome del file: team senza caratteri problematici e data', () => {
-    expect(backupFileName('Acme - Team A', new Date(2026, 9, 19, 8, 5))).toBe('Acme-Team-A-2026-10-19-0805.micelio-backup')
+    expect(backupFileName('Acme - Team Web', new Date(2026, 9, 19, 8, 5))).toBe('Acme-Team-Web-2026-10-19-0805.micelio-backup')
   })
 })
 
