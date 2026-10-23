@@ -60,6 +60,14 @@ const screenshotDir = shotIdx >= 0
 // Electron imposta già da solo `ozone-platform` (a x11 se XDG_SESSION_TYPE non è wayland), quindi
 // si guarda il valore e non la presenza del flag. Per restare su X11 basta ELECTRON_OZONE_PLATFORM_HINT=x11.
 // Il rilancio avviene una sola volta: al secondo giro il valore è già wayland.
+// EN: Linux: native Wayland if there is a Wayland display, otherwise X11.
+//     Chromium picks the graphics platform before JavaScript starts: `appendSwitch` here is too
+//     late, and `ozone-platform-hint=auto` picks Wayland only with XDG_SESSION_TYPE=wayland, which
+//     is empty on WSLg (launched from the Windows menu). So the app is relaunched with the explicit
+//     flag. Electron already sets `ozone-platform` by itself (to x11 if XDG_SESSION_TYPE isn't
+//     wayland), so we check the value and not the flag's presence. To stay on X11 set
+//     ELECTRON_OZONE_PLATFORM_HINT=x11. The relaunch happens only once: the second time the value
+//     is already wayland.
 if (process.platform === 'linux' && process.env.WAYLAND_DISPLAY && !process.env.ELECTRON_OZONE_PLATFORM_HINT &&
     app.commandLine.getSwitchValue('ozone-platform') !== 'wayland') {
   app.relaunch({ args: [...process.argv.slice(1), '--ozone-platform=wayland'] })
