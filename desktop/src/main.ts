@@ -53,6 +53,19 @@ const screenshotDir = shotIdx >= 0
   ? path.resolve(process.argv[shotIdx + 1] && !process.argv[shotIdx + 1].startsWith('-') ? process.argv[shotIdx + 1] : 'screenshots')
   : null
 
+// Linux: Wayland nativo se c'è un display Wayland, altrimenti X11.
+// Chromium sceglie la piattaforma grafica prima che parta il JavaScript: `appendSwitch` qui è
+// troppo tardi, e `ozone-platform-hint=auto` sceglie Wayland solo con XDG_SESSION_TYPE=wayland,
+// vuoto su WSLg (avvio dal menu di Windows). Quindi si rilancia l'app con il flag esplicito.
+// Electron imposta già da solo `ozone-platform` (a x11 se XDG_SESSION_TYPE non è wayland), quindi
+// si guarda il valore e non la presenza del flag. Per restare su X11 basta ELECTRON_OZONE_PLATFORM_HINT=x11.
+// Il rilancio avviene una sola volta: al secondo giro il valore è già wayland.
+if (process.platform === 'linux' && process.env.WAYLAND_DISPLAY && !process.env.ELECTRON_OZONE_PLATFORM_HINT &&
+    app.commandLine.getSwitchValue('ozone-platform') !== 'wayland') {
+  app.relaunch({ args: [...process.argv.slice(1), '--ozone-platform=wayland'] })
+  app.exit(0)
+}
+
 // Una sola istanza: un secondo avvio riporta in primo piano la finestra esistente.
 // EN: Single instance: a second launch brings the existing window to the front.
 if (!screenshotDir && !app.requestSingleInstanceLock()) app.quit()
