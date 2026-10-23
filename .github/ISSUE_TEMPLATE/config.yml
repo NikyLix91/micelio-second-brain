@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/salvatorestracquadanio86/micelio-brain/security/advisories/new
+    about: Report it privately, please don't open a public issue.
+  - name: Documentation
+    url: https://github.com/salvatorestracquadanio86/micelio-brain/blob/main/docs/en/user-guide.md
+    about: The user guide answers most "how do I" questions.

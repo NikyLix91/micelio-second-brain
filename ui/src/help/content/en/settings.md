@@ -30,6 +30,14 @@ Registers Micelio as an **MCP server** of Claude Code (user level: valid in ever
 
 **One user, one configuration.** Claude Code reads its configuration from the profile of the system user running it. If you start it with a different user from the one Micelio runs as (for example Claude Code installed and used by an admin account because of company policy), it will never see Micelio, and Micelio won't be able to read its sessions. Micelio notices when there's no trace of Claude Code in this profile (neither sessions nor the fields Claude Code writes on first start) and shows a warning. The fix is to open Micelio with the same user you use Claude Code with (right click → "Run as different user"), join the team with an invite and run the setup again.
 
+## About {#about}
+
+App version, author and license, with links to the source code, the license text and the contribution guide.
+
+Micelio is **free software** under the **GNU AGPL-3.0** license: you can use it for free, also at work, study it, modify it and redistribute it. One condition only: if you distribute a modified version, or offer it to others as a network service, you must make its source code available under the same license. Using and modifying it only internally creates no obligation.
+
+**How it works behind the scenes.** The version number comes from `package.json` and is written into the UI at build time. The full license text is also in the installation folder (`LICENSE.txt`). Links open in the system browser, not inside the app.
+
 ## The configuration file {#config-file}
 
 `config.json` applies to the whole machine: port and interface of the local API (default `127.0.0.1:7337`), the access **token**, the LLM, the embedding model and the default team. Treat it as private: the token gives access to your node.

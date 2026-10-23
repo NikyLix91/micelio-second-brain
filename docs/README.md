@@ -13,3 +13,8 @@
 - [Design](DESIGN.md): architettura completa, modello degli eventi, filtro privacy, dreaming, sicurezza.
 - [Piano di lavoro](PLAN.md): stato delle fasi, decisioni, registro.
 - [Spike della Fase 0](spike-fase-0.md): esperimenti su P2P, Claude CLI ed embedding, con i problemi trovati.
+
+## Contribuire
+- [CONTRIBUTING.md](../CONTRIBUTING.md): come proporre modifiche, i controlli prima di una pull request, le regole del codice (in inglese).
+- [CLA](../CLA.md), [Codice di condotta](../CODE_OF_CONDUCT.md), [Sicurezza](../SECURITY.md) e [Changelog](../CHANGELOG.md).
+- Licenza: [GNU AGPL-3.0](../LICENSE).

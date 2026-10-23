@@ -136,6 +136,10 @@ function baseConfig ({ out, micelio }) {
   return {
     appId: 'it.micelio.desktop',
     productName: 'Micelio',
+    copyright: 'Copyright © 2026 Salvatore Stracquadanio. AGPL-3.0-only',
+    // Il testo della licenza viaggia con l'app (AGPL: chi riceve il programma riceve anche la licenza)
+    // EN: The license text ships with the app (AGPL: whoever receives the program also receives the license)
+    extraFiles: [{ from: path.join(ROOT, 'LICENSE'), to: 'LICENSE.txt' }],
     electronVersion: require(path.join(ROOT, 'node_modules', 'electron', 'package.json')).version,
     directories: { output: path.join(out, 'out'), buildResources: path.join(ROOT, 'desktop', 'build') },
     // Solo il codice dell'app desktop. In una repository a workspace electron-builder troverebbe

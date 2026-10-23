@@ -62,14 +62,14 @@ export class McpController {
    * dell'agente (intestazione `x-micelio-cwd`), vale il team che la possiede, ricalcolato a ogni
    * richiesta: così vale anche una cartella abilitata a sessione già aperta. Altrimenti il team
    * dell'intestazione `x-micelio-team` o il predefinito, come prima.
-   * Bug reale (2026-10-21): senza questa scelta i ricordi salvati da un progetto del team A
+   * Bug reale (2026-10-21): senza questa scelta i ricordi salvati da un progetto di un team
    * finivano nel team predefinito, visibili a colleghi che non dovevano vederli.
    *
    * EN: Team of a request to `/mcp`. If the stdio shim sent the agent's working folder
    * (`x-micelio-cwd` header), the team that owns it wins, recomputed on every request: so a
    * folder enabled while a session is already open works too. Otherwise the team from the
    * `x-micelio-team` header or the default one, as before.
-   * Real bug (2026-10-21): without this choice, memories saved from a project of the A team
+   * Real bug (2026-10-21): without this choice, memories saved from a project of one team
    * ended up in the default team, visible to colleagues who should not see them.
    */
   private nodeForRequest (req: Request): MicelioNode {

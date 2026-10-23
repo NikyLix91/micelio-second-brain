@@ -2,9 +2,19 @@
   "name": "micelio-server",
   "version": "0.2.0",
   "description": "Nodo di avvio (bootstrap) della DHT privata di Micelio: punto d'incontro dei nodi del team su internet",
+  "license": "AGPL-3.0-only",
+  "author": "Salvatore Stracquadanio <salvatorestracquadanio86@gmail.com>",
+  "homepage": "https://github.com/salvatorestracquadanio86/micelio-brain",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/salvatorestracquadanio86/micelio-brain.git",
+    "directory": "server"
+  },
+  "bugs": {
+    "url": "https://github.com/salvatorestracquadanio86/micelio-brain/issues"
+  },
   "private": true,
   "type": "commonjs",
-  "license": "UNLICENSED",
   "bin": {
     "micelio-server": "dist/main.js"
   },

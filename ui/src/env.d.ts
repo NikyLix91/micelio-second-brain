@@ -19,3 +19,12 @@ interface MicelioDesktopBridge {
 interface Window {
   micelio?: MicelioDesktopBridge
 }
+
+/**
+ * Versione dell'app (da package.json della radice), iniettata da Vite in fase di build.
+ * Serve alla scheda «Informazioni» delle Impostazioni.
+ *
+ * EN: App version (from the root package.json), injected by Vite at build time.
+ * Used by the «Informazioni» (About) card in Settings.
+ */
+declare const __MICELIO_VERSION__: string

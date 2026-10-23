@@ -186,7 +186,7 @@ Derived indexes: `memories_fts` (FTS5) and `memories_vec` (sqlite-vec). The view
 
 Useful reference implementation: **Autopass** (Holepunch's P2P password manager built on Autobase with blind-pairing invites). It has exactly our shape: few writers, full replication, invites.
 
-**Lessons from spike A** (see [spikes/a-p2p](../../spikes/a-p2p)):
+**Lessons from spike A** (see [Phase 0 spike](phase-0-spike.md)):
 
 - Replication must be hooked up with `base.replicate(conn)` and **not** with `store.replicate(conn)`, as the Autobase README shows. Only the former enables the *wakeup* protocol, which tells other peers about the cores of active writers. Without it, new members are never discovered.
 - **Indexers:** these are the writers whose acks fix final ordering points (`signedLength`). If all nodes are indexers, a majority must be online to make progress. If there is only one (the founder) and it disappears, ordering no longer settles. Proposed policy: **3–5 indexers** (the admins and the nodes that are on most often), all other writers non-indexers. To be validated in Phase 1.
