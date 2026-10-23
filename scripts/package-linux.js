@@ -137,9 +137,9 @@ builder.build({
       category: 'Development',
       synopsis: 'Secondo cervello P2P per il team di sviluppo',
       description: 'Micelio: memoria condivisa peer-to-peer per i team di sviluppo e i loro agenti AI.',
-      // Il .deb vuole un manutentore; desktop/package.json non ha un autore
-      // EN: The .deb requires a maintainer; desktop/package.json has no author
-      maintainer: 'Micelio <micelio@localhost>',
+      // Il .deb vuole un manutentore: lo stesso autore di desktop/package.json
+      // EN: The .deb requires a maintainer: the same author as desktop/package.json
+      maintainer: 'Salvatore Stracquadanio <salvatorestracquadanio86@gmail.com>',
       artifactName: 'Micelio-${version}-${arch}.${ext}'
     },
     deb: {

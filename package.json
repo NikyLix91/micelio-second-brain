@@ -1,10 +1,29 @@
 {
   "name": "micelio",
   "version": "0.6.0",
-  "description": "Secondo cervello distribuito peer-to-peer per gli strumenti AI di un team di sviluppo",
+  "description": "A distributed, peer-to-peer second brain for a development team's AI tools",
+  "keywords": [
+    "p2p",
+    "second-brain",
+    "mcp",
+    "claude-code",
+    "ai-agents",
+    "knowledge-base",
+    "holepunch",
+    "electron"
+  ],
+  "license": "AGPL-3.0-only",
+  "author": "Salvatore Stracquadanio <salvatorestracquadanio86@gmail.com>",
+  "homepage": "https://github.com/salvatorestracquadanio86/micelio-brain",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/salvatorestracquadanio86/micelio-brain.git"
+  },
+  "bugs": {
+    "url": "https://github.com/salvatorestracquadanio86/micelio-brain/issues"
+  },
   "private": true,
   "type": "commonjs",
-  "license": "UNLICENSED",
   "bin": {
     "micelio": "dist/cli/main.js"
   },

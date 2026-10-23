@@ -30,6 +30,14 @@ Registra Micelio come **server MCP** di Claude Code (livello utente: vale in ogn
 
 **Un utente, una configurazione.** Claude Code legge la configurazione dal profilo dell'utente del sistema che lo esegue. Se lo avvii con un utente diverso da quello con cui gira Micelio (per esempio Claude Code installato e usato da un'utenza amministrativa per policy aziendale), non vedrà mai Micelio, e Micelio non potrà leggere le sue sessioni. Micelio se ne accorge quando in questo profilo non c'è traccia di Claude Code (né sessioni né i campi che Claude Code scrive al primo avvio) e lo segnala con un avviso. La soluzione è aprire Micelio con lo stesso utente con cui usi Claude Code (tasto destro → «Esegui come altro utente»), entrare nel team con un invito e ripetere la configurazione.
 
+## Informazioni {#about}
+
+Versione dell'app, autore e licenza, con i link al codice sorgente, al testo della licenza e alla guida per contribuire.
+
+Micelio è **software libero** con licenza **GNU AGPL-3.0**: puoi usarlo gratis, anche in azienda, studiarlo, modificarlo e ridistribuirlo. Una sola condizione: se distribuisci una versione modificata, o la offri ad altri come servizio in rete, devi rendere disponibile il suo codice sorgente con la stessa licenza. Usarlo e modificarlo solo al tuo interno non obbliga a nulla.
+
+**Come funziona dietro.** Il numero di versione viene da `package.json` ed è scritto nella UI al momento della build. Il testo completo della licenza è anche nella cartella d'installazione (`LICENSE.txt`). I link si aprono nel browser del sistema, non dentro l'app.
+
 ## Il file di configurazione {#config-file}
 
 `config.json` vale per tutta la macchina: porta e interfaccia dell'API locale (default `127.0.0.1:7337`), il **token** di accesso, l'LLM, il modello di embedding e il team predefinito. Va trattato come privato: il token dà accesso al tuo nodo.

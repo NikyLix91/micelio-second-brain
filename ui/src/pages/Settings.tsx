@@ -259,6 +259,7 @@ export function Settings () {
         <ContextCard />
         <AutoBackupCard />
         <ClaudeCodeCard />
+        <AboutCard />
       </div>
     </>
   )
@@ -600,6 +601,52 @@ function ContextCard () {
         </div>
       </div>
       <ErrorBox error={save.error} />
+    </Card>
+  )
+}
+
+/** URL del codice sorgente: lo stesso di package.json. / EN: Source code URL: the same as package.json. */
+const SOURCE_URL = 'https://github.com/salvatorestracquadanio86/micelio-brain'
+
+const ABOUT = defineStrings({
+  it: {
+    title: 'Informazioni',
+    version: (v: string) => `Micelio ${v}`,
+    author: 'di Salvatore Stracquadanio',
+    license: 'Software libero con licenza GNU AGPL-3.0: puoi usarlo, studiarlo, modificarlo e ridistribuirlo. Se lo modifichi e lo offri ad altri, anche come servizio in rete, devi rendere disponibile il codice sorgente delle tue modifiche con la stessa licenza.',
+    source: 'Codice sorgente',
+    licenseLink: 'Testo della licenza',
+    contribute: 'Come contribuire'
+  },
+  en: {
+    title: 'About',
+    version: (v: string) => `Micelio ${v}`,
+    author: 'by Salvatore Stracquadanio',
+    license: 'Free software under the GNU AGPL-3.0 license: you can use, study, modify and redistribute it. If you modify it and offer it to others, including as a network service, you must make the source code of your changes available under the same license.',
+    source: 'Source code',
+    licenseLink: 'License text',
+    contribute: 'How to contribute'
+  }
+})
+
+/**
+ * Versione, autore, licenza e link al sorgente. L'AGPL chiede che chi usa il programma possa
+ * ottenerne il codice: il link sta qui, nell'app stessa.
+ *
+ * EN: Version, author, license and link to the source. The AGPL requires that whoever uses the
+ * program can obtain its code: the link is here, in the app itself.
+ */
+function AboutCard () {
+  const t = useStrings(ABOUT)
+  return (
+    <Card help='settings#about' title={t.title}>
+      <p style={{ marginTop: 0 }}><strong>{t.version(__MICELIO_VERSION__)}</strong> <span className='muted'>{t.author}</span></p>
+      <p className='muted'>{t.license}</p>
+      <div className='row'>
+        <a href={SOURCE_URL} target='_blank' rel='noreferrer'>{t.source}</a>
+        <a href={`${SOURCE_URL}/blob/main/LICENSE`} target='_blank' rel='noreferrer'>{t.licenseLink}</a>
+        <a href={`${SOURCE_URL}/blob/main/CONTRIBUTING.md`} target='_blank' rel='noreferrer'>{t.contribute}</a>
+      </div>
     </Card>
   )
 }

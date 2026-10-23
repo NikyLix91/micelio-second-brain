@@ -11,14 +11,19 @@
  * - `build.outDir`: the build goes to dist/ui next to the compiled daemon, so the daemon finds it.
  * - In development (`npm run dev -w ui`) /api calls are proxied to the local daemon.
  */
+import { readFileSync } from 'node:fs'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
 const DAEMON = process.env.MICELIO_DAEMON_URL ?? 'http://127.0.0.1:7337'
+// Versione dell'app mostrata in Impostazioni → Informazioni (una sola fonte: package.json della radice)
+// EN: App version shown in Settings → About (single source: the root package.json)
+const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version
 
 export default defineConfig({
   base: '/ui/',
   plugins: [react()],
+  define: { __MICELIO_VERSION__: JSON.stringify(VERSION) },
   build: {
     outDir: '../dist/ui',
     emptyOutDir: true

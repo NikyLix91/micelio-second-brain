@@ -184,7 +184,7 @@ Indici derivati: `memories_fts` (FTS5) e `memories_vec` (sqlite-vec). La vista s
 
 Riferimento implementativo utile: **Autopass** (password manager P2P di Holepunch costruito su Autobase con inviti via blind-pairing). Ha esattamente la nostra forma: pochi writer, replica completa, inviti.
 
-**Lezioni dallo spike A** (vedi [spikes/a-p2p](../spikes/a-p2p)):
+**Lezioni dallo spike A** (vedi [spike della Fase 0](spike-fase-0.md)):
 
 - La replica va agganciata con `base.replicate(conn)` e **non** con `store.replicate(conn)`, come mostra il README di Autobase. Solo la prima attiva il protocollo *wakeup*, che segnala agli altri peer i core dei writer attivi. Senza, i nuovi membri non vengono mai scoperti.
 - **Indexer:** sono i writer i cui ack fissano punti di ordinamento definitivi (`signedLength`). Se gli indexer sono tutti i nodi, serve la maggioranza online per avanzare. Se è uno solo (il founder) e sparisce, l'ordinamento non si consolida più. Politica proposta: **3–5 indexer** (gli admin e i nodi più spesso accesi), tutti gli altri writer non-indexer. Da validare in Fase 1.

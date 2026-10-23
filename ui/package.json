@@ -4,6 +4,17 @@
   "private": true,
   "type": "module",
   "description": "Interfaccia web di Micelio (React), servita dal daemon su /ui e usata dall'app desktop",
+  "license": "AGPL-3.0-only",
+  "author": "Salvatore Stracquadanio <salvatorestracquadanio86@gmail.com>",
+  "homepage": "https://github.com/salvatorestracquadanio86/micelio-brain",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/salvatorestracquadanio86/micelio-brain.git",
+    "directory": "ui"
+  },
+  "bugs": {
+    "url": "https://github.com/salvatorestracquadanio86/micelio-brain/issues"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -p tsconfig.json --noEmit && vite build",

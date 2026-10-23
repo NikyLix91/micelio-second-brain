@@ -270,10 +270,10 @@ describe('daemon', () => {
     expect((await api('POST', '/mcp/gamma', { jsonrpc: '2.0', id: 1, method: 'tools/list' })).status).toBe(404)
 
     // `/mcp` con la cartella di lavoro (shim stdio): vale il team che la possiede, non il
-    // predefinito. Bug reale del 2026-10-21: ricordi del team A finiti nel predefinito.
+    // predefinito. Bug reale del 2026-10-21: ricordi di un team finiti nel predefinito.
     // La cartella si abilita DOPO l'apertura della connessione: il team si sceglie a ogni chiamata.
     // EN: `/mcp` with the working folder (stdio shim): the team that owns it wins, not the
-    //     default. Real bug of 2026-10-21: A team memories ended up in the default team.
+    //     default. Real bug of 2026-10-21: one team's memories ended up in the default team.
     //     The folder is enabled AFTER the connection is opened: the team is chosen on every call.
     const project = path.join(home, 'progetto-secondo')
     fs.mkdirSync(path.join(project, 'sub'), { recursive: true })

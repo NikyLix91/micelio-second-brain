@@ -1,0 +1,49 @@
+name: Bug report
+description: Something doesn't work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time! Please **don't** paste memories, transcripts or logs that contain private or customer data.
+        Security problems go through [SECURITY.md](https://github.com/salvatorestracquadanio86/micelio-brain/blob/main/SECURITY.md), not here.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+  - type: input
+    id: version
+    attributes:
+      label: Micelio version
+      description: Settings → About, or `micelio --version`.
+      placeholder: "0.6.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options: [Windows, Linux, macOS]
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Installation
+      options: [Windows installer, AppImage, .deb, From source, Team server]
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log lines
+      description: From the daemon log, `~/.micelio/logs/daemon.log` by default. Remove anything private.
+      render: text
