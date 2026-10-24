@@ -58,6 +58,20 @@ export class McpController {
   }
 
   /**
+   * Cartella di lavoro dell'agente mandata dallo shim stdio (`x-micelio-cwd`), null se assente o
+   * malformata (registrazione HTTP vecchia o client diverso dallo shim).
+   *
+   * EN: The agent's working folder sent by the stdio shim (`x-micelio-cwd`), null if missing or
+   * malformed (old HTTP registration or a client other than the shim).
+   */
+  private cwdOf (req: Request): string | null {
+    const raw = req.headers[CWD_HEADER]
+    const encoded = Array.isArray(raw) ? raw[0] : raw
+    if (!encoded) return null
+    try { return decodeURIComponent(encoded) } catch { return null }
+  }
+
+  /**
    * Team di una richiesta a `/mcp`. Se lo shim stdio ha mandato la cartella di lavoro
    * dell'agente (intestazione `x-micelio-cwd`), vale il team che la possiede, ricalcolato a ogni
    * richiesta: così vale anche una cartella abilitata a sessione già aperta. Altrimenti il team
@@ -73,14 +87,9 @@ export class McpController {
    * ended up in the default team, visible to colleagues who should not see them.
    */
   private nodeForRequest (req: Request): MicelioNode {
-    const raw = req.headers[CWD_HEADER]
-    const encoded = Array.isArray(raw) ? raw[0] : raw
-    if (encoded) {
-      let cwd: string | null = null
-      try { cwd = decodeURIComponent(encoded) } catch { /* intestazione malformata: si ignora / EN: malformed header: ignored */ }
-      const owner = cwd ? this.micelio.host.ownerOf(cwd) : null
-      if (owner) return this.micelio.host.node(owner)
-    }
+    const cwd = this.cwdOf(req)
+    const owner = cwd ? this.micelio.host.ownerOf(cwd) : null
+    if (owner) return this.micelio.host.node(owner)
     return this.micelio.node
   }
 
@@ -101,7 +110,10 @@ export class McpController {
 
   /** Collega un McpServer nuovo al nodo del team e gestisce la richiesta. / EN: Connects a new McpServer to the team node and handles the request. */
   private async serve (node: MicelioNode, req: Request, res: Response): Promise<void> {
-    const server = createMcpServer(node)
+    // `remember` controlla sempre che la cartella della sessione sia del team (0.6.1)
+    // EN: `remember` always checks that the session's folder belongs to the team (0.6.1)
+    const cwd = this.cwdOf(req)
+    const server = createMcpServer(node, async (input) => await this.micelio.host.rememberFromAgent(node, input, cwd))
     // enableJsonResponse: risposta JSON semplice invece di uno stream SSE.
     // EN: enableJsonResponse: plain JSON response instead of an SSE stream.
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true })

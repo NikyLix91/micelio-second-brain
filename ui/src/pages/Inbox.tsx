@@ -14,6 +14,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { api, type InboxItem } from '../api/client'
+import { currentTeam } from '../api/team'
 import { Card, Empty, ErrorBox, Markdown, PageHeader } from '../components/ui'
 import { dateTime } from '../format'
 import { defineStrings, useStrings } from '../i18n'
@@ -32,7 +33,21 @@ const S = defineStrings({
     edit: 'Correggi',
     reject: 'Scarta',
     keep: 'Tienilo per me',
-    keepTitle: 'Non va al team: diventa un ricordo personale, solo su questo PC'
+    keepTitle: 'Non va al team: diventa un ricordo personale, solo su questo PC',
+    // 0.6.1: salvataggio trattenuto dal controllo del team / EN: save held by the team check
+    held: 'Trattenuto: la cartella della sessione non è di questo team',
+    problem: {
+      'other-team': (cwd: string, folder: string, session: string) => `La sessione di Claude Code in ${cwd} salvava nel team «${session}», ma quella cartella è abilitata nel team «${folder}». Il ricordo è qui, nel team della cartella, e non è stato pubblicato.`,
+      'not-enabled': (cwd: string, _f: string, session: string) => `La sessione di Claude Code in ${cwd} salvava nel team «${session}», ma quella cartella non è abilitata in nessun team. Il ricordo non è stato pubblicato.`,
+      'no-folder': (_c: string, _f: string, session: string) => `Una sessione di Claude Code salvava nel team «${session}» senza dire da quale cartella: usa la registrazione MCP vecchia. Il ricordo non è stato pubblicato.`
+    },
+    solution: {
+      'other-team': 'Soluzione: se è il team giusto, pubblicalo qui. Per i prossimi salvataggi, Impostazioni → Claude Code → «Configura», poi chiudi e riapri le sessioni di Claude Code (anche con /resume).',
+      'not-enabled': 'Soluzione: abilita la cartella nel team giusto (Impostazioni → Raccolta automatica), poi pubblicalo nel team giusto qui sotto.',
+      'no-folder': 'Soluzione: Impostazioni → Claude Code → «Configura», poi chiudi e riapri le sessioni di Claude Code (anche con /resume). Questo ricordo pubblicalo nel team giusto qui sotto.'
+    },
+    publishTo: 'Pubblica in…',
+    publishIn: (team: string) => `Pubblica in «${team}»`
   },
   en: {
     title: 'Inbox',
@@ -47,7 +62,20 @@ const S = defineStrings({
     edit: 'Edit',
     reject: 'Discard',
     keep: 'Keep it for me',
-    keepTitle: 'It does not go to the team: it becomes a personal memory, only on this PC'
+    keepTitle: 'It does not go to the team: it becomes a personal memory, only on this PC',
+    held: "Held: the session's folder doesn't belong to this team",
+    problem: {
+      'other-team': (cwd: string, folder: string, session: string) => `The Claude Code session in ${cwd} was saving to the team "${session}", but that folder is enabled in the team "${folder}". The memory is here, in the folder's team, and was not published.`,
+      'not-enabled': (cwd: string, _f: string, session: string) => `The Claude Code session in ${cwd} was saving to the team "${session}", but that folder isn't enabled in any team. The memory was not published.`,
+      'no-folder': (_c: string, _f: string, session: string) => `A Claude Code session was saving to the team "${session}" without saying which folder it was in: it uses the old MCP registration. The memory was not published.`
+    },
+    solution: {
+      'other-team': 'Fix: if this is the right team, publish it here. For the next saves, Settings → Claude Code → "Configure", then close and reopen your Claude Code sessions (/resume works too).',
+      'not-enabled': 'Fix: enable the folder in the right team (Settings → Automatic collection), then publish it to the right team below.',
+      'no-folder': 'Fix: Settings → Claude Code → "Configure", then close and reopen your Claude Code sessions (/resume works too). Publish this memory to the right team below.'
+    },
+    publishTo: 'Publish to…',
+    publishIn: (team: string) => `Publish to "${team}"`
   }
 })
 
@@ -90,7 +118,15 @@ export function InboxCard ({ item }: { item: InboxItem }) {
   // B4: né al team né scartato, resta come ricordo personale
   // EN: B4: neither to the team nor discarded, it stays as a personal memory
   const keep = useMutation({ mutationFn: () => api.keepPersonal(item.id), onSuccess: refresh })
-  const busy = approve.isPending || reject.isPending || keep.isPending
+  // 0.6.1: «Pubblica in…» un altro team, per i salvataggi trattenuti dal controllo del team
+  // EN: 0.6.1: «Pubblica in…» (Publish to…) another team, for saves held by the team check
+  const move = useMutation({ mutationFn: (team: string) => api.moveInbox(item.id, team), onSuccess: refresh })
+  const check = item.teamCheck
+  const teams = useQuery({ queryKey: ['teams'], queryFn: api.teams, enabled: !!check })
+  const here = currentTeam() ?? teams.data?.teams.find((t) => t.isDefault)?.id
+  const others = (teams.data?.teams ?? []).filter((t) => t.id !== here && t.role)
+  const hereName = teams.data?.teams.find((t) => t.id === here)?.name
+  const busy = approve.isPending || reject.isPending || keep.isPending || move.isPending
 
   return (
     <Card>
@@ -99,6 +135,13 @@ export function InboxCard ({ item }: { item: InboxItem }) {
         <span className='spacer' />
         <span className='muted small'>{s.meta(item.source.type, dateTime(item.expires))}</span>
       </div>
+      {check && (
+        <div className='notice warn' style={{ marginBottom: 10 }}>
+          <strong>{s.held}</strong>
+          <p style={{ margin: '6px 0' }}>{s.problem[check.problem](check.cwd ?? '', check.folder?.name ?? '', check.session.name)}</p>
+          <p style={{ margin: 0 }}>{s.solution[check.problem]}</p>
+        </div>
+      )}
       {editing
         ? (
           <div className='stack'>
@@ -112,11 +155,17 @@ export function InboxCard ({ item }: { item: InboxItem }) {
             <Markdown text={item.memory.body} />
           </>
           )}
-      <ErrorBox error={approve.error ?? reject.error ?? keep.error} />
+      <ErrorBox error={approve.error ?? reject.error ?? keep.error ?? move.error} />
       <div className='row' style={{ marginTop: 12 }}>
         <button className='btn primary' disabled={busy} onClick={() => approve.mutate()}>
-          {editing ? s.publishEdited : s.publish}
+          {editing ? s.publishEdited : check && hereName ? s.publishIn(hereName) : s.publish}
         </button>
+        {check && others.length > 0 && (
+          <select aria-label={s.publishTo} value='' disabled={busy} onChange={(e) => { if (e.target.value) move.mutate(e.target.value) }} style={{ width: 'auto' }}>
+            <option value=''>{s.publishTo}</option>
+            {others.map((t) => <option key={t.id} value={t.id}>{t.name ?? t.id}</option>)}
+          </select>
+        )}
         <button className='btn' disabled={busy} onClick={() => setEditing(!editing)}>{editing ? s.cancelEdit : s.edit}</button>
         <span className='spacer' />
         <button className='btn' disabled={busy} title={s.keepTitle} onClick={() => keep.mutate()}>🔒 {s.keep}</button>

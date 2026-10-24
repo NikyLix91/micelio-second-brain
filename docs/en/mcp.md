@@ -86,15 +86,21 @@ With multiple teams (see the [user guide](user-guide.md#4-ter-several-teams-on-t
 - `http://127.0.0.1:7337/mcp` without the header works on the **default team** (`micelio teams default <team>`);
 - `http://127.0.0.1:7337/mcp/<team>` works on the given team, by local id or by name.
 
-To force a specific team in a project, regardless of the enabled folders:
+**Team check of `remember` (0.6.1).** A memory saved by an agent is published only if the session's folder is enabled in the team it's being saved to. Otherwise it goes to the Inbox with the problem and the fix, and the reply says so:
 
-```bash
-micelio --team "Cliente X" setup claude-code --project C:\progetti\cliente-x
-```
+| Case | Where it goes | Fix |
+|---|---|---|
+| The folder is enabled in another team (old `/mcp/<team>` or `--team`) | Inbox of the folder's team | Approving publishes it there |
+| The folder isn't enabled in any team | Inbox of the session's team | Enable it in the right team, then "Publish to…" |
+| No folder (HTTP endpoint without `x-micelio-cwd`) | Inbox of the session's team | Register the shim ("Configure") and reopen the sessions |
 
-The command runs, in the project folder, `claude mcp add --transport http --scope local micelio http://127.0.0.1:7337/mcp/<id> --header "Authorization: Bearer <token>"`. The *local* scope applies only when Claude Code is started in that folder, takes precedence over the user registration and stays in `~/.claude.json`: the token doesn't end up in the repository. The "Connect Claude Code" button next to a folder in Settings does the same.
+The shim sends the folder even with `--team`. A held memory still goes through the filter and classification. "Publish to…" is `POST /api/inbox/:id/move` with `{ team, publish }`. The code is in `src/core/team-check.ts` and `MicelioHost.rememberFromAgent`.
 
-For clients that use the shim: `micelio --team <team> setup codex|vscode|webstorm` prints a configuration that passes `--team` to the shim.
+**Automatic migration (0.6.1).** At startup, `micelio daemon` replaces in `~/.claude.json` the HTTP registrations pointing to it (the user one and the per-project `/mcp/<team>` ones) with the shim, first saving `.claude.json.micelio-backup`. Entries of other servers or of daemons on other ports stay as they were. `GET /api/setup/claude-code` says how Claude Code is connected (`shim`, `legacy`, `missing`) and whether a migration happened: Settings uses it to remind you to reopen the sessions.
+
+`micelio setup claude-code --project <folder>` (and "Connect Claude Code" next to a folder) registers the same shim in that folder's *local* scope. It no longer pins a team: the folder decides.
+
+For clients that use the shim: `micelio --team <team> setup codex|vscode|webstorm` prints a configuration that passes `--team` to the shim; there too `remember` checks the folder.
 
 ## Personal memories, code changed, automatic context (B4)
 

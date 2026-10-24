@@ -6,7 +6,21 @@ Gli agenti AI (Claude Code, Codex, VS Code, WebStorm…) usano Micelio tramite *
 
 Il daemon espone un server MCP su `http://127.0.0.1:7337/mcp`, protetto dal token. `micelio setup claude-code` (o il pulsante in Impostazioni) lo registra a **livello utente** (con `claude mcp add`, trovato anche fuori dal PATH, oppure scrivendo direttamente `~/.claude.json`: vedi **Impostazioni**): da quel momento ogni sessione di Claude Code, in qualunque cartella, vede gli strumenti di Micelio. Per i client che usano MCP via processo c'è lo shim `micelio mcp`; `micelio setup codex|vscode|webstorm` stampa la configurazione da incollare.
 
-Con più team, l'MCP di Claude Code sceglie il team dalla cartella del progetto: il team che l'ha abilitata, altrimenti il **team predefinito**. Ogni risposta di `remember` dice in quale team è finito il ricordo. `/mcp/<team>` lavora sempre su un team preciso: per forzarlo in un progetto si usa «Collega Claude Code» accanto alla cartella (Impostazioni) o `micelio --team <team> setup claude-code --project <cartella>`. Vedi **Più team**.
+Con più team, l'MCP di Claude Code sceglie il team dalla cartella del progetto: il team che l'ha abilitata, altrimenti il **team predefinito** (per le ricerche). Ogni risposta di `remember` dice in quale team è finito il ricordo. Vedi **Più team**.
+
+## Il controllo del team di `remember` {#team-check}
+
+Un ricordo salvato da un agente viene **pubblicato solo se la cartella della sessione è abilitata nel team su cui si salva**. Micelio la confronta ogni volta con le cartelle abilitate di tutti i team. Se non torna, il ricordo non viene pubblicato ma va nell'**Inbox**, con il problema e la soluzione proposta, e l'agente te lo dice. I casi sono tre:
+
+- **la cartella è di un altro team** (per esempio una registrazione vecchia legata a un team): il ricordo va nell'Inbox del team della cartella, dove approvarlo lo pubblica lì;
+- **la cartella non è abilitata in nessun team**: va nell'Inbox del team della sessione; abilita la cartella nel team giusto e pubblicalo lì con «Pubblica in…»;
+- **la sessione non dice da quale cartella arriva** (registrazione HTTP vecchia o un client diverso dallo shim): stessa cosa, e la soluzione è «Configura» in Impostazioni → Claude Code e riaprire le sessioni.
+
+**Come funziona dietro.** Lo shim `micelio mcp` manda a ogni richiesta la cartella della sessione (`CLAUDE_PROJECT_DIR`, altrimenti la cartella di lavoro) nell'intestazione `x-micelio-cwd`. Il daemon cerca il team con la cartella abilitata più specifica che la contiene, la stessa regola della raccolta delle sessioni. Il ricordo trattenuto passa comunque dal filtro e dalla classificazione: se è privato resta privato. Nato da un bug reale: una sessione aperta prima che la cartella fosse abilitata salvava nel team predefinito.
+
+## La registrazione si aggiorna da sola {#migration}
+
+Fino alla 0.5.0 Claude Code era collegato all'endpoint HTTP `/mcp`, che non dice la cartella. All'avvio il daemon cerca in `~/.claude.json` le registrazioni vecchie che puntano a lui (quella utente e quelle per cartella `/mcp/<team>`) e le sostituisce con lo shim, salvando prima una copia in `.claude.json.micelio-backup`. Le voci di altri server o di altri daemon non si toccano. Claude Code legge la registrazione solo all'avvio della sessione: quelle già aperte vanno chiuse e riaperte (anche con `/resume`). Impostazioni → Claude Code lo ricorda con un avviso.
 
 ## Gli strumenti {#tools}
 

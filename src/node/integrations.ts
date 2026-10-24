@@ -262,9 +262,8 @@ export function registerMcp (home: string, cliMain = CLI_MAIN): McpRegistration 
   }
   // Senza CLI: la stessa voce che scriverebbe `claude mcp add` (tutto ciò che segue "--")
   // EN: Without the CLI: the same entry `claude mcp add` would write (everything after "--")
-  const [command, ...rest] = args.slice(args.indexOf('--') + 1)
   editClaudeConfig((cfg) => {
-    cfg.mcpServers = { ...(cfg.mcpServers ?? {}), micelio: { type: 'stdio', command, args: rest, env: {} } }
+    cfg.mcpServers = { ...(cfg.mcpServers ?? {}), micelio: shimEntry(home, cliMain) }
   })
   return { via: 'file', claude: null }
 }
@@ -306,30 +305,44 @@ export function setupClaudeCode (opts: { mcpUrl: string, token: string, home: st
 }
 
 /**
- * Registra Micelio come server MCP di Claude Code SOLO per una cartella di progetto (B3), con
- * l'endpoint di un team preciso (`/mcp/<team>`). Ambito "local" di Claude Code: la registrazione
- * vale quando Claude Code è avviato in quella cartella, prevale su quella utente (il team
- * predefinito) e resta nella configurazione personale (~/.claude.json), non nel repository:
- * il token non finisce mai in un file che si potrebbe committare.
+ * Voce MCP dello shim stdio (`micelio mcp`), la stessa che scrive `claude mcp add` con mcpAddArgs.
  *
- * EN: Registers Micelio as a Claude Code MCP server ONLY for a project folder (B3), with the
- * endpoint of a specific team (`/mcp/<team>`). Claude Code's "local" scope: the registration
- * applies when Claude Code is started in that folder, takes precedence over the user one (the
- * default team) and stays in the personal configuration (~/.claude.json), not in the repository:
- * the token never ends up in a file that could be committed.
+ * EN: MCP entry of the stdio shim (`micelio mcp`), the same one `claude mcp add` writes with mcpAddArgs.
+ */
+export function shimEntry (home: string, cliMain = CLI_MAIN): { type: 'stdio', command: string, args: string[], env: Record<string, string> } {
+  const args = mcpAddArgs(home, cliMain)
+  const [command, ...rest] = args.slice(args.indexOf('--') + 1)
+  return { type: 'stdio', command, args: rest, env: {} }
+}
+
+/**
+ * Registra Micelio come server MCP di Claude Code SOLO per una cartella di progetto (B3), ambito
+ * "local": vale quando Claude Code è avviato in quella cartella e prevale su quella utente.
+ * Dalla 0.6.1 registra lo shim stdio come quella utente, non più l'endpoint HTTP `/mcp/<team>`:
+ * il team si sceglie dalla cartella a ogni richiesta, quindi resta giusto anche se la cartella
+ * cambia team, e `remember` può controllarlo (src/core/team-check.ts). Resta nella configurazione
+ * personale (~/.claude.json), non nel repository.
+ *
+ * EN: Registers Micelio as a Claude Code MCP server ONLY for a project folder (B3), "local" scope:
+ * it applies when Claude Code is started in that folder and takes precedence over the user one.
+ * Since 0.6.1 it registers the stdio shim like the user one, no longer the HTTP endpoint
+ * `/mcp/<team>`: the team is picked from the folder on every request, so it stays right even if
+ * the folder changes team, and `remember` can check it (src/core/team-check.ts). It stays in the
+ * personal configuration (~/.claude.json), not in the repository.
  * @param dir cartella da cui si avvia Claude Code (di solito la radice del repository)
  *        EN: folder Claude Code is started from (usually the repository root)
- * @throws IntegrationError se la cartella non esiste o `claude` non è disponibile
- *         EN: IntegrationError if the folder doesn't exist or `claude` is not available
+ * @throws IntegrationError se la cartella non esiste o il comando di claude fallisce
+ *         EN: IntegrationError if the folder doesn't exist or the claude command fails
  */
-export function registerProjectMcp (dir: string, mcpUrl: string, token: string): { dir: string, mcpUrl: string } & McpRegistration {
+export function registerProjectMcp (dir: string, home: string, cliMain = CLI_MAIN): { dir: string } & McpRegistration {
   if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) throw new IntegrationError(`Cartella inesistente: ${dir}`, `Folder not found: ${dir}`)
+  const args = mcpAddArgs(home, cliMain).map((a) => a === 'user' ? 'local' : a)
   if (runClaude(['mcp', 'remove', '--scope', 'local', 'micelio'], dir)) {
-    const r = runClaude(['mcp', 'add', '--transport', 'http', '--scope', 'local', 'micelio', mcpUrl, '--header', `Authorization: Bearer ${token}`], dir)!
+    const r = runClaude(args, dir)!
     if (r.status !== 0) {
       throw new IntegrationError(`Registrazione MCP non riuscita: ${r.detail || 'errore di claude'}`, `MCP registration failed: ${r.detail || 'claude error'}`)
     }
-    return { dir, mcpUrl, via: 'cli', claude: r.file }
+    return { dir, via: 'cli', claude: r.file }
   }
   // Senza CLI: la voce del progetto in .claude.json. Claude Code usa come chiave il percorso con
   // "/"; su Windows si riusa una chiave esistente che differisce solo per le maiuscole.
@@ -340,8 +353,117 @@ export function registerProjectMcp (dir: string, mcpUrl: string, token: string):
     const wanted = path.resolve(dir).replace(/\\/g, '/')
     const key = Object.keys(cfg.projects).find((k) => process.platform === 'win32' ? k.toLowerCase() === wanted.toLowerCase() : k === wanted) ?? wanted
     const project = cfg.projects[key] ?? {}
-    project.mcpServers = { ...(project.mcpServers ?? {}), micelio: { type: 'http', url: mcpUrl, headers: { Authorization: `Bearer ${token}` } } }
+    project.mcpServers = { ...(project.mcpServers ?? {}), micelio: shimEntry(home, cliMain) }
     cfg.projects[key] = project
   })
-  return { dir, mcpUrl, via: 'file', claude: null }
+  return { dir, via: 'file', claude: null }
+}
+
+/**
+ * Vero se una voce MCP è la registrazione HTTP vecchia che punta a QUESTO daemon (`/mcp` o
+ * `/mcp/<team>` sulla sua porta). Le voci di altri server o di altri daemon (es. il team demo su
+ * un'altra porta) non si toccano.
+ *
+ * EN: True if an MCP entry is the old HTTP registration pointing to THIS daemon (`/mcp` or
+ * `/mcp/<team>` on its port). Entries of other servers or other daemons (e.g. the demo team on
+ * another port) are left alone.
+ */
+export function isLegacyMicelioEntry (entry: unknown, port: number): boolean {
+  const e = entry as { type?: string, url?: string } | null
+  if (!e || typeof e.url !== 'string' || (e.type && e.type !== 'http')) return false
+  return new RegExp(`^http://(127\\.0\\.0\\.1|localhost):${port}/mcp(/[^/?#]+)?/?$`).test(e.url)
+}
+
+/**
+ * Sostituisce con lo shim tutte le registrazioni HTTP vecchie di questo daemon: quella utente e
+ * quelle per progetto. Funzione pura sull'oggetto di `.claude.json`.
+ *
+ * EN: Replaces all the old HTTP registrations of this daemon with the shim: the user one and the
+ * per-project ones. Pure function on the `.claude.json` object.
+ * @returns quante voci ha cambiato
+ *          EN: how many entries it changed
+ */
+export function migrateMcpConfig (cfg: any, shim: ReturnType<typeof shimEntry>, port: number): number {
+  let changed = 0
+  if (isLegacyMicelioEntry(cfg?.mcpServers?.micelio, port)) {
+    cfg.mcpServers.micelio = shim
+    changed++
+  }
+  for (const project of Object.values<any>(cfg?.projects ?? {})) {
+    if (isLegacyMicelioEntry(project?.mcpServers?.micelio, port)) {
+      project.mcpServers.micelio = shim
+      changed++
+    }
+  }
+  return changed
+}
+
+/**
+ * Migrazione automatica all'avvio del daemon (0.6.1). Le installazioni configurate prima della
+ * 0.5.1 avevano Claude Code collegato all'endpoint HTTP, che non dice da quale cartella arriva
+ * la sessione: i ricordi finivano nel team predefinito (bug reale, 2026-10-24). Aggiornare l'app
+ * non cambiava la registrazione: andava ripremuto «Collega Claude Code». Ora lo fa il daemon da
+ * solo, scrivendo `.claude.json` solo se c'è qualcosa da cambiare (con la copia di backup).
+ * Le sessioni già aperte usano la registrazione letta all'avvio: vanno riaperte.
+ *
+ * EN: Automatic migration at daemon startup (0.6.1). Installations configured before 0.5.1 had
+ * Claude Code connected to the HTTP endpoint, which doesn't say which folder the session comes
+ * from: memories ended up in the default team (real bug, 2026-10-24). Updating the app didn't
+ * change the registration: "Connect Claude Code" had to be pressed again. Now the daemon does it by
+ * itself, writing `.claude.json` only if there's something to change (with the backup copy).
+ * Sessions already open use the registration read at startup: they must be reopened.
+ * @returns le voci cambiate (0 se niente da fare o file assente)
+ *          EN: the changed entries (0 if nothing to do or file missing)
+ */
+export function migrateClaudeMcp (home: string, port: number, cliMain = CLI_MAIN): number {
+  const file = claudeConfigFile()
+  if (!fs.existsSync(file)) return 0
+  let cfg: any
+  try { cfg = JSON.parse(fs.readFileSync(file, 'utf8')) } catch { return 0 }
+  const shim = shimEntry(home, cliMain)
+  if (migrateMcpConfig(cfg, shim, port) === 0) return 0
+  // Si rilegge e si cambia dentro editClaudeConfig, per perdere il meno possibile se Claude Code
+  // ha scritto il file nel frattempo
+  // EN: Re-read and changed inside editClaudeConfig, to lose as little as possible if Claude Code
+  //     wrote the file in the meantime
+  let changed = 0
+  editClaudeConfig((fresh) => { changed = migrateMcpConfig(fresh, shim, port) })
+  return changed
+}
+
+/** Esito dell'ultima migrazione fatta da questo processo (per avvisare nell'interfaccia). / EN: Outcome of the last migration done by this process (to warn in the interface). */
+let lastMigration: { at: number, changed: number } | null = null
+
+/**
+ * Esegue la migrazione all'avvio del daemon e ne ricorda l'esito. Non fallisce mai: un errore su
+ * `.claude.json` non deve impedire al daemon di partire.
+ *
+ * EN: Runs the migration at daemon startup and remembers its outcome. It never fails: an error on
+ * `.claude.json` must not prevent the daemon from starting.
+ */
+export function migrateClaudeMcpAtStartup (home: string, port: number): number {
+  try {
+    const changed = migrateClaudeMcp(home, port)
+    if (changed) lastMigration = { at: Date.now(), changed }
+    return changed
+  } catch {
+    return 0
+  }
+}
+
+/**
+ * Come è collegato Claude Code per questo utente: `shim` (giusto), `legacy` (HTTP vecchio, i
+ * ricordi possono finire nel team sbagliato), `missing` (non collegato), più l'ultima migrazione.
+ *
+ * EN: How Claude Code is connected for this user: `shim` (right), `legacy` (old HTTP, memories can
+ * end up in the wrong team), `missing` (not connected), plus the last migration.
+ */
+export function claudeMcpStatus (port: number): { registration: 'shim' | 'legacy' | 'missing' | 'other', migration: { at: number, changed: number } | null } {
+  let registration: 'shim' | 'legacy' | 'missing' | 'other' = 'missing'
+  try {
+    const cfg = JSON.parse(fs.readFileSync(claudeConfigFile(), 'utf8'))
+    const e = cfg?.mcpServers?.micelio
+    if (e) registration = isLegacyMicelioEntry(e, port) ? 'legacy' : Array.isArray(e.args) && e.args.includes('mcp') ? 'shim' : 'other'
+  } catch { /* file assente o illeggibile: non collegato / EN: missing or unreadable file: not connected */ }
+  return { registration, migration: lastMigration }
 }

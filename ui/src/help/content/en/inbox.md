@@ -7,7 +7,8 @@ The inbox collects **only the doubtful cases**: memories the filter could not pu
 - the classification is not sure enough (confidence below 0.8);
 - the content is **mixed**: useful technical knowledge but with sensitive data;
 - the memory touches a blocked topic after distillation;
-- it is an explicit save but the LLM is not available or the budget is used up.
+- it is an explicit save but the LLM is not available or the budget is used up;
+- it is a save from an agent in a folder that **doesn't belong to this team** (yellow "Held" box: see **Agents and MCP**).
 
 The reason is written on each item.
 
@@ -16,7 +17,8 @@ The reason is written on each item.
 - **Publish to the team**: the memory enters your feed and reaches everyone;
 - **Edit**: change title and text (for example remove a sensitive detail), then publish the corrected version;
 - **Keep it for me**: it does not go to the team but stays as a personal memory, only on this PC (see **On your own**);
-- **Discard**: the memory does not reach the team; the decision stays in the Private log.
+- **Discard**: the memory does not reach the team; the decision stays in the Private log;
+- **Publish to…** (only for held saves): moves it to the team you choose and publishes it there. The Private log records it as "Moved to another team".
 
 An agent can also show you the inbox (tool `inbox_review`) and apply your decision (`inbox_decide`), only after you have made it.
 

@@ -7,7 +7,8 @@ L'inbox raccoglie **solo i casi dubbi**: ricordi che il filtro non ha potuto pub
 - la classificazione non è abbastanza sicura (confidenza sotto 0,8);
 - il contenuto è **misto**: sapere tecnico utile ma con dati sensibili;
 - il ricordo tocca un argomento bloccato dopo la distillazione;
-- è un salvataggio esplicito ma l'LLM non è disponibile o il budget è finito.
+- è un salvataggio esplicito ma l'LLM non è disponibile o il budget è finito;
+- è un salvataggio di un agente da una cartella che **non è di questo team** (riquadro giallo «Trattenuto»: vedi **Agenti e MCP**).
 
 Il motivo è scritto su ogni elemento.
 
@@ -16,7 +17,8 @@ Il motivo è scritto su ogni elemento.
 - **Pubblica nel team**: il ricordo entra nel tuo feed e arriva a tutti;
 - **Correggi**: modifichi titolo e testo (per esempio togli un dettaglio sensibile), poi pubblichi la versione corretta;
 - **Tienilo per me**: non va al team ma resta come ricordo personale, solo su questo PC (vedi **Da soli**);
-- **Scarta**: il ricordo non va al team; la decisione resta nel Registro privato.
+- **Scarta**: il ricordo non va al team; la decisione resta nel Registro privato;
+- **Pubblica in…** (solo per i salvataggi trattenuti): lo sposta nel team che scegli e lo pubblica lì. Nel Registro privato resta come «Spostato in un altro team».
 
 Anche un agente può mostrarti l'inbox (tool `inbox_review`) e applicare la tua decisione (`inbox_decide`), solo dopo che l'hai presa tu.
 

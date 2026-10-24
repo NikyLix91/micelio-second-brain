@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { locateClaude } from '../../src/node/claude-locator'
-import { claudeConfigFile, registerMcp, registerProjectMcp, setupClaudeCode } from '../../src/node/integrations'
+import { claudeConfigFile, registerMcp, registerProjectMcp, setupClaudeCode, shimEntry } from '../../src/node/integrations'
 import { tmpHome } from '../helpers'
 
 /** Crea un file (e le sue cartelle). / EN: Creates a file (and its folders). */
@@ -129,11 +129,14 @@ describe('registrazione MCP senza la CLI di Claude Code', () => {
     // EN: On Windows Claude Code may have saved the folder with different case
     const stored = process.platform === 'win32' ? key.toUpperCase() : key
     fs.writeFileSync(claudeConfigFile(), JSON.stringify({ projects: { [stored]: { allowedTools: ['Bash'] } } }))
-    const r = registerProjectMcp(dir, 'http://127.0.0.1:7337/mcp/abc', 'tok')
+    const r = registerProjectMcp(dir, 'C:\\h', 'C:\\Micelio\\dist\\cli\\main.js')
     expect(r.via).toBe('file')
     const cfg = JSON.parse(fs.readFileSync(claudeConfigFile(), 'utf8'))
     expect(Object.keys(cfg.projects)).toEqual([stored])
-    expect(cfg.projects[stored]).toEqual({ allowedTools: ['Bash'], mcpServers: { micelio: { type: 'http', url: 'http://127.0.0.1:7337/mcp/abc', headers: { Authorization: 'Bearer tok' } } } })
+    // 0.6.1: lo shim, come la voce utente, non più l'endpoint HTTP del team
+    // EN: 0.6.1: the shim, like the user entry, no longer the team's HTTP endpoint
+    expect(cfg.projects[stored]).toEqual({ allowedTools: ['Bash'], mcpServers: { micelio: shimEntry('C:\\h', 'C:\\Micelio\\dist\\cli\\main.js') } })
+    expect(cfg.projects[stored].mcpServers.micelio).toMatchObject({ type: 'stdio', args: ['C:/Micelio/dist/cli/main.js', '--home', 'C:/h', 'mcp'] })
   })
 
   it('avvisa se Claude Code non è mai stato usato da questo utente', () => {

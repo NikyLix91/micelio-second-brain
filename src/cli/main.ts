@@ -35,7 +35,7 @@ import type { DistillQuality } from '../ingest/quality'
 import { checkNetwork } from '../net/diagnose'
 import { autostartOff, autostartOn, autostartStatus } from '../node/autostart'
 import { BOOTSTRAP_RE, dhtBootstrap, loadConfig, networkMode, type NetworkMode, updateConfig } from '../node/config'
-import { claudeConfigFile, claudeSettingsFile, hookCommand, IntegrationError, mcpAddArgs, setupClaudeCode } from '../node/integrations'
+import { claudeConfigFile, claudeSettingsFile, hookCommand, IntegrationError, mcpAddArgs, migrateClaudeMcpAtStartup, setupClaudeCode } from '../node/integrations'
 import type { TeamSummary } from '../node/micelio-host'
 import type { GapView, IngestStatus, NetworkSettings, RootReviewResult, RootView, SecurityFinding, SecurityRules, SecurityTestResult } from '../node/micelio-node'
 import type { Digest } from '../insight/digest'
@@ -154,7 +154,14 @@ program.command('daemon')
     // Caricato solo qui: gli altri comandi non devono pagare l'avvio di NestJS e della rete.
     // EN: Loaded only here: the other commands must not pay for starting NestJS and the network.
     const { startDaemon } = require('../daemon/main') as typeof import('../daemon/main')
-    await startDaemon(paths())
+    const p = paths()
+    await startDaemon(p)
+    // 0.6.1: le registrazioni HTTP vecchie di Claude Code diventano lo shim, che manda la cartella
+    // della sessione (vedi migrateClaudeMcp). Solo qui, non nei test che avviano il daemon da sé.
+    // EN: 0.6.1: Claude Code's old HTTP registrations become the shim, which sends the session's
+    //     folder (see migrateClaudeMcp). Only here, not in tests that start the daemon themselves.
+    const changed = migrateClaudeMcpAtStartup(p.home, loadConfig(p).port)
+    if (changed) console.log(`Claude Code: ${changed} registrazioni MCP vecchie aggiornate allo shim (le sessioni già aperte vanno riaperte)`)
   })
 
 /**
@@ -1219,11 +1226,12 @@ program.command('mcp')
     const c = client()
     const { runStdioProxy } = require('../mcp/stdio-proxy') as typeof import('../mcp/stdio-proxy')
     // Senza --team il team lo sceglie il daemon dalla cartella del progetto (CLAUDE_PROJECT_DIR
-    // la imposta Claude Code; gli altri client avviano lo shim nella cartella di lavoro)
+    // la imposta Claude Code; gli altri client avviano lo shim nella cartella di lavoro). La
+    // cartella va sempre al daemon, anche con --team: `remember` controlla che sia di quel team (0.6.1)
     // EN: Without --team the daemon picks the team from the project folder (Claude Code sets
-    //     CLAUDE_PROJECT_DIR; the other clients start the shim in the working folder)
-    const team = program.opts().team as string | undefined
-    await runStdioProxy(c.mcpUrl, c.config.token, team ? undefined : (process.env.CLAUDE_PROJECT_DIR || process.cwd()))
+    //     CLAUDE_PROJECT_DIR; the other clients start the shim in the working folder). The folder
+    //     always goes to the daemon, even with --team: `remember` checks it belongs to that team (0.6.1)
+    await runStdioProxy(c.mcpUrl, c.config.token, process.env.CLAUDE_PROJECT_DIR || process.cwd())
   })
 
 /** Configurazioni pronte da incollare per i client MCP diversi da Claude Code (Fase 7). / EN: Ready-to-paste configurations for MCP clients other than Claude Code (Phase 7). */
@@ -1253,13 +1261,13 @@ program.command('setup')
   .option('--print', 'mostra cosa verrebbe fatto senza modificare nulla')
   .option('--no-hook', 'non installare l\'hook di fine sessione (solo MCP)')
   .option('--no-context', 'non installare il contesto automatico (hook di inizio sessione e di ogni richiesta)')
-  .option('--project <dir>', 'solo per questa cartella di progetto: Claude Code avviato lì usa il team indicato con --team (B3)')
+  .option('--project <dir>', 'solo per questa cartella di progetto: registra Micelio in Claude Code lì (il team lo decide la cartella)')
   .action(async (target: string, o: { print?: boolean, hook: boolean, context: boolean, project?: string }) => {
     if (o.project && target === 'claude-code') {
       // MCP del team per un solo progetto, ambito "local" di Claude Code (vedi registerProjectMcp)
       // EN: The team's MCP for a single project, Claude Code's "local" scope (see registerProjectMcp)
-      const r = await client().call<{ dir: string, mcpUrl: string }>('POST', '/api/setup/project', { path: path.resolve(o.project) })
-      console.log(`Claude Code avviato in ${r.dir} userà il team di ${r.mcpUrl}`)
+      const r = await client().call<{ dir: string }>('POST', '/api/setup/project', { path: path.resolve(o.project) })
+      console.log(`Claude Code avviato in ${r.dir} userà Micelio, con il team che possiede la cartella. Riapri le sessioni già aperte lì.`)
       return
     }
     if (target !== 'claude-code') {

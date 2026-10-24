@@ -19,7 +19,7 @@ import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Post, Put, Quer
 import { z } from 'zod'
 import { readManifest } from '../backup/archive'
 import { MEMORY_KINDS, ROOT_CATEGORIES } from '../core/events'
-import { IntegrationError, registerProjectMcp, setupClaudeCode } from '../node/integrations'
+import { claudeMcpStatus, IntegrationError, registerProjectMcp, setupClaudeCode } from '../node/integrations'
 import { UserError } from '../node/micelio-node'
 import type { DaemonOptions } from './micelio.module'
 import { MicelioService } from './micelio.service'
@@ -51,6 +51,8 @@ const ContextSettingsBody = z.object({
 })
 /** Registrazione MCP per una cartella di progetto, sul team della richiesta (B3). / EN: MCP registration for a project folder, on the request's team (B3). */
 const ProjectBody = z.object({ path: z.string().min(1) })
+/** «Pubblica in…» dall'Inbox (0.6.1). / EN: «Pubblica in…» (Publish to…) from the Inbox (0.6.1). */
+const MoveBody = z.object({ team: z.string().min(1).max(200), publish: z.boolean().default(true) })
 /** Payload dell'hook SessionEnd di Claude Code, inoltrato da `micelio hook session-end`. / EN: Payload of the Claude Code SessionEnd hook, forwarded by `micelio hook session-end`. */
 const SessionBody = z.object({ session_id: z.string().min(1), transcript_path: z.string().min(1), cwd: z.string().min(1) })
 const WatchBody = z.object({ path: z.string().min(1) })
@@ -746,6 +748,20 @@ export class ApiController {
     return { ok: true }
   }
 
+  /**
+   * «Pubblica in…» (0.6.1): sposta un elemento nell'Inbox di un altro team e, con `publish`, lo
+   * pubblica subito lì. Serve ai salvataggi trattenuti dal controllo del team (src/core/team-check.ts).
+   *
+   * EN: «Pubblica in…» (Publish to…) (0.6.1): moves an item to another team's Inbox and, with
+   * `publish`, publishes it right away there. For saves held by the team check (src/core/team-check.ts).
+   */
+  @Post('inbox/:id/move')
+  @HttpCode(200)
+  moveInbox (@Param('id') id: string, @Body() body: unknown) {
+    const { team, publish } = MoveBody.parse(body ?? {})
+    return this.micelio.host.moveInbox(this.micelio.host.idOf(this.node), id, team, publish)
+  }
+
   /** Registro di ciò che non è andato al team. Solo locale. / EN: Log of what did not go to the team. Local only. */
   @Get('decisions')
   decisions (@Query('limit') limit = '50') {
@@ -880,6 +896,18 @@ export class ApiController {
    * EN: Configures Claude Code (MCP + session-end hook) like `micelio setup claude-code`. It changes the
    * user's configuration: the UI asks for confirmation before calling it.
    */
+  /**
+   * Come è collegato Claude Code (0.6.1): shim giusto, HTTP vecchio o assente, e se il daemon ha
+   * appena aggiornato le registrazioni (allora le sessioni già aperte vanno riaperte).
+   *
+   * EN: How Claude Code is connected (0.6.1): right shim, old HTTP or missing, and whether the
+   * daemon has just updated the registrations (then sessions already open must be reopened).
+   */
+  @Get('setup/claude-code')
+  claudeCodeStatus () {
+    return claudeMcpStatus(this.options.config.port)
+  }
+
   @Post('setup/claude-code')
   @HttpCode(200)
   setupClaudeCode (@Body() body: unknown) {
@@ -906,11 +934,8 @@ export class ApiController {
   @HttpCode(200)
   setupProject (@Body() body: unknown) {
     const { path: dir } = ProjectBody.parse(body)
-    const { host, port, token } = this.options.config
-    const h = host === '0.0.0.0' ? '127.0.0.1' : host
-    const team = this.micelio.host.idOf(this.node)
     try {
-      return registerProjectMcp(dir, `http://${h}:${port}/mcp/${team}`, token)
+      return registerProjectMcp(dir, this.options.paths.home)
     } catch (err) {
       throw err instanceof IntegrationError ? new UserError(err.message, err.en) : err
     }
