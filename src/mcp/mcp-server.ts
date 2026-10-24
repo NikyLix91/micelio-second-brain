@@ -22,7 +22,19 @@ import { z } from 'zod'
 import { formatCodeRefs } from '../core/code-refs'
 import { MEMORY_KINDS, ROOT_CATEGORIES } from '../core/events'
 import type { RecallHit } from '../core/model'
+import type { MemoryInput } from '../core/events'
+import { teamCheckSolution, type TeamRef } from '../core/team-check'
+import type { ExplicitOutcome } from '../ingest/pipeline'
 import type { MicelioNode, RootView } from '../node/micelio-node'
+
+/**
+ * Salvataggio con il controllo del team (0.6.1): lo fornisce il controller, che conosce la
+ * cartella della sessione e tutti i team (MicelioHost.rememberFromAgent).
+ *
+ * EN: Save with the team check (0.6.1): provided by the controller, which knows the session's
+ * folder and all the teams (MicelioHost.rememberFromAgent).
+ */
+export type AgentRemember = (input: MemoryInput) => Promise<{ outcome: ExplicitOutcome, team: TeamRef }>
 
 const VERSION = '0.2.0'
 
@@ -131,7 +143,7 @@ function teamLabel (node: MicelioNode): string {
   return node.teamName ? ` «${node.teamName}»` : ''
 }
 
-export function createMcpServer (node: MicelioNode): McpServer {
+export function createMcpServer (node: MicelioNode, agentRemember: AgentRemember): McpServer {
   const server = new McpServer({ name: 'micelio', version: VERSION }, { instructions: INSTRUCTIONS })
 
   // ── recall ──────────────────────────────────────────────────────────────────────────
@@ -251,7 +263,7 @@ export function createMcpServer (node: MicelioNode): McpServer {
         const p = await node.rememberPersonal({ title, body, kind, tags, source: { type: 'mcp' } })
         return text(`${p.duplicate ? 'Già presente' : 'Salvato'} come ricordo PERSONALE (id:${p.id.slice(0, 12)}): resta solo su questo PC.\n\n### ${title}\n${body}`)
       }
-      const r = await node.remember({ title, body, kind, tags, source: { type: 'mcp' } })
+      const { outcome: r, team } = await agentRemember({ title, body, kind, tags, source: { type: 'mcp' } })
       switch (r.outcome) {
         case 'team': {
           // B4: il nuovo ricordo ha aggiornato uno esistente: si mostra la versione salvata davvero
@@ -263,6 +275,20 @@ export function createMcpServer (node: MicelioNode): McpServer {
           return text(`${r.duplicate ? 'Già presente' : 'Pubblicato'} nella memoria del team${teamLabel(node)} (id:${r.id.slice(0, 12)}). Testo salvato:\n\n### ${r.memory.title}\n${r.memory.body}`)
         }
         case 'inbox':
+          // 0.6.1: la cartella della sessione non è del team su cui si salvava. Si dice all'utente
+          // cosa non torna e come rimediare, e si mostra il testo.
+          // EN: 0.6.1: the session's folder doesn't belong to the team being saved to. The user is
+          //     told what doesn't match and how to fix it, and the text is shown.
+          if (r.teamCheck) {
+            return text(`NON pubblicato: è nell'Inbox del team «${team.name}» (id inbox: ${r.inboxId}), perché ${r.reason}.
+` +
+              `Soluzione: ${teamCheckSolution(r.teamCheck)}
+` +
+              `Dillo all'utente con queste parole. Testo trattenuto:
+
+### ${r.memory.title}
+${r.memory.body}`)
+          }
           return text(`NON pubblicato subito: è nell'inbox dell'utente in attesa di verifica (id inbox: ${r.inboxId}).\nMotivo: ${r.reason}\nL'utente può approvarlo con "micelio inbox approve ${r.inboxId}" o chiedendoti di usare inbox_decide.`)
         case 'private':
           return text(`NON pubblicato: trattenuto come privato. Motivo: ${r.reason}`)

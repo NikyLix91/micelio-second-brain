@@ -88,9 +88,13 @@ describe('daemon', () => {
   })
 
   it('MCP: un client reale vede i tool e li usa', async () => {
+    // Come lo shim: manda la cartella della sessione, abilitata nel team (controllo del team, 0.6.1)
+    // EN: Like the shim: sends the session's folder, enabled in the team (team check, 0.6.1)
+    const mcpProject = tmpHome('progetto-mcp')
+    await api('POST', '/api/watch', { path: mcpProject })
     const client = new Client({ name: 'test', version: '1.0.0' })
     await client.connect(new StreamableHTTPClientTransport(new URL(`${base}/mcp`), {
-      requestInit: { headers: { authorization: `Bearer ${token}` } }
+      requestInit: { headers: { authorization: `Bearer ${token}`, 'x-micelio-cwd': encodeURIComponent(mcpProject) } }
     }))
     const { tools } = await client.listTools()
     expect(tools.map((t) => t.name).sort()).toEqual(['architecture', 'fetch_source', 'get', 'inbox_decide', 'inbox_review', 'mark_root', 'recall', 'remember', 'vote'])
@@ -108,6 +112,7 @@ describe('daemon', () => {
     const bad = await client.callTool({ name: 'remember', arguments: { title: 'x', body: '' } })
     expect(bad.isError).toBe(true)
     await client.close()
+    await api('DELETE', '/api/watch', { path: mcpProject })
   })
 
   it('ingestione di una sessione: solo nelle cartelle opt-in, poi ricercabile', async () => {
@@ -257,15 +262,20 @@ describe('daemon', () => {
     const unknown = await fetch(`${base}/api/status`, { headers: inTeam('gamma') })
     expect(unknown.status).toBe(400)
 
-    // MCP del secondo team: salva e cerca solo lì
-    // EN: MCP of the second team: saves and searches only there
+    // MCP del secondo team senza cartella (registrazione HTTP vecchia): cerca solo lì, e
+    // `remember` non pubblica, perché non sa da quale cartella arriva (0.6.1)
+    // EN: MCP of the second team without a folder (old HTTP registration): it searches only there,
+    //     and `remember` doesn't publish, because it doesn't know which folder it comes from (0.6.1)
     const client = new Client({ name: 'test', version: '1.0.0' })
     await client.connect(new StreamableHTTPClientTransport(new URL(`${base}/mcp/${second}`), {
       requestInit: { headers: { authorization: `Bearer ${token}` } }
     }))
-    await client.callTool({ name: 'remember', arguments: { title: 'Solo nel secondo team', body: 'Le demo si fanno il venerdì.', kind: 'fact' } })
+    const noFolder = await client.callTool({ name: 'remember', arguments: { title: 'Solo nel secondo team', body: 'Le demo si fanno il venerdì.', kind: 'fact' } })
+    expect((noFolder.content as any)[0].text).toMatch(/NON pubblicato: è nell'Inbox del team «Secondo»[\s\S]*Soluzione:[\s\S]*Configura/)
     expect(((await client.callTool({ name: 'recall', arguments: { query: 'drizzle orm' } })).content as any)[0].text).toMatch(/Nessun ricordo/)
     await client.close()
+    const inbox2 = await (await fetch(`${base}/api/inbox`, { headers: inTeam(second) })).json() as any[]
+    expect(inbox2.find((i) => i.memory.title === 'Solo nel secondo team')).toMatchObject({ teamCheck: { problem: 'no-folder', cwd: null, session: { id: second, name: 'Secondo' } } })
     expect((await api('GET', '/api/memories/search?q=venerdì demo')).data).toEqual([])
     expect((await api('POST', '/mcp/gamma', { jsonrpc: '2.0', id: 1, method: 'tools/list' })).status).toBe(404)
 
@@ -295,11 +305,40 @@ describe('daemon', () => {
     expect((await api('GET', '/api/memories/search?q=rilascio tag')).data).toEqual([])
     const there = await fetch(`${base}/api/memories/search?q=rilascio tag`, { headers: inTeam(second) })
     expect(((await there.json()) as any[]).map((m) => m.title)).toEqual(['Dalla cartella del secondo team'])
-    // una cartella che non appartiene a nessun team: il predefinito, come prima
-    // EN: a folder that belongs to no team: the default one, as before
+    // una cartella che non appartiene a nessun team: la ricerca usa il predefinito, ma `remember`
+    // non pubblica: va nell'Inbox del predefinito con il problema (0.6.1)
+    // EN: a folder that belongs to no team: search uses the default one, but `remember` doesn't
+    //     publish: it goes to the default team's Inbox with the problem (0.6.1)
     const other = await viaShim(path.join(home, 'altrove'))
-    expect(((await other.callTool({ name: 'remember', arguments: { title: 'Da una cartella qualsiasi', body: 'Le build notturne partono alle 2.', kind: 'fact' } })).content as any)[0].text).toMatch(/team «Team Test»/)
+    expect(((await other.callTool({ name: 'remember', arguments: { title: 'Da una cartella qualsiasi', body: 'Le build notturne partono alle 2.', kind: 'fact' } })).content as any)[0].text).toMatch(/NON pubblicato: è nell'Inbox del team «Team Test».*perché la cartella .* non è abilitata in nessun team/)
     await other.close()
+    const held = ((await api('GET', '/api/inbox')).data as any[]).find((i) => i.memory.title === 'Da una cartella qualsiasi')
+    expect(held.teamCheck).toMatchObject({ problem: 'not-enabled', session: { name: 'Team Test' } })
+    expect(((await api('GET', '/api/memories/search?q=build notturne')).data as any[]).some((m) => m.title === 'Da una cartella qualsiasi')).toBe(false)
+    // «Pubblica in…»: dall'Inbox del predefinito al secondo team, pubblicato lì
+    // EN: «Pubblica in…» (Publish to…): from the default team's Inbox to the second team, published there
+    expect((await api('POST', `/api/inbox/${held.id}/move`, { team: 'Secondo' })).data).toMatchObject({ team: second, published: { duplicate: false } })
+    expect(((await api('GET', '/api/inbox')).data as any[]).some((i) => i.id === held.id)).toBe(false)
+    const moved = await fetch(`${base}/api/memories/search?q=build notturne`, { headers: inTeam(second) })
+    expect(((await moved.json()) as any[]).map((m) => m.title)).toEqual(['Da una cartella qualsiasi'])
+    expect(((await api('GET', '/api/decisions')).data as any[])[0]).toMatchObject({ outcome: 'moved' })
+
+    // registrazione `/mcp/<team>` vecchia, ma dalla cartella di un ALTRO team: va nell'Inbox del
+    // team della cartella, dove approvarlo lo pubblica (0.6.1)
+    // EN: old `/mcp/<team>` registration, but from the folder of ANOTHER team: it goes to the Inbox
+    //     of the folder's team, where approving publishes it (0.6.1)
+    const pinned = new Client({ name: 'test-pinned', version: '1.0.0' })
+    await pinned.connect(new StreamableHTTPClientTransport(new URL(`${base}/mcp/${encodeURIComponent('Team Test')}`), {
+      requestInit: { headers: { authorization: `Bearer ${token}`, 'x-micelio-cwd': encodeURIComponent(sub) } }
+    }))
+    const wrong = await pinned.callTool({ name: 'remember', arguments: { title: 'Dalla cartella giusta ma team sbagliato', body: 'Le migrazioni si lanciano prima del deploy.', kind: 'howto' } })
+    expect((wrong.content as any)[0].text).toMatch(/NON pubblicato: è nell'Inbox del team «Secondo».*abilitata nel team «Secondo», ma la sessione salvava nel team «Team Test»/)
+    await pinned.close()
+    const inSecond = (await (await fetch(`${base}/api/inbox`, { headers: inTeam(second) })).json() as any[]).find((i) => i.memory.title === 'Dalla cartella giusta ma team sbagliato')
+    expect(inSecond.teamCheck).toMatchObject({ problem: 'other-team', folder: { id: second }, session: { name: 'Team Test' } })
+    const approved = await fetch(`${base}/api/inbox/${inSecond.id}/approve`, { method: 'POST', headers: { ...inTeam(second), 'content-type': 'application/json' }, body: '{}' })
+    expect(approved.status).toBe(200)
+    expect(((await api('GET', '/api/memories/search?q=migrazioni deploy')).data as any[]).some((m) => m.title === 'Dalla cartella giusta ma team sbagliato')).toBe(false)
 
     // il predefinito si cambia, poi si toglie il secondo team da questo PC
     // EN: change the default, then remove the second team from this PC

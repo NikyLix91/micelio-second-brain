@@ -40,10 +40,10 @@ export const CWD_HEADER = 'x-micelio-cwd'
  * @param token  token del daemon (da config.json)
  *               EN: daemon token (from config.json)
  * @param cwd    cartella di lavoro dell'agente: va al daemon a ogni richiesta, che ne ricava il
- *               team (vedi McpController). Assente con `--team`, dove il team è già fissato.
+ *               team (vedi McpController); con `--team` serve al controllo del team di `remember`.
  *               EN: the agent's working folder: it goes to the daemon on every request, which
- *               derives the team from it (see McpController). Missing with `--team`, where the
- *               team is already fixed.
+ *               derives the team from it (see McpController); with `--team` it's used by the
+ *               team check of `remember`.
  */
 export async function runStdioProxy (mcpUrl: string, token: string, cwd?: string): Promise<void> {
   const upstream = new Client({ name: 'micelio-stdio', version: '0.3.0' })

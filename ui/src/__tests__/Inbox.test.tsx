@@ -43,6 +43,25 @@ describe('InboxCard', () => {
     expect((init.headers as Record<string, string>).authorization).toBe('Bearer tok')
   })
 
+  it('salvataggio trattenuto dal controllo del team (0.6.1): problema, soluzione e «Pubblica in…»', async () => {
+    const held: InboxItem = { ...item, teamCheck: { problem: 'not-enabled', cwd: 'C:/repo/app', session: { id: 'aaaa1111', name: 'Team B' } } }
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+      if (String(url) === '/api/teams') {
+        return new Response(JSON.stringify({ teams: [{ id: 'aaaa1111', name: 'Team B', role: 'admin', isDefault: true }, { id: 'bbbb2222', name: 'Team A', role: 'member', isDefault: false }], identity: null }))
+      }
+      return new Response(JSON.stringify({ team: 'bbbb2222' }))
+    })
+    render(<QueryClientProvider client={new QueryClient()}><InboxCard item={held} /></QueryClientProvider>)
+    expect(screen.getByText(/non è abilitata in nessun team/)).toBeTruthy()
+    expect(screen.getByText(/abilita la cartella nel team giusto/)).toBeTruthy()
+    // Il pulsante principale dice in quale team pubblica / EN: The main button says which team it publishes to
+    await waitFor(() => expect(screen.getByText('Pubblica in «Team B»')).toBeTruthy())
+    fireEvent.change(screen.getByLabelText('Pubblica in…'), { target: { value: 'bbbb2222' } })
+    await waitFor(() => expect(fetchMock.mock.calls.some(([u]) => u === '/api/inbox/abc123/move')).toBe(true))
+    const [, init] = fetchMock.mock.calls.find(([u]) => u === '/api/inbox/abc123/move') as [string, RequestInit]
+    expect(JSON.parse(init.body as string)).toEqual({ team: 'bbbb2222', publish: true })
+  })
+
   it('scarta', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{"ok":true}'))
     renderCard()

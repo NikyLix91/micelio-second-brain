@@ -55,6 +55,9 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { ensureIdentity, type Identity, loadIdentity } from '../core/identity'
 import type { NodeStatus } from '../core/model'
+import type { MemoryData, MemoryInput } from '../core/events'
+import { checkSessionTeam, type TeamRef } from '../core/team-check'
+import type { ExplicitOutcome } from '../ingest/pipeline'
 import { hostFiles, type NodePaths, teamPaths } from '../core/paths'
 import type { Embedder } from '../embed/embedder'
 import { LlmRunner } from '../llm/runner'
@@ -365,6 +368,55 @@ export class MicelioHost extends EventEmitter {
       }
     }
     return best?.id ?? null
+  }
+
+  /**
+   * Salvataggio di un agente (tool MCP `remember`) con il controllo del team (0.6.1, vedi
+   * src/core/team-check.ts): la cartella della sessione deve essere abilitata nel team su cui
+   * l'agente salva. Se non lo è il ricordo va in Inbox, mai pubblicato:
+   * - nell'Inbox del team che possiede la cartella, se c'è (approvarlo lo pubblica lì);
+   * - altrimenti nell'Inbox del team della sessione, da dove si sposta con «Pubblica in…».
+   *
+   * EN: Save from an agent (MCP `remember` tool) with the team check (0.6.1, see
+   * src/core/team-check.ts): the session's folder must be enabled in the team the agent saves to.
+   * If it isn't, the memory goes to the Inbox, never published:
+   * - to the Inbox of the team that owns the folder, if there is one (approving publishes it there);
+   * - otherwise to the session team's Inbox, from where it can be moved with «Pubblica in…».
+   * @param node nodo del team della connessione MCP
+   *        EN: node of the MCP connection's team
+   * @param cwd cartella della sessione, null se il client non l'ha mandata
+   *        EN: the session's folder, null if the client didn't send it
+   * @returns l'esito e il team in cui è finito
+   *          EN: the outcome and the team it ended up in
+   */
+  async rememberFromAgent (node: MicelioNode, input: MemoryInput, cwd: string | null): Promise<{ outcome: ExplicitOutcome, team: TeamRef }> {
+    const ref = (id: string): TeamRef => ({ id, name: this.nodes.get(id)?.teamName ?? id })
+    const session = ref(this.idOf(node))
+    const check = checkSessionTeam(cwd, session, (d) => this.ownerOf(d), (id) => ref(id).name)
+    const target = check?.folder ? this.nodes.get(check.folder.id)! : node
+    const team = check?.folder ?? session
+    return { outcome: await target.remember(input, check ?? undefined), team }
+  }
+
+  /**
+   * «Pubblica in…» dall'Inbox (0.6.1): sposta un elemento nell'Inbox di un altro team e, se
+   * richiesto, lo approva subito lì. Per i salvataggi trattenuti dal controllo del team.
+   *
+   * EN: «Pubblica in…» (Publish to…) from the Inbox (0.6.1): moves an item to another team's Inbox
+   * and, if asked, approves it right away there. For saves held by the team check.
+   * @param from team dell'Inbox in cui sta l'elemento
+   *        EN: team of the Inbox the item is in
+   * @param to team di destinazione (id o nome)
+   *        EN: destination team (id or name)
+   */
+  async moveInbox (from: string, id: string, to: string, publish: boolean): Promise<{ team: string, inboxId?: string, published?: { id: string, duplicate: boolean, memory: MemoryData } }> {
+    const src = this.node(from)
+    const dstId = this.resolve(to)
+    const dst = this.nodes.get(dstId)!
+    if (dst === src) throw new UserError('L\'elemento è già nell\'Inbox di questo team: approvalo', 'The item is already in this team\'s Inbox: approve it')
+    const inboxId = dst.receiveInbox(src.takeInbox(id, dst.teamName ?? dstId))
+    if (!publish) return { team: dstId, inboxId }
+    return { team: dstId, published: await dst.approve(inboxId) }
   }
 
   /**

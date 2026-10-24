@@ -30,6 +30,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import type { MemoryData } from '../core/events'
+import type { TeamCheck } from '../core/team-check'
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS jobs (
@@ -165,9 +166,18 @@ export interface SecurityLogEntry {
   omitted: string[]
 }
 
-export interface InboxItem { id: string, created: number, expires: number, source: SourceRef, reason: string, memory: MemoryData }
+export interface InboxItem {
+  id: string
+  created: number
+  expires: number
+  source: SourceRef
+  reason: string
+  memory: MemoryData
+  /** Salvataggio trattenuto perché la cartella della sessione non è del team (0.6.1). / EN: Save held because the session's folder doesn't belong to the team (0.6.1). */
+  teamCheck?: TeamCheck
+}
 /** Esiti registrati localmente: cosa NON è andato al team e perché. / EN: Outcomes logged locally: what did NOT go to the team and why. */
-export type DecisionOutcome = 'blocked' | 'private' | 'discarded' | 'rejected' | 'expired'
+export type DecisionOutcome = 'blocked' | 'private' | 'discarded' | 'rejected' | 'expired' | 'moved'
 /** Una riga del registro delle decisioni private. / EN: A row of the private decision log. */
 export interface Decision { id: number, created: number, source: SourceRef, outcome: DecisionOutcome, reason: string, preview: string }
 
@@ -189,6 +199,12 @@ export class PrivateStore {
     //     on a power failure we lose at most the last writes (the index is rebuilt from the team log anyway).
     this.db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;')
     this.db.exec(SCHEMA)
+    // 0.6.1: controllo del team dei salvataggi (src/core/team-check.ts). Gli archivi creati prima
+    // non hanno la colonna: si aggiunge, vuota per gli elementi già in Inbox.
+    // EN: 0.6.1: team check of saves (src/core/team-check.ts). Stores created before don't have the
+    //     column: it's added, empty for the items already in the Inbox.
+    const inboxCols = (this.db.prepare('PRAGMA table_info(inbox)').all() as Array<{ name: string }>).map((c) => c.name)
+    if (!inboxCols.includes('team_check')) this.db.exec('ALTER TABLE inbox ADD COLUMN team_check TEXT')
   }
 
   close (): void { this.db.close() }
@@ -243,10 +259,10 @@ export class PrivateStore {
   // EN: Inbox
 
   /** Mette un ricordo in inbox con il motivo; scade dopo INBOX_TTL_MS. / EN: Puts a memory in the Inbox with the reason; it expires after INBOX_TTL_MS. */
-  addInbox (memory: MemoryData, source: SourceRef, reason: string, now = Date.now()): InboxItem {
-    const item: InboxItem = { id: randomBytes(4).toString('hex'), created: now, expires: now + INBOX_TTL_MS, source, reason, memory }
-    this.db.prepare('INSERT INTO inbox (id, created, expires, source, reason, memory) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(item.id, item.created, item.expires, JSON.stringify(source), reason, JSON.stringify(memory))
+  addInbox (memory: MemoryData, source: SourceRef, reason: string, now = Date.now(), teamCheck?: TeamCheck): InboxItem {
+    const item: InboxItem = { id: randomBytes(4).toString('hex'), created: now, expires: now + INBOX_TTL_MS, source, reason, memory, ...(teamCheck ? { teamCheck } : {}) }
+    this.db.prepare('INSERT INTO inbox (id, created, expires, source, reason, memory, team_check) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(item.id, item.created, item.expires, JSON.stringify(source), reason, JSON.stringify(memory), teamCheck ? JSON.stringify(teamCheck) : null)
     return item
   }
 
@@ -669,5 +685,5 @@ function rowToDocument (r: any): DocumentRecord {
 }
 
 function rowToInbox (r: any): InboxItem {
-  return { id: r.id, created: r.created, expires: r.expires, source: JSON.parse(r.source), reason: r.reason, memory: JSON.parse(r.memory) }
+  return { id: r.id, created: r.created, expires: r.expires, source: JSON.parse(r.source), reason: r.reason, memory: JSON.parse(r.memory), ...(r.team_check ? { teamCheck: JSON.parse(r.team_check) } : {}) }
 }

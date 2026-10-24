@@ -54,6 +54,9 @@ export interface MyGap { key: string, query: string, count: number, first: numbe
 export type { CodeRefs, Decision, ExplicitOutcome, InboxItem, IngestStatus, InviteRecord, MemberRecord, MemoryData, NodeSettings, NodeStatus, RecallHit, TeamSummary }
 
 /** Elenco dei team del PC e identità personale (GET /api/teams, B3). / EN: List of the PC's teams and personal identity (GET /api/teams, B3). */
+/** Stato del collegamento di Claude Code (vedi claudeMcpStatus). / EN: Claude Code connection status (see claudeMcpStatus). */
+export interface ClaudeCodeStatus { registration: 'shim' | 'legacy' | 'missing' | 'other', migration: { at: number, changed: number } | null }
+
 export interface TeamsInfo { teams: TeamSummary[], identity: { name: string, publicKey: string } | null }
 
 /** Errore dell'API con il messaggio leggibile restituito dal daemon. / EN: API error with the readable message returned by the daemon. */
@@ -143,7 +146,7 @@ export const api = {
   /** Membri di un team qualsiasi del PC (per riconoscere la stessa persona in più team). / EN: Members of any team on the PC (to recognize the same person across teams). */
   membersOf: (team: string) => call<MemberRecord[]>('GET', '/api/members', undefined, team),
   /** Collega Claude Code avviato in una cartella al team scelto (MCP in ambito "local"). / EN: Connects Claude Code started in a folder to the chosen team (MCP with "local" scope). */
-  setupProject: (path: string) => call<{ dir: string, mcpUrl: string }>('POST', '/api/setup/project', { path }),
+  setupProject: (path: string) => call<{ dir: string, via: 'cli' | 'file' }>('POST', '/api/setup/project', { path }),
   teamConfig: () => call<{ language: string, blockKeywords: string[], maxMemories: number, updateOnWrite: boolean }>('GET', '/api/team/config'),
   distillQuality: () => call<DistillQuality>('GET', '/api/distill/quality'),
   setTeamConfig: (key: string, value: unknown) => call<{ ok: true }>('POST', '/api/team/config', { key, value }),
@@ -195,6 +198,10 @@ export const api = {
   inbox: () => call<InboxItem[]>('GET', '/api/inbox'),
   approve: (id: string, patch: { title?: string, body?: string } = {}) => call<{ id: string, memory: MemoryData }>('POST', `/api/inbox/${enc(id)}/approve`, patch),
   reject: (id: string) => call<{ ok: true }>('POST', `/api/inbox/${enc(id)}/reject`),
+  /** «Pubblica in…» (0.6.1): sposta nell'Inbox di un altro team e lo pubblica lì. / EN: «Pubblica in…» (Publish to…) (0.6.1): moves to another team's Inbox and publishes it there. */
+  moveInbox: (id: string, team: string, publish = true) => call<{ team: string, inboxId?: string }>('POST', `/api/inbox/${enc(id)}/move`, { team, publish }),
+  /** Come è collegato Claude Code (0.6.1). / EN: How Claude Code is connected (0.6.1). */
+  claudeCodeStatus: () => call<ClaudeCodeStatus>('GET', '/api/setup/claude-code'),
   decisions: (limit = 200) => call<Decision[]>('GET', `/api/decisions?limit=${limit}`),
 
   // Ingestione e impostazioni

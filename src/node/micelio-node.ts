@@ -48,6 +48,7 @@ import { LocalizedError } from '../core/errors'
 import { MemoryInput, memoryId, type MemoryData, ROOT_CATEGORIES, type RootCategory } from '../core/events'
 import type { GapRecord, InviteRecord, MemberRecord, NodeStatus, RecallHit, RootRecord } from '../core/model'
 import type { NodePaths } from '../core/paths'
+import type { TeamCheck } from '../core/team-check'
 import { writeExport } from '../export/markdown'
 import { buildGraph, type Graph, type GraphLink } from '../graph/constellation'
 import { type Embedder, HashEmbedder, LocalEmbedder } from '../embed/embedder'
@@ -941,11 +942,11 @@ export class MicelioNode extends EventEmitter {
    * EN: EXPLICIT save (CLI, API, MCP). It goes through the filter and classification (decision D6):
    * the outcome can be "team", "inbox" or "private".
    */
-  async remember (input: MemoryInput): Promise<ExplicitOutcome> {
+  async remember (input: MemoryInput, hold?: TeamCheck): Promise<ExplicitOutcome> {
     this.requireTeam()
     const parsed = MemoryInput.safeParse(input)
     if (!parsed.success) throw new UserError(parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '))
-    return this.pipeline.ingestExplicit(parsed.data)
+    return this.pipeline.ingestExplicit(parsed.data, hold)
   }
 
   /** Ricerca full-text nella memoria del team (indice locale). / EN: Full-text search in the team memory (local index). */
@@ -3238,6 +3239,25 @@ export class MicelioNode extends EventEmitter {
     } catch (err) {
       throw err instanceof InboxNotFoundError ? new UserError(err.message, err.en) : err
     }
+  }
+
+  /**
+   * Toglie un elemento dall'Inbox per spostarlo in un altro team (vedi MicelioHost.moveInbox).
+   *
+   * EN: Removes an item from the Inbox to move it to another team (see MicelioHost.moveInbox).
+   */
+  takeInbox (id: string, toTeamName: string): InboxItem {
+    try {
+      return this.pipeline.takeInbox(id, toTeamName)
+    } catch (err) {
+      throw err instanceof InboxNotFoundError ? new UserError(err.message, err.en) : err
+    }
+  }
+
+  /** Riceve un elemento spostato da un altro team; restituisce il suo id qui. / EN: Receives an item moved from another team; returns its id here. */
+  receiveInbox (item: InboxItem): string {
+    this.requireTeam()
+    return this.pipeline.receiveInbox(item)
   }
 
   /** Rifiuta un elemento dell'inbox. / EN: Rejects an Inbox item. */

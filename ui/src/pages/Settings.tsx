@@ -64,8 +64,8 @@ const S = defineStrings({
       enable: 'Abilita',
       link: 'Collega Claude Code',
       linkConfirm: 'Sì, collega a questo team',
-      linkTitle: 'Claude Code avviato in questa cartella userà questo team (registrazione MCP solo per la cartella)',
-      linked: (url: string) => `Fatto: Claude Code avviato in questa cartella userà ${url}`
+      linkTitle: 'Registra Micelio in Claude Code per questa cartella: il team si sceglie dalla cartella a ogni richiesta',
+      linked: 'Fatto. Le sessioni di Claude Code già aperte in questa cartella vanno chiuse e riaperte (anche con /resume): leggono la registrazione solo all\'avvio.'
     },
     docs: {
       title: 'Cartelle di documenti',
@@ -127,6 +127,9 @@ const S = defineStrings({
       viaCli: (file: string) => ` Usato Claude Code in ${file}.`,
       viaFile: ' Claude Code non è stato trovato: la registrazione è stata scritta direttamente nella sua configurazione (.claude.json), con lo stesso risultato.',
       restart: ' Chiudi e riapri le sessioni di Claude Code (o ricarica la finestra di VS Code) per vedere Micelio in /mcp.',
+      // 0.6.1 / EN: 0.6.1
+      legacy: 'Claude Code è collegato con la registrazione vecchia, che non dice da quale cartella arriva la sessione: i salvataggi degli agenti finiscono in Inbox invece che nel team. Premi «Configura» e poi chiudi e riapri le sessioni di Claude Code.',
+      migrated: (n: number, time: string) => `Alle ${time} Micelio ha aggiornato ${n} registrazioni vecchie in Claude Code. Le sessioni di Claude Code aperte prima di quell'ora vanno chiuse e riaperte (anche con /resume), altrimenti i loro salvataggi finiscono in Inbox.`,
       otherUser: (user: string) => `Attenzione: Claude Code non risulta mai usato dall'utente «${user}», che è quello con cui gira Micelio. Claude Code legge la configurazione dal profilo di chi lo esegue: se lo avvii con un altro utente (per esempio un'utenza amministrativa), non vedrà Micelio. Apri Micelio con lo stesso utente con cui usi Claude Code e ripeti la configurazione.`
     }
   },
@@ -178,8 +181,8 @@ const S = defineStrings({
       enable: 'Enable',
       link: 'Connect Claude Code',
       linkConfirm: 'Yes, connect to this team',
-      linkTitle: 'Claude Code started in this folder will use this team (MCP registration for this folder only)',
-      linked: (url: string) => `Done: Claude Code started in this folder will use ${url}`
+      linkTitle: 'Registers Micelio in Claude Code for this folder: the team is picked from the folder on every request',
+      linked: 'Done. Claude Code sessions already open in this folder must be closed and reopened (/resume works too): they read the registration only at startup.'
     },
     docs: {
       title: 'Document folders',
@@ -241,6 +244,8 @@ const S = defineStrings({
       viaCli: (file: string) => ` Used Claude Code at ${file}.`,
       viaFile: ' Claude Code was not found: the registration was written directly into its configuration (.claude.json), with the same result.',
       restart: ' Close and reopen your Claude Code sessions (or reload the VS Code window) to see Micelio in /mcp.',
+      legacy: "Claude Code is connected with the old registration, which doesn't say which folder the session comes from: agents' saves go to the Inbox instead of the team. Press \"Configure\" and then close and reopen your Claude Code sessions.",
+      migrated: (n: number, time: string) => `At ${time} Micelio updated ${n} old registrations in Claude Code. Claude Code sessions opened before then must be closed and reopened (/resume works too), otherwise their saves go to the Inbox.`,
       otherUser: (user: string) => `Warning: Claude Code has never been used by the user "${user}", which is the one Micelio runs as. Claude Code reads its configuration from the profile of whoever runs it: if you start it with another user (for example an admin account), it won't see Micelio. Open Micelio with the same user you use Claude Code with and run the setup again.`
     }
   }
@@ -416,7 +421,7 @@ function WatchCard () {
         <button className='btn primary' disabled={!path.trim() || add.isPending} onClick={() => add.mutate(path.trim())}>{s.watch.enable}</button>
       </div>
       <ErrorBox error={add.error ?? remove.error ?? link.error} />
-      {link.data && <div className='notice ok small' style={{ marginTop: 10 }}>{s.watch.linked(link.data.mcpUrl)}</div>}
+      {link.data && <div className='notice ok small' style={{ marginTop: 10 }}>{s.watch.linked}</div>}
     </Card>
   )
 }
@@ -657,10 +662,15 @@ function ClaudeCodeCard () {
   // "Configura" = MCP + tutti gli hook; "Solo MCP" = nessun hook (né raccolta né contesto automatico)
   // EN: "Configura" (Configure) = MCP + all hooks; "Solo MCP" (MCP only) = no hooks (neither collection nor
   //     automatic context)
-  const setup = useMutation({ mutationFn: (hooks: boolean) => api.setupClaudeCode(hooks, hooks) })
+  const qc = useQueryClient()
+  // 0.6.1: registrazione vecchia o appena aggiornata dal daemon → avviso / EN: old registration or just updated by the daemon → warning
+  const status = useQuery({ queryKey: ['claude-code-status'], queryFn: api.claudeCodeStatus })
+  const setup = useMutation({ mutationFn: (hooks: boolean) => api.setupClaudeCode(hooks, hooks), onSuccess: () => void qc.invalidateQueries({ queryKey: ['claude-code-status'] }) })
   return (
     <Card help='settings#claude-code' title={t.title}>
       <p className='muted' style={{ marginTop: 0 }}>{t.intro1} {t.intro2}</p>
+      {status.data?.registration === 'legacy' && <div className='notice warn' style={{ marginBottom: 10 }}>{t.legacy}</div>}
+      {status.data?.migration && <div className='notice warn' style={{ marginBottom: 10 }}>{t.migrated(status.data.migration.changed, new Date(status.data.migration.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))}</div>}
       <div className='row'>
         <ConfirmButton label={t.full} confirmLabel={t.fullConfirm} onConfirm={() => setup.mutate(true)} disabled={setup.isPending} />
         <ConfirmButton label={t.mcpOnly} confirmLabel={t.mcpOnlyConfirm} onConfirm={() => setup.mutate(false)} disabled={setup.isPending} />
