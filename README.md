@@ -5,7 +5,7 @@
 **A distributed, peer-to-peer second brain for a development team's AI tools.**
 
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
-![Version](https://img.shields.io/badge/version-0.6.0-green.svg)
+![Version](https://img.shields.io/badge/version-0.6.1-green.svg)
 ![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)
 
 Every developer's AI assistant learns something in every session: how a flaky test was fixed, why a library was chosen, which endpoint has a gotcha. Then the session ends and that knowledge is gone. The next colleague, or the next session, starts from zero.

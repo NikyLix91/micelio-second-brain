@@ -4,9 +4,18 @@ All notable changes to Micelio. The format follows [Keep a Changelog](https://ke
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-10-24
+
+### Fixed
+- Memories saved by Claude Code could still end up in the default team: installations configured before 0.5.1 kept the old HTTP registration, which doesn't say which folder the session comes from, and updating the app didn't change it. The daemon now migrates the old registrations to the stdio shim at startup (with a backup of `~/.claude.json`), and Settings reminds you to reopen the sessions already open.
+
 ### Added
+- **Team check on `remember`:** a memory saved by an agent is published only if the session's folder is enabled in the team it's saved to. Otherwise it goes to the Inbox with the problem and the proposed fix, and the agent says so. **Publish to…** in the Inbox moves it to the right team and publishes it there.
 - Published under the GNU AGPL-3.0 license, with Contributor License Agreement, contribution guide, security policy and code of conduct.
 - Settings → About: version, license and links to the source code.
+
+### Changed
+- "Connect Claude Code" next to a folder registers the stdio shim for that folder; it no longer pins a team, the folder decides.
 
 ### Removed
 - The Phase 0 spike code (still in the git history, branch `phase-0-spikes`).
@@ -74,5 +83,6 @@ Memory that learns from use.
 ### Added
 - First version: P2P team, memories, hybrid search, MCP for Claude Code, automatic collection with privacy filter and Inbox, document folders, priority and dreaming, desktop app with the 3D Nucleus.
 
-[Unreleased]: https://github.com/salvatorestracquadanio86/micelio-brain/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/salvatorestracquadanio86/micelio-brain/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/salvatorestracquadanio86/micelio-brain/releases/tag/v0.6.1
 [0.6.0]: https://github.com/salvatorestracquadanio86/micelio-brain/releases/tag/v0.6.0

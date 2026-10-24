@@ -51,6 +51,7 @@ import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { LocalizedError } from '../core/errors'
 import { MemoryInput, type MemoryData, type RootCategory } from '../core/events'
+import { type TeamCheck, teamCheckReason } from '../core/team-check'
 import { LlmBudgetExceededError, LlmUnavailableError } from '../llm/types'
 import type { LlmRunner } from '../llm/runner'
 import { applyFilter, type FilterRules } from '../privacy/filter'
@@ -129,7 +130,7 @@ export interface PipelineDeps {
 /** Esito di un salvataggio esplicito, restituito a CLI e MCP. / EN: Outcome of an explicit save, returned to CLI and MCP. */
 export type ExplicitOutcome =
   | { outcome: 'team', id: string, duplicate: boolean, memory: MemoryData, updated?: string }
-  | { outcome: 'inbox', inboxId: string, reason: string, memory: MemoryData }
+  | { outcome: 'inbox', inboxId: string, reason: string, memory: MemoryData, teamCheck?: TeamCheck }
   | { outcome: 'private', reason: string }
 
 /** Dove mandare un contenuto in base alla classificazione. / EN: Where to send content based on its classification. */
@@ -557,7 +558,15 @@ export class IngestPipeline {
    * @throws ZodError se il ricordo non è valido (titolo troppo corto, corpo vuoto…)
    *         EN: ZodError if the memory is invalid (title too short, empty body…)
    */
-  async ingestExplicit (input: MemoryInput): Promise<ExplicitOutcome> {
+  /**
+   * @param hold controllo del team non superato (0.6.1, src/core/team-check.ts): il ricordo passa
+   *        comunque da filtro e classificazione (se è privato resta privato), ma invece di essere
+   *        pubblicato va nell'Inbox con il problema, per una decisione dell'utente
+   *        EN: failed team check (0.6.1, src/core/team-check.ts): the memory still goes through the
+   *        filter and classification (if it's private it stays private), but instead of being
+   *        published it goes to the Inbox with the problem, for the user to decide
+   */
+  async ingestExplicit (input: MemoryInput, hold?: TeamCheck): Promise<ExplicitOutcome> {
     const { store, llm } = this.deps
     const memory = MemoryInput.parse(input)
     const source: SourceRef = { type: memory.source.type, ref: memory.source.ref }
@@ -572,8 +581,11 @@ export class IngestPipeline {
     }
 
     const toInbox = (reason: string): ExplicitOutcome => {
-      const item = this.addInbox(fm.memory, source, reason)
-      return { outcome: 'inbox', inboxId: item.id, reason, memory: fm.memory }
+      // Con il controllo del team non superato il motivo principale è quello: lo si dice per primo
+      // EN: With a failed team check that's the main reason: it's stated first
+      const why = hold ? `${teamCheckReason(hold)}${reason ? ` (inoltre: ${reason})` : ''}` : reason
+      const item = this.addInbox(fm.memory, source, why, Date.now(), hold)
+      return { outcome: 'inbox', inboxId: item.id, reason: why, memory: fm.memory, ...(hold ? { teamCheck: hold } : {}) }
     }
 
     if (!llm) return toInbox('nessun LLM configurato per verificarlo')
@@ -587,6 +599,7 @@ export class IngestPipeline {
 
     switch (route(c)) {
       case 'team': {
+        if (hold) return toInbox('')
         const res = await this.deps.publish(fm.memory)
         return { outcome: 'team', id: res.id, duplicate: res.duplicate, memory: fm.memory, ...(res.updated ? { updated: res.updated } : {}) }
       }
@@ -647,6 +660,32 @@ export class IngestPipeline {
     this.deps.store.removeInbox(id)
     this.notify('inbox')
     return item.memory
+  }
+
+  /**
+   * Toglie un elemento dall'Inbox per spostarlo nell'Inbox di un altro team (0.6.1, «Pubblica in…»).
+   * Nel registro risulta come spostato.
+   *
+   * EN: Removes an item from the Inbox to move it to another team's Inbox (0.6.1, «Pubblica in…»).
+   * The log records it as moved.
+   */
+  takeInbox (id: string, toTeam: string): InboxItem {
+    const item = this.requireInbox(id)
+    this.logDecision(item.source, 'moved', `spostato nel team «${toTeam}»`, item.memory.title)
+    this.deps.store.removeInbox(id)
+    this.notify('inbox')
+    return item
+  }
+
+  /**
+   * Riceve un elemento spostato da un altro team e lo mette in Inbox, senza più il problema del
+   * team (l'utente ha scelto questo team). Restituisce l'id del nuovo elemento.
+   *
+   * EN: Receives an item moved from another team and puts it in the Inbox, without the team problem
+   * anymore (the user chose this team). Returns the new item's id.
+   */
+  receiveInbox (item: InboxItem): string {
+    return this.addInbox(item.memory, item.source, 'spostato da un altro team').id
   }
 
   reject (id: string): void {

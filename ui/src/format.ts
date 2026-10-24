@@ -56,6 +56,6 @@ export const KIND_LABEL = byLang({
 
 /** Esiti nel registro privato. / EN: Outcomes in the private log. */
 export const OUTCOME_LABEL = byLang({
-  it: { blocked: 'Bloccato dal filtro', private: 'Privato', discarded: 'Scartato', rejected: 'Rifiutato da te', expired: 'Scaduto' },
-  en: { blocked: 'Blocked by the filter', private: 'Private', discarded: 'Discarded', rejected: 'Rejected by you', expired: 'Expired' }
+  it: { blocked: 'Bloccato dal filtro', private: 'Privato', discarded: 'Scartato', rejected: 'Rifiutato da te', expired: 'Scaduto', moved: 'Spostato in un altro team' },
+  en: { blocked: 'Blocked by the filter', private: 'Private', discarded: 'Discarded', rejected: 'Rejected by you', expired: 'Expired', moved: 'Moved to another team' }
 })

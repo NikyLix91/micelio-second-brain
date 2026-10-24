@@ -17,7 +17,7 @@ const S = defineStrings({
 })
 
 /** Colore del badge per esito: i blocchi del filtro sono quelli che proteggono di più. / EN: Badge color per outcome: filter blocks are the ones that protect the most. */
-const OUTCOME_CLASS: Record<string, string> = { blocked: 'danger', private: 'warn', discarded: '', rejected: '', expired: '' }
+const OUTCOME_CLASS: Record<string, string> = { blocked: 'danger', private: 'warn', discarded: '', rejected: '', expired: '', moved: '' }
 
 export function Private () {
   const s = useStrings(S)

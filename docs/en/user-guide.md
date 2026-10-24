@@ -168,7 +168,7 @@ micelio teams leave "Client X" --yes        # removes the team from this PC
 
 - **Your name** is the one from the personal identity created with your first team: you don't need to repeat it. Next to members, on the Team page, you can see whether a colleague is also with you in another team.
 - **Enabled folders** belong to a single team. If you enable `C:\lavoro` in team A and `C:\lavoro\clienteX` in team B, sessions in `clienteX` go only to B.
-- **Agents** use the team that enabled the project folder, otherwise the default one (since 0.5.1: after updating, press "Connect Claude Code" in Settings again). To force a team in a project: `micelio --team "Client X" setup claude-code --project <project folder>`, or "Connect Claude Code" next to the folder.
+- **Agents** search in the team that enabled the project folder, otherwise in the default one. They **save** only to the folder's team: since 0.6.1 a save from a folder that doesn't belong to the team, or isn't enabled, or from a session with the old registration, isn't published but goes to the **Inbox** with the problem and the fix, and from there you publish it to the right team with "Publish to…". The daemon updates Claude Code's old registrations by itself at startup: reopen the sessions already open.
 - **LLM and budget** are shared by all teams: one subscription.
 
 If you're coming from the single-team version you don't need to do anything: on first start the files are moved to `~/.micelio/teams/<id>/` and the team becomes the default.

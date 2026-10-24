@@ -84,15 +84,21 @@ Con più team (vedi [guida utente](guida-utente.md#4-ter-più-team-sullo-stesso-
 - `http://127.0.0.1:7337/mcp` senza intestazione lavora sul **team predefinito** (`micelio teams default <team>`);
 - `http://127.0.0.1:7337/mcp/<team>` lavora sul team indicato, per id locale o per nome.
 
-Per forzare un team preciso in un progetto, indipendentemente dalle cartelle abilitate:
+**Controllo del team di `remember` (0.6.1).** Un ricordo salvato da un agente viene pubblicato solo se la cartella della sessione è abilitata nel team su cui si salva. Altrimenti va nell'Inbox con il problema e la soluzione, e la risposta lo dice:
 
-```bash
-micelio --team "Cliente X" setup claude-code --project C:\progetti\cliente-x
-```
+| Caso | Dove va | Soluzione |
+|---|---|---|
+| La cartella è abilitata in un altro team (`/mcp/<team>` o `--team` vecchi) | Inbox del team della cartella | Approvarlo lo pubblica lì |
+| La cartella non è abilitata in nessun team | Inbox del team della sessione | Abilitarla nel team giusto, poi «Pubblica in…» |
+| Nessuna cartella (endpoint HTTP senza `x-micelio-cwd`) | Inbox del team della sessione | Registrare lo shim («Configura») e riaprire le sessioni |
 
-Il comando esegue, nella cartella del progetto, `claude mcp add --transport http --scope local micelio http://127.0.0.1:7337/mcp/<id> --header "Authorization: Bearer <token>"`. L'ambito *local* vale solo quando Claude Code è avviato in quella cartella, prevale sulla registrazione utente e resta in `~/.claude.json`: il token non finisce nel repository. Lo stesso fa il pulsante «Collega Claude Code» accanto a una cartella nelle Impostazioni.
+Lo shim manda la cartella anche con `--team`. Il ricordo trattenuto passa comunque dal filtro e dalla classificazione. «Pubblica in…» corrisponde a `POST /api/inbox/:id/move` con `{ team, publish }`. Il codice è in `src/core/team-check.ts` e `MicelioHost.rememberFromAgent`.
 
-Per i client che usano lo shim: `micelio --team <team> setup codex|vscode|webstorm` stampa una configurazione che passa `--team` allo shim.
+**Migrazione automatica (0.6.1).** All'avvio, `micelio daemon` sostituisce in `~/.claude.json` le registrazioni HTTP che puntano a lui (quella utente e quelle per progetto `/mcp/<team>`) con lo shim, salvando prima `.claude.json.micelio-backup`. Le voci di altri server o di daemon su altre porte restano com'erano. `GET /api/setup/claude-code` dice com'è collegato Claude Code (`shim`, `legacy`, `missing`) e se c'è stata una migrazione: le Impostazioni lo usano per ricordare di riaprire le sessioni.
+
+`micelio setup claude-code --project <cartella>` (e «Collega Claude Code» accanto a una cartella) registra lo stesso shim nell'ambito *local* di quella cartella. Non fissa più un team: decide la cartella.
+
+Per i client che usano lo shim: `micelio --team <team> setup codex|vscode|webstorm` stampa una configurazione che passa `--team` allo shim; anche lì `remember` controlla la cartella.
 
 ## Ricordi personali, codice cambiato, contesto automatico (B4)
 
