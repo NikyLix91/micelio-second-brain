@@ -6,7 +6,7 @@ body:
     attributes:
       value: |
         Thanks for taking the time! Please **don't** paste memories, transcripts or logs that contain private or customer data.
-        Security problems go through [SECURITY.md](https://github.com/salvatorestracquadanio86/micelio-brain/blob/main/SECURITY.md), not here.
+        Security problems go through [SECURITY.md](https://github.com/salvatorestracquadanio86/micelio-second-brain/blob/main/SECURITY.md), not here.
   - type: textarea
     id: what
     attributes:

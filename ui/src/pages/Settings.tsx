@@ -611,7 +611,7 @@ function ContextCard () {
 }
 
 /** URL del codice sorgente: lo stesso di package.json. / EN: Source code URL: the same as package.json. */
-const SOURCE_URL = 'https://github.com/salvatorestracquadanio86/micelio-brain'
+const SOURCE_URL = 'https://github.com/salvatorestracquadanio86/micelio-second-brain'
 
 const ABOUT = defineStrings({
   it: {

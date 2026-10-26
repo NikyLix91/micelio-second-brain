@@ -4,8 +4,8 @@ Thanks for your interest! Micelio is maintained by one person in their spare tim
 
 ## Before you start
 
-- **Bugs:** open an issue with the [bug report form](https://github.com/salvatorestracquadanio86/micelio-brain/issues/new?template=bug_report.yml). Include the version (Settings → About), the OS and, if you can, the relevant lines of the daemon log.
-- **Features:** open an issue with the [feature request form](https://github.com/salvatorestracquadanio86/micelio-brain/issues/new?template=feature_request.yml) **before** writing code, so we can agree on the approach. The planned work is in [docs/en/PLAN.md](docs/en/PLAN.md).
+- **Bugs:** open an issue with the [bug report form](https://github.com/salvatorestracquadanio86/micelio-second-brain/issues/new?template=bug_report.yml). Include the version (Settings → About), the OS and, if you can, the relevant lines of the daemon log.
+- **Features:** open an issue with the [feature request form](https://github.com/salvatorestracquadanio86/micelio-second-brain/issues/new?template=feature_request.yml) **before** writing code, so we can agree on the approach. The planned work is in [docs/en/PLAN.md](docs/en/PLAN.md).
 - **Security problems:** never in a public issue. See [SECURITY.md](SECURITY.md).
 
 ## Contributor License Agreement
