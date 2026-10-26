@@ -4,6 +4,10 @@ All notable changes to Micelio. The format follows [Keep a Changelog](https://ke
 
 ## [Unreleased]
 
+### Fixed
+
+- Sidebar: a long node name (e.g. `name.surname`) no longer pushes the IT/EN language selector out of view; it is shortened with an ellipsis and shown in full on hover.
+
 ## [0.7.0] - 2026-10-26
 
 ### Security

@@ -183,7 +183,7 @@ function Sidebar ({ live, team, node }: { live: boolean, team: string, node: str
       <NavLink to='/guida' className={link}>{n.guide}</NavLink>
       <div className='sidebar-footer'>
         <div className='row'><span className={`dot ${live ? 'on' : ''}`} />{live ? s.live : s.reconnecting}</div>
-        <div className='row'><span>{node}</span><span className='spacer' /><LangSwitch /></div>
+        <div className='row'><span className='node-name' title={node}>{node}</span><span className='spacer' /><LangSwitch /></div>
       </div>
     </nav>
   )
