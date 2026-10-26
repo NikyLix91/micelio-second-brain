@@ -17,9 +17,17 @@ Le **Radici** sono il sapere fondante del team: paradigmi architetturali, mappe 
 
 ## Come nasce una Radice {#create}
 
-- **Qualunque membro** può promuovere (e togliere) una Radice: dal dettaglio di un ricordo («Rendi Radice»), da CLI (`micelio roots add <id> <categoria>`) o chiedendolo all'agente (tool `mark_root`).
+- **Qualunque membro**, salvo che il team abbia scelto «Radici solo per gli admin» (vedi sotto), può promuovere (e togliere) una Radice: dal dettaglio di un ricordo («Rendi Radice»), da CLI (`micelio roots add <id> <categoria>`) o chiedendolo all'agente (tool `mark_root`).
 - **Suggerite da Micelio**: il distillatore segnala i ricordi che sembrano fondanti; restano suggerimenti nel tuo `private.db` finché non li promuovi o li ignori.
 - **Cartelle di Radici**: i documenti di una cartella marcata «di Radici» (Impostazioni) diventano Radici da soli.
+
+## Radici solo per gli admin {#admin-only}
+
+Le Radici arrivano agli agenti di tutti come regole da rispettare, e con «tieni aggiornato» finiscono nei `CLAUDE.md` e `AGENTS.md` dei colleghi. Per questo un team può decidere che **solo gli admin creano e tolgono le Radici**: Team → Impostazioni del team → «Radici solo per gli admin». Gli altri membri continuano a segnalarle e a confermarle dopo la revisione, e i loro suggerimenti di Radice restano suggerimenti finché un admin non li promuove.
+
+È **accesa nei team nuovi** dalla 0.6.2. Nei team esistenti la accende un admin; le Radici create prima restano.
+
+**Come funziona dietro.** È l'impostazione di team `roots.adminOnly`, replicata a tutti. Il controllo vero è nel registro replicato (`src/net/apply.ts`): un `root.set` o `root.unset` di un membro che non è admin viene scartato da ogni nodo, anche se arriva da un client modificato. Vale dal momento in cui l'admin la accende, così tutti i nodi arrivano alla stessa vista.
 
 ## La revisione {#review}
 

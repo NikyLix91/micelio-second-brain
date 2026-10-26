@@ -46,7 +46,7 @@ import b4a from 'b4a'
 import z32 from 'z32'
 import { envelope, type EventPayload } from '../core/events'
 import type { GapRecord, InviteRecord, MemberRecord, MemoryRecord, RedactAck, RootRecord, TeamRecord } from '../core/model'
-import { KEYS, RANGES, applyNodes, openView } from './apply'
+import { KEYS, RANGES, ROOTS_ADMIN_ONLY, applyNodes, openView } from './apply'
 import { relayKeyFor } from './relay-key'
 
 /**
@@ -84,6 +84,24 @@ export interface TeamNodeOptions {
 
 const hex = (b: Uint8Array) => b4a.toString(b, 'hex') as string
 const buf = (h: string) => b4a.from(h, 'hex')
+
+/**
+ * Legge i dati di una richiesta d'ingresso (scritti dal candidato): chiave del feed in esadecimale
+ * (64 cifre) e nome da 1 a 100 caratteri, come vuole l'evento member.add. Null se non tornano.
+ *
+ * EN: Reads the data of a join request (written by the candidate): the feed key in hex (64 digits)
+ * and a name of 1 to 100 characters, as the member.add event requires. Null if they don't match.
+ */
+export function parseJoinRequest (data: Uint8Array | null | undefined): { key: string, name: string } | null {
+  if (!data) return null
+  let v: unknown
+  try { v = JSON.parse(b4a.toString(data)) } catch { return null }
+  if (!v || typeof v !== 'object') return null
+  const { key, name } = v as Record<string, unknown>
+  if (typeof key !== 'string' || !/^[0-9a-f]{64}$/.test(key)) return null
+  if (typeof name !== 'string' || name.length < 1 || name.length > 100) return null
+  return { key, name }
+}
 
 /** Validità di un invito. / EN: How long an invite is valid. */
 const INVITE_TTL_MS = 24 * 60 * 60 * 1000
@@ -154,6 +172,9 @@ export class TeamNode extends EventEmitter {
     // EN: bootstrap = null: Autobase creates a new base whose first writer is our local feed.
     await this.openBase(null, encryptionKey)
     await this.append({ type: 'team.init', name: teamName, founderName: nodeName })
+    // Team nuovi: Radici solo per gli admin (0.6.2, vedi ROOTS_ADMIN_ONLY in apply.ts)
+    // EN: New teams: Roots for admins only (0.6.2, see ROOTS_ADMIN_ONLY in apply.ts)
+    await this.append({ type: 'team.config', key: ROOTS_ADMIN_ONLY, value: true })
     await this.base.update()
     return this.secrets()
   }
@@ -382,9 +403,39 @@ export class TeamNode extends EventEmitter {
     // "open" decifra la richiesta con la chiave pubblica dell'invito e ne verifica la firma.
     // EN: "open" decrypts the request with the invite public key and verifies its signature.
     candidate.open(buf(inv.publicKey))
-    const { key, name } = JSON.parse(b4a.toString(candidate.userData))
+    // I dati della richiesta li scrive chi chiede di entrare: si validano. Un JSON rotto faceva
+    // cadere il daemon (l'errore usciva dal gestore di blind-pairing).
+    // EN: The request data is written by whoever asks to join: it gets validated. Broken JSON used
+    //     to crash the daemon (the error escaped blind-pairing's handler).
+    const req = parseJoinRequest(candidate.userData)
+    if (!req) {
+      this.log(`richiesta d'ingresso con l'invito ${inviteId.slice(0, 8)} malformata: ignorata`)
+      return
+    }
+    const { key, name } = req
+    // Una chiave che è già di un membro (anche espulso) non entra: apply scarterebbe il
+    // member.add, ma prima di questo controllo le chiavi del team venivano consegnate lo stesso.
+    // EN: A key that already belongs to a member (even a removed one) doesn't get in: apply would
+    //     drop the member.add, but before this check the team keys were handed over anyway.
+    if (await this.getRecord<MemberRecord>(KEYS.member(key))) {
+      this.log(`richiesta d'ingresso da "${name}" con una chiave già presente nel team: rifiutata`)
+      return
+    }
     this.log(`richiesta d'ingresso valida da "${name}": aggiungo il writer`)
     await this.append({ type: 'member.add', key, name, inviteId })
+    // Le chiavi si consegnano solo se il member.add è stato davvero accettato nella nostra vista
+    // (invito consumato e membro presente). Revisione di sicurezza 2026-10-26: prima si
+    // consegnavano comunque, e un ingresso scartato diventava un lettore invisibile.
+    // EN: Keys are handed over only if the member.add was really accepted in our view (invite
+    //     consumed and member present). Security review 2026-10-26: before, they were handed over
+    //     anyway, and a rejected join became an invisible reader.
+    await this.base.update()
+    const added = await this.getRecord<MemberRecord>(KEYS.member(key))
+    const consumed = !(await this.getRecord<InviteRecord>(KEYS.invite(inviteId)))
+    if (!added || added.removed || !consumed) {
+      this.log(`ingresso di "${name}" non accettato dal team: chiavi non consegnate`)
+      return
+    }
     // Consegna delle chiavi sul canale cifrato del pairing.
     // EN: Hand over the keys on the encrypted pairing channel.
     candidate.confirm({ key: this.base.key, encryptionKey: this.base.encryptionKey })

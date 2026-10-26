@@ -143,11 +143,26 @@ function teamLabel (node: MicelioNode): string {
   return node.teamName ? ` «${node.teamName}»` : ''
 }
 
-export function createMcpServer (node: MicelioNode, agentRemember: AgentRemember): McpServer {
+/**
+ * @param locked se presente, la sessione arriva da una cartella che non è in nessun team: tutti gli
+ *        strumenti tranne `remember` rispondono con questo testo invece di leggere o toccare la
+ *        memoria (revisione di sicurezza 2026-10-26, vedi lockedReadsMessage in team-check.ts)
+ *        EN: if present, the session comes from a folder that is in no team: every tool except
+ *        `remember` replies with this text instead of reading or touching the memory (security
+ *        review 2026-10-26, see lockedReadsMessage in team-check.ts)
+ */
+export function createMcpServer (node: MicelioNode, agentRemember: AgentRemember, locked?: string): McpServer {
   const server = new McpServer({ name: 'micelio', version: VERSION }, { instructions: INSTRUCTIONS })
+  // Registrazione degli strumenti che leggono o toccano la memoria: bloccati con `locked`.
+  // Gli strumenti restano elencati, così l'agente può spiegare all'utente perché non rispondono.
+  // EN: Registration of the tools that read or touch the memory: blocked with `locked`.
+  //     The tools stay listed, so the agent can explain to the user why they don't answer.
+  const register: typeof server.registerTool = locked === undefined
+    ? server.registerTool.bind(server)
+    : ((name: string, config: any) => server.registerTool(name, config, (async () => text(locked)) as any)) as typeof server.registerTool
 
   // ── recall ──────────────────────────────────────────────────────────────────────────
-  server.registerTool('recall', {
+  register('recall', {
     title: 'Cerca nella memoria del team',
     description: 'Cerca nella memoria condivisa del team soluzioni, decisioni, gotcha e procedure. Usa parole chiave specifiche (tecnologie, errori, nomi di componenti).',
     inputSchema: {
@@ -175,7 +190,7 @@ export function createMcpServer (node: MicelioNode, agentRemember: AgentRemember
   // ── architecture ────────────────────────────────────────────────────────────────────
   // Le Radici di un progetto: da leggere prima di toccare l'architettura (Fase 8).
   // EN: A project's Roots: to be read before touching the architecture (Phase 8).
-  server.registerTool('architecture', {
+  register('architecture', {
     title: 'Radici del team (architettura e regole fondanti)',
     description: 'Restituisce le RADICI: il sapere fondante del team (paradigmi architetturali, mappe di rete, interfacce e contratti, ' +
       'modello di dominio, best practice, policy di sicurezza). Chiamalo PRIMA di progettare o modificare una parte dell\'architettura ' +
@@ -218,11 +233,13 @@ export function createMcpServer (node: MicelioNode, agentRemember: AgentRemember
   })
 
   // ── mark_root ───────────────────────────────────────────────────────────────────────
-  // Qualunque membro può promuovere una Radice (decisione dell'utente); l'agente lo fa solo su
-  // richiesta esplicita, perché una Radice vale per tutto il team e non viene mai dimenticata.
-  // EN: Any member can promote a Root (user decision); the agent does it only on explicit
-  //     request, because a Root applies to the whole team and is never forgotten.
-  server.registerTool('mark_root', {
+  // Qualunque membro può promuovere una Radice, salvo «Radici solo per gli admin» (0.6.2: allora
+  // l'errore lo spiega); l'agente lo fa solo su richiesta esplicita, perché una Radice vale per
+  // tutto il team e non viene mai dimenticata.
+  // EN: Any member can promote a Root, unless "Roots for admins only" (0.6.2: then the error
+  //     explains it); the agent does it only on explicit request, because a Root applies to the
+  //     whole team and is never forgotten.
+  register('mark_root', {
     title: 'Rendi un ricordo una Radice',
     description: 'Promuove un ricordo del team a RADICE (sapere fondante che non viene mai dimenticato: architettura, rete, interfacce, ' +
       'dominio, best practice, policy). Usalo SOLO quando l\'utente lo chiede esplicitamente.',
@@ -301,7 +318,7 @@ ${r.memory.body}`)
   // ── vote ────────────────────────────────────────────────────────────────────────────
   // Segnale di utilità (Fase 5): i ricordi votati utili salgono nelle ricerche di tutti.
   // EN: Usefulness signal (Phase 5): memories voted useful rank higher in everyone's searches.
-  server.registerTool('vote', {
+  register('vote', {
     title: 'Vota un ricordo',
     description: 'Segnala se un ricordo del team è stato utile (useful: true) o fuorviante/obsoleto (useful: false). ' +
       'Usalo quando l\'utente conferma che un ricordo lo ha aiutato o che è sbagliato: migliora le ricerche di tutto il team.',
@@ -316,7 +333,7 @@ ${r.memory.body}`)
   })
 
   // ── get ─────────────────────────────────────────────────────────────────────────────
-  server.registerTool('get', {
+  register('get', {
     title: 'Leggi un ricordo',
     description: 'Restituisce un ricordo completo dato il suo id (anche abbreviato, come mostrato da recall).',
     inputSchema: { id: z.string().min(6).describe('Id del ricordo') },
@@ -335,7 +352,7 @@ ${r.memory.body}`)
   // EN: Original document on demand (§12-bis): the file comes from the node of the colleague who
   //     owns it (who must be online) and is saved locally. We return the path (Claude Code can
   //     open it directly) and the extracted text, for agents that don't read files.
-  server.registerTool('fetch_source', {
+  register('fetch_source', {
     title: 'Scarica il documento originale',
     description: 'Per un ricordo distillato da un documento, scarica il documento ORIGINALE completo dal collega che lo possiede ' +
       '(deve essere online e condividere quella cartella) e ne restituisce il percorso locale e il testo. Usalo quando il ricordo ' +
@@ -358,7 +375,7 @@ ${r.memory.body}`)
   // ── inbox_review ────────────────────────────────────────────────────────────────────
   // L'inbox contiene SOLO i casi dubbi (D9). È locale: nessun collega la vede.
   // EN: The Inbox holds ONLY the doubtful cases (D9). It is local: no colleague sees it.
-  server.registerTool('inbox_review', {
+  register('inbox_review', {
     title: 'Ricordi in attesa di verifica',
     description: 'Elenca i ricordi trattenuti nell\'inbox locale dell\'utente perché il filtro privacy non ha potuto decidere da solo. Mostrali all\'utente e chiedi cosa farne.',
     inputSchema: {},
@@ -374,7 +391,7 @@ ${r.memory.body}`)
   // ── inbox_decide ────────────────────────────────────────────────────────────────────
   // Va usato SOLO dopo una decisione esplicita dell'utente: approvare significa pubblicare a tutti.
   // EN: To be used ONLY after an explicit user decision: approving means publishing to everyone.
-  server.registerTool('inbox_decide', {
+  register('inbox_decide', {
     title: 'Decidi su un ricordo in attesa',
     description: 'Approva (pubblica nel team) o rifiuta un elemento dell\'inbox. Usalo SOLO dopo che l\'utente ha deciso esplicitamente. ' +
       'In approvazione si possono correggere titolo e corpo, per esempio per togliere dettagli sensibili.',

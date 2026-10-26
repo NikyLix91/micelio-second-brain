@@ -8,7 +8,7 @@ Un agente usa Micelio solo se decide di chiamare `recall`, e spesso non lo fa. C
 - `SessionStart`: all'avvio di una sessione Claude Code esegue `micelio hook session-start`;
 - `UserPromptSubmit`: a ogni richiesta dell'utente esegue `micelio hook prompt`.
 
-Il comando chiede il contesto al daemon (`POST /api/context`, con la cartella di lavoro e, per le richieste, il testo) e lo restituisce a Claude Code come `additionalContext`: l'agente lo legge come parte della conversazione. Il team è quello della **cartella** di lavoro (vedi **Più team**), altrimenti il predefinito.
+Il comando chiede il contesto al daemon (`POST /api/context`, con la cartella di lavoro e, per le richieste, il testo) e lo restituisce a Claude Code come `additionalContext`: l'agente lo legge come parte della conversazione. Il team è quello della **cartella** di lavoro (vedi **Più team**). Una cartella che non è in nessun team non riceve contesto: è una protezione contro i repository non fidati (vedi **Agenti e MCP**).
 
 ## A inizio sessione {#session-start}
 

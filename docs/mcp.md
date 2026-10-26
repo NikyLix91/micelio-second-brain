@@ -80,8 +80,8 @@ I client che supportano MCP su HTTP possono anche collegarsi direttamente all'UR
 
 Con più team (vedi [guida utente](guida-utente.md#4-ter-più-team-sullo-stesso-pc)):
 
-- `micelio mcp` (lo shim su stdio, registrato da `micelio setup claude-code` e da «Collega Claude Code») manda al daemon la cartella del progetto (`CLAUDE_PROJECT_DIR`, altrimenti la cartella di lavoro) nell'intestazione `x-micelio-cwd`, a ogni richiesta. Il daemon usa il team che ha abilitato quella cartella (la più specifica), altrimenti il predefinito. Fino alla 0.5.0 l'MCP utente era registrato via HTTP e lavorava sempre sul predefinito: ricordi di un progetto di un altro team finivano nel team sbagliato (bug del 2026-10-21);
-- `http://127.0.0.1:7337/mcp` senza intestazione lavora sul **team predefinito** (`micelio teams default <team>`);
+- `micelio mcp` (lo shim su stdio, registrato da `micelio setup claude-code` e da «Collega Claude Code») manda al daemon la cartella del progetto (`CLAUDE_PROJECT_DIR`, altrimenti la cartella di lavoro) nell'intestazione `x-micelio-cwd`, a ogni richiesta. Il daemon usa il team che ha abilitato quella cartella (la più specifica). Fino alla 0.5.0 l'MCP utente era registrato via HTTP e lavorava sempre sul predefinito: ricordi di un progetto di un altro team finivano nel team sbagliato (bug del 2026-10-21);
+- `http://127.0.0.1:7337/mcp` da una cartella che non è in nessun team, o senza l'intestazione, **non legge la memoria** (dalla 0.6.2): gli strumenti di lettura rispondono con la spiegazione e `remember` mette il ricordo nell'Inbox del team predefinito. È una protezione contro i repository non fidati che spingono l'agente a leggere la memoria e a mandarla fuori;
 - `http://127.0.0.1:7337/mcp/<team>` lavora sul team indicato, per id locale o per nome.
 
 **Controllo del team di `remember` (0.6.1).** Un ricordo salvato da un agente viene pubblicato solo se la cartella della sessione è abilitata nel team su cui si salva. Altrimenti va nell'Inbox con il problema e la soluzione, e la risposta lo dice:

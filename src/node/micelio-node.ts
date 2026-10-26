@@ -70,6 +70,7 @@ import { FakeAdapter } from '../llm/fake'
 import { LlmRunner } from '../llm/runner'
 import type { LlmAdapter } from '../llm/types'
 import { TeamNode } from '../net/team-node'
+import { ROOTS_ADMIN_ONLY } from '../net/apply'
 import { applyFilter, builtinDetectors, compileTeamPatterns, mergeRules, type TeamSecretPattern } from '../privacy/filter'
 import { DEFAULT_SENSITIVE_FILES, mergeSensitiveFiles, sensitiveMatch } from '../privacy/sensitive-files'
 import { mergeBlockedPaths } from '../privacy/paths'
@@ -514,6 +515,17 @@ const SLOW_CONSULTATION_MS = 1000
 /** Dopo quanti giorni le copie scaricate escono dalla cache (decisione D11). / EN: After how many days downloaded copies leave the cache (decision D11). */
 const SOURCE_CACHE_DAYS = 30
 
+/**
+ * Il riferimento di un ricordo «da documento» è l'hash SHA-256 del file (64 cifre esadecimali).
+ * Lo scrive un collega: prima di usarlo in un percorso va controllato (vedi fetchSource).
+ *
+ * EN: The reference of a "from document" memory is the file's SHA-256 hash (64 hex digits).
+ * A colleague writes it: it must be checked before using it in a path (see fetchSource).
+ */
+export function isDocumentRef (ref: string): boolean {
+  return /^[0-9a-f]{64}$/.test(ref)
+}
+
 /** Stato dell'ingestione, per `micelio ingest status` e la futura Dashboard. / EN: Ingestion status, for `micelio ingest status` and the future Dashboard. */
 export interface IngestStatus {
   llm: { adapter: string, available: boolean, budget: { used: number, limit: number } } | null
@@ -662,7 +674,12 @@ export class MicelioNode extends EventEmitter {
         this.privateStore.addRootSuggestion(id, category, title)
         this.changed('roots')
       },
-      promoteRoot: async (id, category) => { await this.team?.append({ type: 'root.set', id, category }) },
+      // Con «Radici solo per gli admin» un membro non promuove: la Radice diventa un suggerimento
+      // EN: With "Roots for admins only" a member doesn't promote: the Root becomes a suggestion
+      promoteRoot: async (id, category) => {
+        if (await this.canManageRoots()) await this.team?.append({ type: 'root.set', id, category })
+        else if (!this.rootsById.has(id)) { this.privateStore.addRootSuggestion(id, category, this.index.get(id)?.title ?? id); this.changed('roots') }
+      },
       rootFolder: (folder) => this.config.watch.documents.some((d) => d.roots && canonicalPath(d.path) === canonicalPath(folder))
     })
     this.documents = new DocumentWatcher(this.pipeline, this.privateStore, this.log)
@@ -889,6 +906,9 @@ export class MicelioNode extends EventEmitter {
   async setTeamConfig (key: string, value: unknown): Promise<void> {
     // Validazione delle chiavi note: un valore sbagliato vale per tutto il team
     // EN: Validate known keys: a wrong value applies to the whole team
+    if (key === ROOTS_ADMIN_ONLY && typeof value !== 'boolean') {
+      throw new UserError(`${ROOTS_ADMIN_ONLY}: true oppure false`, `${ROOTS_ADMIN_ONLY}: true or false`)
+    }
     if (key === 'memory.updateOnWrite' && typeof value !== 'boolean') {
       throw new UserError('memory.updateOnWrite: true oppure false', 'memory.updateOnWrite: true or false')
     }
@@ -902,7 +922,7 @@ export class MicelioNode extends EventEmitter {
   }
 
   /** Configurazione condivisa del team (lingua, parole chiave del filtro), per la UI. / EN: Shared team configuration (language, filter keywords), for the UI. */
-  async teamConfig (): Promise<{ language: string, blockKeywords: string[], maxMemories: number, updateOnWrite: boolean }> {
+  async teamConfig (): Promise<{ language: string, blockKeywords: string[], maxMemories: number, updateOnWrite: boolean, rootsAdminOnly: boolean }> {
     const team = this.requireTeam()
     const kw = await team.config<unknown>('filter.blockKeywords')
     return {
@@ -911,7 +931,10 @@ export class MicelioNode extends EventEmitter {
       maxMemories: maxMemoriesOf(await team.config('distill.maxMemories')),
       // B4: aggiornare invece di aggiungere (attivo salvo scelta contraria dell'admin)
       // EN: B4: update instead of add (on unless the admin decides otherwise)
-      updateOnWrite: (await team.config('memory.updateOnWrite')) !== false
+      updateOnWrite: (await team.config('memory.updateOnWrite')) !== false,
+      // 0.6.2: solo gli admin creano e tolgono Radici (acceso nei team nuovi)
+      // EN: 0.6.2: only admins create and remove Roots (on in new teams)
+      rootsAdminOnly: (await team.config(ROOTS_ADMIN_ONLY)) === true
     }
   }
 
@@ -1616,6 +1639,7 @@ export class MicelioNode extends EventEmitter {
   async rootSet (id: string, category: RootCategory): Promise<RootView> {
     if (!ROOT_CATEGORIES.includes(category)) throw new UserError(`Categoria sconosciuta: ${category} (${ROOT_CATEGORIES.join(', ')})`, `Unknown category: ${category} (${ROOT_CATEGORIES.join(', ')})`)
     const rec = this.requireMemory(id)
+    await this.requireRootsRight()
     await this.requireTeam().append({ type: 'root.set', id: rec.id, category })
     this.privateStore.removeRootSuggestion(rec.id)
     this.changed('roots')
@@ -1645,6 +1669,7 @@ export class MicelioNode extends EventEmitter {
   /** Il ricordo smette di essere una Radice. / EN: The memory stops being a Root. */
   async rootUnset (id: string): Promise<void> {
     const r = this.requireRoot(id)
+    await this.requireRootsRight()
     await this.requireTeam().append({ type: 'root.unset', id: r.id })
     await this.sync()
   }
@@ -2392,6 +2417,7 @@ export class MicelioNode extends EventEmitter {
   async importRoots (target: string, category?: RootCategory): Promise<{ imported: number, updated: number, duplicates: number, blocked: string[], ids: string[] }> {
     const team = this.requireTeam()
     if (category && !ROOT_CATEGORIES.includes(category)) throw new UserError(`Categoria sconosciuta: ${category}`, `Unknown category: ${category}`)
+    await this.requireRootsRight()
     let items
     try { items = readImport(target) } catch (err) { throw new UserError((err as Error).message, `Path not found: ${target}`) }
     if (!items.length) throw new UserError('Nessun file Markdown da importare', 'No Markdown file to import')
@@ -3149,6 +3175,14 @@ export class MicelioNode extends EventEmitter {
     if (!rec) throw new UserError(`Nessun ricordo con id ${memoryId}`, `No memory with id ${memoryId}`)
     const src = rec.source
     if (src?.type !== 'document' || !src.ref) throw new UserError('Questo ricordo non viene da un documento: non c\'è un originale da scaricare', 'This memory does not come from a document: there is no original to download')
+    // Il riferimento arriva da un collega e finisce in un percorso: deve essere l'hash SHA-256 del
+    // documento e nient'altro. Senza questo controllo un ricordo con ref `../../.ssh` e nome
+    // `id_rsa` faceva leggere (e passare all'agente) un file qualsiasi del PC (revisione di
+    // sicurezza 2026-10-26).
+    // EN: The reference comes from a colleague and ends up in a path: it must be the document's
+    //     SHA-256 hash and nothing else. Without this check a memory with ref `../../.ssh` and name
+    //     `id_rsa` made the PC read (and hand to the agent) any file (security review 2026-10-26).
+    if (!isDocumentRef(src.ref)) throw new UserError('Riferimento al documento non valido: questo ricordo non può essere scaricato', 'Invalid document reference: this memory cannot be downloaded')
     const name = path.basename(src.name ?? 'documento')
     // Documento di questo nodo: nessun download.
     // EN: Document of this node: no download.
@@ -3160,7 +3194,7 @@ export class MicelioNode extends EventEmitter {
     if (fs.existsSync(cached)) return { path: cached, name, size: fs.statSync(cached).size, local: true }
     let r: { data: Buffer, name: string }
     try {
-      r = await this.files.fetch(src.ref)
+      r = await this.files.fetch(src.ref, rec.author)
     } catch (err) {
       throw new UserError(`Download non riuscito: ${(err as Error).message}`, `Download failed: ${(err as Error).message}`)
     }
@@ -3512,6 +3546,22 @@ export class MicelioNode extends EventEmitter {
   private async requireAdmin (): Promise<void> {
     await this.sync()
     if ((await this.status()).role !== 'admin') throw new UserError('Operazione riservata agli admin del team', 'Only team admins can do this')
+  }
+
+  /**
+   * Creare e togliere Radici: a tutti, salvo «Radici solo per gli admin» (vedi ROOTS_ADMIN_ONLY
+   * in apply.ts). Il controllo vero è in apply; qui si dà subito un errore chiaro.
+   *
+   * EN: Creating and removing Roots: open to all, unless "Roots for admins only" (see
+   * ROOTS_ADMIN_ONLY in apply.ts). The real check is in apply; here we give a clear error right away.
+   */
+  private async canManageRoots (): Promise<boolean> {
+    if ((await this.requireTeam().config(ROOTS_ADMIN_ONLY)) !== true) return true
+    return (await this.status()).role === 'admin'
+  }
+
+  private async requireRootsRight (): Promise<void> {
+    if (!(await this.canManageRoots())) throw new UserError('In questo team solo gli admin creano e tolgono le Radici: chiedi a un admin', 'In this team only admins create and remove Roots: ask an admin')
   }
 
   private assertNotConfigured (): void {

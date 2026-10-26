@@ -305,13 +305,37 @@ describe('daemon', () => {
     expect((await api('GET', '/api/memories/search?q=rilascio tag')).data).toEqual([])
     const there = await fetch(`${base}/api/memories/search?q=rilascio tag`, { headers: inTeam(second) })
     expect(((await there.json()) as any[]).map((m) => m.title)).toEqual(['Dalla cartella del secondo team'])
-    // una cartella che non appartiene a nessun team: la ricerca usa il predefinito, ma `remember`
-    // non pubblica: va nell'Inbox del predefinito con il problema (0.6.1)
-    // EN: a folder that belongs to no team: search uses the default one, but `remember` doesn't
-    //     publish: it goes to the default team's Inbox with the problem (0.6.1)
+    // una cartella che non appartiene a nessun team: `remember` non pubblica, va nell'Inbox del
+    // predefinito con il problema (0.6.1); gli strumenti di lettura non rispondono (0.6.2: un
+    // repository non fidato non deve far leggere all'agente la memoria di un team)
+    // EN: a folder that belongs to no team: `remember` doesn't publish, it goes to the default
+    //     team's Inbox with the problem (0.6.1); the read tools don't answer (0.6.2: an untrusted
+    //     repository must not make the agent read a team's memory)
     const other = await viaShim(path.join(home, 'altrove'))
     expect(((await other.callTool({ name: 'remember', arguments: { title: 'Da una cartella qualsiasi', body: 'Le build notturne partono alle 2.', kind: 'fact' } })).content as any)[0].text).toMatch(/NON pubblicato: è nell'Inbox del team «Team Test».*perché la cartella .* non è abilitata in nessun team/)
+    for (const [name, args] of [['recall', { query: 'drizzle orm' }], ['architecture', {}], ['inbox_review', {}]] as const) {
+      const locked = ((await other.callTool({ name, arguments: args })).content as any)[0].text as string
+      expect(locked).toMatch(/Micelio non legge la memoria da questa sessione: la cartella .*altrove non è abilitata in nessun team/)
+      expect(locked).not.toMatch(/Drizzle/)
+    }
     await other.close()
+    // lo stesso senza cartella su `/mcp` (registrazione HTTP vecchia o client diverso dallo shim)
+    // EN: the same without a folder on `/mcp` (old HTTP registration or a client other than the shim)
+    const bare = new Client({ name: 'test-bare', version: '1.0.0' })
+    await bare.connect(new StreamableHTTPClientTransport(new URL(`${base}/mcp`), { requestInit: { headers: { authorization: `Bearer ${token}` } } }))
+    expect(((await bare.callTool({ name: 'recall', arguments: { query: 'drizzle orm' } })).content as any)[0].text).toMatch(/il client non ha indicato da quale cartella arriva/)
+    await bare.close()
+    // e niente contesto automatico per la sessione di quella cartella
+    // EN: and no automatic context for that folder's session
+    // (la stessa richiesta da una cartella del team predefinito riceve il ricordo: la domanda è pertinente)
+    // EN: (the same request from a folder of the default team gets the memory: the question is relevant)
+    const mine = path.join(home, 'progetto-predefinito')
+    fs.mkdirSync(mine, { recursive: true })
+    await api('POST', '/api/watch', { path: mine })
+    const ask = (cwd: string) => api('POST', '/api/context', { event: 'prompt', cwd, session_id: `s-${path.basename(cwd)}`, prompt: 'Drizzle come ORM standard: quale orm usare?' })
+    expect((await ask(mine)).data.context).toMatch(/Drizzle come ORM standard/)
+    expect((await ask(path.join(home, 'altrove'))).data).toEqual({ context: '' })
+    await api('DELETE', '/api/watch', { path: mine })
     const held = ((await api('GET', '/api/inbox')).data as any[]).find((i) => i.memory.title === 'Da una cartella qualsiasi')
     expect(held.teamCheck).toMatchObject({ problem: 'not-enabled', session: { name: 'Team Test' } })
     expect(((await api('GET', '/api/memories/search?q=build notturne')).data as any[]).some((m) => m.title === 'Da una cartella qualsiasi')).toBe(false)

@@ -45,6 +45,7 @@
  * Before B3 a team's files lived directly in the home: `MicelioHost` moves them to
  * `teams/<id>/` on first start (see src/node/micelio-host.ts).
  */
+import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
@@ -137,4 +138,27 @@ export function teamPaths (root: NodePaths, id: string): NodePaths {
     export: path.join(dir, 'export'),
     logs: root.logs
   }
+}
+
+/**
+ * Rende la cartella di Micelio accessibile solo all'utente corrente (0700) su macOS e Linux, anche
+ * se esisteva già con permessi più larghi. Basta la cartella: senza il permesso di attraversarla
+ * gli altri utenti non raggiungono nessun file dentro, qualunque sia il suo modo. Su Windows non
+ * fa niente: la cartella sta nel profilo utente, protetto dalle sue ACL.
+ *
+ * EN: Makes Micelio's folder accessible only to the current user (0700) on macOS and Linux, even
+ * if it already existed with looser permissions. The folder is enough: without the permission to
+ * traverse it, other users can't reach any file inside, whatever its mode. On Windows it does
+ * nothing: the folder is in the user profile, protected by its ACLs.
+ *
+ * Revisione di sicurezza 2026-10-26: i ricordi in chiaro (view.db, private.db) erano leggibili
+ * dagli altri utenti dello stesso PC, con l'umask predefinito.
+ *
+ * EN: Security review 2026-10-26: the plain-text memories (view.db, private.db) were readable by
+ * other users of the same PC, with the default umask.
+ */
+export function protectHome (home: string, platform: NodeJS.Platform = process.platform): void {
+  if (platform === 'win32') return
+  fs.mkdirSync(home, { recursive: true, mode: 0o700 })
+  fs.chmodSync(home, 0o700)
 }
