@@ -6,6 +6,7 @@ import type { NestExpressApplication } from '@nestjs/platform-express'
 import fs from 'node:fs'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { verifyDaemon } from '../../src/core/daemon-proof'
 import { nodePaths } from '../../src/core/paths'
 import { canonicalPath, loadConfig } from '../../src/node/config'
 import { startDaemon } from '../../src/daemon/main'
@@ -59,6 +60,11 @@ describe('daemon', () => {
     expect((await api('GET', '/api/status', undefined, false)).status).toBe(401)
     expect((await fetch(`${base}/api/status`, { headers: { authorization: 'Bearer sbagliato' } })).status).toBe(401)
     expect((await api('POST', '/mcp', {}, false)).status).toBe(401)
+    // La prova d'identità (0.6.2) è pubblica, ma risponde solo con l'HMAC del numero casuale
+    // EN: The identity proof (0.6.2) is public, but it only answers with the HMAC of the random number
+    expect(await verifyDaemon(base, token, { fresh: true })).toBe(true)
+    expect(await verifyDaemon(base, 'token-sbagliato', { fresh: true })).toBe(false)
+    expect((await api('GET', '/api/hello?nonce=corto', undefined, false)).status).toBe(400)
   })
 
   it('errori utente → 400 leggibili', async () => {

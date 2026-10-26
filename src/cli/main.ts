@@ -173,9 +173,40 @@ program.command('daemon')
  * @returns true se il daemon risponde entro `waitMs`
  *          EN: true if the daemon responds within `waitMs`
  */
-async function startInBackground (p: NodePaths, waitMs = 30_000): Promise<boolean> {
+/**
+ * Segnale «installazione in corso» (`<home>/installing`), scritto dall'installer di Windows e tolto
+ * a fine installazione. Vale al massimo 10 minuti: un'installazione interrotta non deve lasciare
+ * Micelio spento per sempre.
+ *
+ * EN: "Installation in progress" marker (`<home>/installing`), written by the Windows installer and
+ * removed at the end of the installation. It lasts at most 10 minutes: an interrupted installation
+ * must not leave Micelio off forever.
+ */
+function installing (p: NodePaths, now = Date.now()): boolean {
+  try {
+    return now - fs.statSync(path.join(p.home, 'installing')).mtimeMs < 10 * 60_000
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Avvia il daemon staccato e aspetta che risponda.
+ *
+ * EN: Starts the daemon detached and waits for it to answer.
+ * @param auto avvio automatico (hook, shim): non parte durante un'installazione
+ *        EN: automatic start (hooks, shim): it doesn't start during an installation
+ */
+async function startInBackground (p: NodePaths, waitMs = 30_000, auto = true): Promise<boolean> {
   const c = new DaemonClient(p)
   if (await c.health()) return true
+  // Installazione o aggiornamento in corso: hook e shim non riavviano il daemon, altrimenti
+  // l'installer lo ritrova acceso a ogni tentativo di chiuderlo (bug della 0.6.1: «Micelio is
+  // running» che non si chiudeva mai). Il segnale lo scrive l'installer (desktop/build/installer.nsh).
+  // EN: Installation or update in progress: hooks and shim don't restart the daemon, otherwise the
+  //     installer finds it running at every attempt to close it (0.6.1 bug: "Micelio is running"
+  //     that never closed). The marker is written by the installer (desktop/build/installer.nsh).
+  if (auto && installing(p)) return false
   fs.mkdirSync(p.logs, { recursive: true })
   const out = fs.openSync(path.join(p.logs, 'daemon.log'), 'a')
   // Rilanciamo questo stesso script con il comando `daemon`, staccato dal processo corrente.
@@ -203,7 +234,7 @@ program.command('start')
     const c = new DaemonClient(p)
     if (await c.health()) return console.log(`Daemon già attivo su ${c.baseUrl}`)
     const logFile = path.join(p.logs, 'daemon.log')
-    if (await startInBackground(p)) return console.log(`Daemon avviato su ${c.baseUrl} (log: ${logFile})`)
+    if (await startInBackground(p, 30_000, false)) return console.log(`Daemon avviato su ${c.baseUrl} (log: ${logFile})`)
     throw new DaemonError(`Il daemon non è partito entro 30 s: controlla ${logFile}`)
   })
 

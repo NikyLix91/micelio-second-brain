@@ -36,7 +36,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, shell, Tray } from 'electron'
-import { type DaemonInfo, daemonInfo, ensureDaemon } from './daemon'
+import { type DaemonInfo, daemonInfo, ensureDaemon, requireOwnDaemon } from './daemon'
 import { nucleusIconPng } from './icon'
 import { watchDaemon } from './notifications'
 import { langFromLocale, setDesktopLang, t } from './strings'
@@ -221,7 +221,15 @@ app.whenReady().then(async () => {
 
   // Ponte con la UI (vedi preload.ts).
   // EN: Bridge with the UI (see preload.ts).
-  ipcMain.on('micelio:token', (e) => { e.returnValue = info.token })
+  // Il token va alla pagina solo se sulla porta risponde ancora il NOSTRO daemon (0.6.2): la
+  // finestra può ricaricarsi dopo un riavvio del daemon, e intanto la porta può essere passata a un
+  // altro utente del PC. La risposta sincrona aspetta la prova (pochi millisecondi).
+  // EN: The token goes to the page only if OUR daemon still answers on the port (0.6.2): the window
+  //     may reload after a daemon restart, and meanwhile the port may have passed to another user
+  //     of the PC. The synchronous reply waits for the proof (a few milliseconds).
+  ipcMain.on('micelio:token', (e) => {
+    requireOwnDaemon(info).then(() => { e.returnValue = info.token }, () => { e.returnValue = '' })
+  })
   ipcMain.handle('micelio:pick-folder', async () => {
     const r = await dialog.showOpenDialog(win!, { properties: ['openDirectory'], title: t().pickFolder })
     return r.canceled ? null : r.filePaths[0]

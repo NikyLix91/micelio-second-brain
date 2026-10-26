@@ -51,6 +51,8 @@ const BUNDLED_NODE = BUNDLED_NODE_PATH && fs.existsSync(BUNDLED_NODE_PATH) ? BUN
 const { nodePaths } = require(path.join(ROOT, 'dist', 'core', 'paths.js'))
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { loadConfig } = require(path.join(ROOT, 'dist', 'node', 'config.js'))
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { verifyDaemon, impostorMessage } = require(path.join(ROOT, 'dist', 'core', 'daemon-proof.js'))
 
 export interface DaemonInfo {
   home: string
@@ -109,7 +111,7 @@ function nodeRuntime (): { cmd: string, env: NodeJS.ProcessEnv } {
  * The process is detached from the app: it survives the app closing, as with `micelio start`.
  */
 export async function ensureDaemon (info: DaemonInfo, log: (m: string) => void): Promise<void> {
-  if (await isUp(info)) return
+  if (await isUp(info)) return await requireOwnDaemon(info)
   const { cmd, env } = nodeRuntime()
   const logs = path.join(info.home, 'logs')
   fs.mkdirSync(logs, { recursive: true })
@@ -122,14 +124,29 @@ export async function ensureDaemon (info: DaemonInfo, log: (m: string) => void):
     windowsHide: true
   }).unref()
   for (let i = 0; i < 180; i++) {
-    if (await isUp(info)) return
+    if (await isUp(info)) return await requireOwnDaemon(info)
     await new Promise((r) => setTimeout(r, 500))
   }
   throw new Error(`Il daemon non è partito entro 90 secondi: controlla ${path.join(logs, 'daemon.log')}`)
 }
 
+/**
+ * Il daemon che risponde deve essere quello di questo utente (0.6.2, vedi
+ * src/core/daemon-proof.ts): l'app passa il token alla UI e alle chiamate, quindi prima lo verifica.
+ *
+ * EN: The daemon that answers must be this user's own (0.6.2, see src/core/daemon-proof.ts): the
+ * app hands the token to the UI and to its calls, so it checks it first.
+ */
+export async function requireOwnDaemon (info: DaemonInfo): Promise<void> {
+  // Sempre una prova nuova: l'app vive a lungo e il daemon può ripartire
+  // EN: Always a fresh proof: the app lives long and the daemon may restart
+  if (await verifyDaemon(info.baseUrl, info.token, { fresh: true })) return
+  throw new Error(impostorMessage(info.baseUrl).it)
+}
+
 /** Chiamata GET all'API con il token. / EN: GET call to the API with the token. */
 export async function get<T> (info: DaemonInfo, route: string): Promise<T> {
+  await requireOwnDaemon(info)
   const res = await fetch(`${info.baseUrl}${route}`, { headers: { authorization: `Bearer ${info.token}` } })
   if (!res.ok) throw new Error(`HTTP ${res.status} su ${route}`)
   return await res.json() as T
