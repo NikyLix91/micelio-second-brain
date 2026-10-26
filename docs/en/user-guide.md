@@ -16,7 +16,7 @@ Micelio is your team's shared memory, designed for AI assistants. Each colleague
 2. choose the folder (default `%LOCALAPPDATA%\Programs\Micelio`) and finish: the app opens;
 3. create your team or join with an invite; then go to **Settings → Claude Code → Configure** to connect Claude Code (MCP, collection and automatic context).
 
-The `micelio` command is available in terminals opened **after** installation (the `resources\bin` folder is added to the user's PATH). Your data stays in `%USERPROFILE%\.micelio`: uninstalling or updating doesn't touch it. Uninstalling stops the daemon and removes `micelio` from the PATH.
+The `micelio` command is available in terminals opened **after** installation (the `resources\bin` folder is added to the user's PATH). Your data stays in `%USERPROFILE%\.micelio`: uninstalling or updating doesn't touch it. Uninstalling stops the daemon and removes `micelio` from the PATH. To update you don't need to close anything: the installer stops the daemon and closes the app and the Micelio processes started by Claude Code (since 0.6.2 hooks and shim don't restart it while the installation is in progress); it asks you to close it by hand only if something resists.
 
 If you previously used Micelio **from source**: stop that daemon (`micelio stop`) before opening the installed app, otherwise the app connects to it instead of starting its own; then run **Configure** again from the installed app, so the Claude Code hooks point to the installation and not to the repository.
 

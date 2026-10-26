@@ -52,7 +52,7 @@
  * one node storing the announcements. They need as many open UDP ports.
  */
 import HyperDHT from 'hyperdht'
-import { type RelayStats, startRelay } from './relay'
+import { type RelayKeyOptions, type RelayStats, startRelay } from './relay'
 
 export interface ServerOptions {
   /**
@@ -69,11 +69,13 @@ export interface ServerOptions {
   bindHost?: string
   /** Nodi DHT aggiuntivi sulle porte port+1 … port+N (default 0). / EN: Extra DHT nodes on ports port+1 … port+N (default 0). */
   extraNodes?: number
+  /** Chiave del relay: seme casuale e chiave vecchia sì/no (vedi relay.ts). / EN: Relay key: random seed and old key yes/no (see relay.ts). */
+  relay?: RelayKeyOptions
   log?: (msg: string) => void
 }
 
 export interface RunningServer {
-  /** Stringa da dare ai client: "host:porta". / EN: String to give to clients: "host:port". */
+  /** Stringa da dare ai client: "host:porta", con "#chiave del relay" se è casuale. / EN: String to give to clients: "host:port", with "#relay key" if it is random. */
   bootstrap: string
   /**
    * Nodi DHT PERSISTENTI noti al nodo di avvio (gli altri server, i nodi aggiuntivi, eventuali
@@ -83,7 +85,7 @@ export interface RunningServer {
    * clients with a public IP). PCs behind NAT are "ephemeral" nodes and do not show up here.
    */
   dhtNodes: () => number
-  /** Chiave pubblica del relay (hex): i PC la ricavano da soli dall'indirizzo. / EN: Public key of the relay (hex): PCs derive it themselves from the address. */
+  /** Chiave pubblica del relay (hex): la casuale se c'è, altrimenti quella ricavata dall'indirizzo. / EN: Public key of the relay (hex): the random one if any, otherwise the one derived from the address. */
   relayKey: string
   /**
    * Attività dall'ultima chiamata (e azzera i contatori): PC distinti, richieste per tipo, relay.
@@ -147,8 +149,12 @@ export async function startServer (opts: ServerOptions): Promise<RunningServer> 
 
   // Relay sullo stesso nodo (stessa porta): piano B quando l'hole punching non riesce
   // EN: Relay on the same node (same port): plan B when hole punching fails
-  const relay = await startRelay(boot, opts.publicHost, opts.port)
-  log(`relay attivo (chiave ${relay.publicKey.slice(0, 12)}…, ricavata dall'indirizzo: i PC la conoscono da soli)`)
+  const relay = await startRelay(boot, opts.publicHost, opts.port, opts.relay)
+  if (opts.relay?.seed) {
+    log(`relay attivo con chiave casuale ${relay.publicKey.slice(0, 12)}…${relay.legacy ? ' (e, per i PC non aggiornati, anche con quella ricavata dall\'indirizzo: MICELIO_SERVER_RELAY_LEGACY=0 per spegnerla)' : ''}`)
+  } else {
+    log(`ATTENZIONE: relay con la chiave ricavata dall'indirizzo, calcolabile da chiunque. Imposta MICELIO_SERVER_RELAY_SEED (64 cifre esadecimali casuali, es. openssl rand -hex 32)`)
+  }
 
   // 2) Nodi aggiuntivi: persistenti, si appoggiano al nodo di avvio.
   // Tipo strutturale (non `HyperDHT[]`): questo file è compilato anche dai test della radice,
@@ -172,7 +178,7 @@ export async function startServer (opts: ServerOptions): Promise<RunningServer> 
   }
 
   return {
-    bootstrap: `${opts.publicHost}:${opts.port}`,
+    bootstrap: `${opts.publicHost}:${opts.port}${opts.relay?.seed ? '#' + relay.publicKey : ''}`,
     dhtNodes: () => boot.toArray().length,
     relayKey: relay.publicKey,
     activity: () => {

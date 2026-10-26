@@ -83,14 +83,15 @@ In alternativa a `install.sh` il server gira in un container (`server/Dockerfile
 
 ```bash
 # costruzione (dalla cartella server/)
-docker build -t <registry>/micelio-server:0.2.0 .
+docker build -t <registry>/micelio-server:0.3.0 .
 
 # esecuzione sulla macchina del server
 docker run -d --name micelio-server --restart unless-stopped --network host \
   -e MICELIO_SERVER_HOST=<IP pubblico della macchina> \
-  <registry>/micelio-server:0.2.0
+  -e MICELIO_SERVER_RELAY_SEED=<openssl rand -hex 32, generato una volta e sempre lo stesso> \
+  <registry>/micelio-server:0.3.0
 
-docker logs -f micelio-server     # deve comparire "pronto. Sui PC del team: micelio network set <IP>:49737"
+docker logs -f micelio-server     # deve comparire "pronto. Sui PC del team: micelio network set <IP>:49737#<chiave>"
 ```
 
 - **Porta**: va aperta in ingresso **UDP 49737** (firewall della macchina e, se c'è, del router o del provider cloud). Niente TCP.
@@ -124,16 +125,17 @@ Se due colleghi hanno **entrambi** un NAT simmetrico, o reti aziendali che blocc
 Quando due PC non riescono a collegarsi direttamente, la connessione passa dal server.
 - **Cieco:** `blind-relay` di Holepunch inoltra pacchetti già cifrati fra i due PC (Noise); il server non può leggerli.
 - **Stessa porta UDP** del nodo di avvio: niente da aprire in più.
-- **Nessuna configurazione sui PC:** la chiave del relay si ricava dall'indirizzo del server (SHA-256 di `micelio-relay/v1` + `host:porta`, in `src/relay.ts` e, identica, in `src/net/relay-key.ts` della radice). Chi conosce l'indirizzo può calcolarla e avviare un finto relay, ma il traffico resta cifrato: al massimo non inoltra.
+- **Chiave casuale (dalla 0.6.2):** `install.sh` genera il seme segreto `MICELIO_SERVER_RELAY_SEED` alla prima installazione e lo conserva nelle successive (`/etc/default/micelio-server`, leggibile solo da root e dal servizio). Il server stampa l'indirizzo da dare ai PC nella forma `host:porta#chiave` (`node dist/main.js --print-address` lo ristampa). Senza seme il server usa la chiave vecchia, ricavata dall'indirizzo (SHA-256 di `micelio-relay/v1` + `host:porta`), e lo segnala nel log: chi conosce l'indirizzo può calcolarla e avviare un finto relay che non inoltra.
+- **Transizione:** con `MICELIO_SERVER_RELAY_LEGACY=1` (predefinito) il relay risponde anche sulla chiave vecchia, così i PC configurati con il solo `host:porta` continuano a funzionare. Quando tutti i PC usano `host:porta#chiave`, mettilo a `0` e riavvia il servizio.
 - I PC lo usano **solo** dopo un hole punching fallito o con un NAT simmetrico, e solo se risponde (lo provano all'avvio e ogni 10 minuti).
 - `micelio network check` dice se il server offre il relay.
 
 **Aggiornare un server Docker alla 0.2.0:**
 
 ```bash
-docker pull <registry>/micelio-server:0.2.0
+docker pull <registry>/micelio-server:0.3.0
 docker rm -f micelio-server
-docker run -d --name micelio-server --restart unless-stopped --network host -e MICELIO_SERVER_HOST=<IP pubblico> <registry>/micelio-server:0.2.0
+docker run -d --name micelio-server --restart unless-stopped --network host -e MICELIO_SERVER_HOST=<IP pubblico> -e MICELIO_SERVER_RELAY_SEED=<openssl rand -hex 32, sempre lo stesso> <registry>/micelio-server:0.3.0
 docker logs -f micelio-server   # "relay attivo (chiave …)"
 ```
 

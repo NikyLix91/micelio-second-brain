@@ -25,6 +25,17 @@ import HyperDHT from 'hyperdht'
  * @returns 32 byte, come li vuole Hyperswarm (`relayThrough`)
  *          EN: 32 bytes, as Hyperswarm expects them (`relayThrough`)
  */
+/**
+ * Chiave del relay da usare per un nodo di avvio: quella casuale del server se l'indirizzo la porta
+ * (`host:porta#chiave`, 0.6.2), altrimenti quella ricavata dall'indirizzo.
+ *
+ * EN: Relay key to use for a bootstrap node: the server's random one if the address carries it
+ * (`host:port#key`, 0.6.2), otherwise the one derived from the address.
+ */
+export function relayKeyOf (node: { host: string, port: number, relay?: string }): Buffer {
+  return node.relay ? Buffer.from(node.relay, 'hex') : relayKeyFor(node.host, node.port)
+}
+
 export function relayKeyFor (host: string, port: number): Buffer {
   const seed = createHash('sha256').update(`micelio-relay/v1\n${host}:${port}`).digest()
   return HyperDHT.keyPair(seed).publicKey

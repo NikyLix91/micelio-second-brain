@@ -102,6 +102,16 @@ if [ -z "$HOST" ]; then
   HOST=$(hostname -I 2>/dev/null | awk '{print $1}')
   echo "ATTENZIONE: --host non indicato, uso $HOST. Se la macchina è dietro NAT rilancia con --host <IP pubblico>."
 fi
+# Chiave casuale del relay (0.6.2): generata alla prima installazione e CONSERVATA nelle successive,
+# altrimenti i PC configurati con host:porta#chiave perderebbero il relay.
+# EN: Random relay key (0.6.2): generated at the first installation and KEPT in the following ones,
+#     otherwise the PCs configured with host:port#key would lose the relay.
+SEED="${MICELIO_SERVER_RELAY_SEED:-}"
+if [ -z "$SEED" ]; then
+  SEED=$(node -e "process.stdout.write(require('crypto').randomBytes(32).toString('hex'))")
+  echo "» Generata la chiave casuale del relay"
+fi
+LEGACY="${MICELIO_SERVER_RELAY_LEGACY:-1}"
 cat > "$CONF" <<EOF
 # Configurazione di micelio-server (letta dal servizio systemd). Dopo una modifica:
 #   sudo systemctl restart micelio-server
@@ -113,8 +123,16 @@ MICELIO_SERVER_PORT=$PORT
 MICELIO_SERVER_EXTRA_NODES=$EXTRA
 # Interfaccia di ascolto
 MICELIO_SERVER_BIND=0.0.0.0
+# Seme SEGRETO della chiave del relay (non condividerlo: i PC ricevono solo la chiave pubblica)
+MICELIO_SERVER_RELAY_SEED=$SEED
+# 1 = il relay risponde anche sulla chiave vecchia, ricavata dall'indirizzo, per i PC non ancora
+# aggiornati alla 0.6.2. Quando tutti i PC usano host:porta#chiave mettilo a 0.
+MICELIO_SERVER_RELAY_LEGACY=$LEGACY
 EOF
-chmod 644 "$CONF"
+# Leggibile solo da root e dal servizio: contiene il seme del relay
+# EN: Readable only by root and the service: it contains the relay seed
+chown root:micelio "$CONF"
+chmod 640 "$CONF"
 
 # --- 5. Servizio systemd --------------------------------------------------------------------
 # EN: --- 5. systemd service
@@ -159,6 +177,7 @@ fi
 # --- Fine: istruzioni ---------------------------------------------------------------------------
 # EN: --- End: instructions
 LAST=$((PORT + EXTRA))
+ADDR=$(cd "$PREFIX" && MICELIO_SERVER_HOST="$HOST" MICELIO_SERVER_PORT="$PORT" MICELIO_SERVER_RELAY_SEED="$SEED" node dist/main.js --print-address)
 RANGE=$PORT; [ "$EXTRA" -gt 0 ] && RANGE="$PORT:$LAST"
 cat <<EOF
 
@@ -171,7 +190,8 @@ cat <<EOF
    o con un port forwarding verso questa macchina.
 
 2) Su OGNI PC del team (tutti devono usare lo stesso server):
-     micelio network set $HOST:$PORT      (oppure dall'app: Impostazioni > Rete)
+     micelio network set $ADDR
+   (oppure dall'app: Impostazioni > Rete). La parte dopo # è la chiave pubblica del relay.
      micelio network check
 
 Log del servizio:  journalctl -u micelio-server -f
