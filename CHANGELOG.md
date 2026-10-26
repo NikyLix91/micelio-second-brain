@@ -4,6 +4,8 @@ All notable changes to Micelio. The format follows [Keep a Changelog](https://ke
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-10-26
+
 ### Security
 Fixes from the security review done before publishing the repository. None of them lets someone outside a team get in: they need a team member, an ex-member, a leaked invite code or another user of the same PC.
 - A memory "from a document" with a crafted reference could make a colleague's Micelio read any file of their PC (for example an SSH key) and hand it to their agent. The reference must now be the document's SHA-256 hash.
@@ -101,6 +103,7 @@ Memory that learns from use.
 ### Added
 - First version: P2P team, memories, hybrid search, MCP for Claude Code, automatic collection with privacy filter and Inbox, document folders, priority and dreaming, desktop app with the 3D Nucleus.
 
-[Unreleased]: https://github.com/salvatorestracquadanio86/micelio-second-brain/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/salvatorestracquadanio86/micelio-second-brain/compare/v0.6.2...HEAD
+[0.6.2]: https://github.com/salvatorestracquadanio86/micelio-second-brain/releases/tag/v0.6.2
 [0.6.1]: https://github.com/salvatorestracquadanio86/micelio-second-brain/releases/tag/v0.6.1
 [0.6.0]: https://github.com/salvatorestracquadanio86/micelio-second-brain/releases/tag/v0.6.0
