@@ -4,6 +4,7 @@
 
 **A distributed, peer-to-peer second brain for a development team's AI tools.**
 
+[![CI](https://github.com/salvatorestracquadanio86/micelio-second-brain/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/salvatorestracquadanio86/micelio-second-brain/actions/workflows/ci.yml)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 ![Version](https://img.shields.io/badge/version-0.7.0-green.svg)
 ![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)
