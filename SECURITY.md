@@ -26,3 +26,13 @@ Examples of what we especially want to hear about:
 - tampering with backups, redaction receipts or, once available, app updates.
 
 The threat model is described in [docs/en/DESIGN.md](docs/en/DESIGN.md).
+
+## Known limitations
+
+These are known and documented. Reports that only restate them aren't needed, but ideas to close them are welcome.
+
+- **A removed member can still read new memories.** Removal takes away the right to write, but the team's encryption key doesn't change yet, so an ex-member who keeps their data folder can keep replicating. Rotating the key on removal is planned. Until then, for someone who must lose access, create a new team and move the knowledge with a backup.
+- **Redaction is best-effort.** A redacted memory disappears from every view, but the original encrypted block stays in its author's feed on every member, so a modified client can still read it.
+- **Members are trusted colleagues.** Any member can archive, supersede or restore other people's memories (pinned memories and Roots excepted) and add writers without an invite (traced as invited by them). What a member writes reaches the other members' agents as context.
+- **The DHT shows who is online.** Anyone who knows a team's topic can see the IP addresses of the members announcing it, but can't connect to the team's data.
+- **Shared machines.** On macOS and Linux the data folder is readable only by its user (since 0.6.2). The local API is protected by a per-user token, but on a PC shared by several users another user can try to occupy the port first; a check that the daemon is really yours is planned.

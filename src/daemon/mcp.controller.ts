@@ -36,6 +36,7 @@
 import { All, Controller, Param, Post, Req, Res } from '@nestjs/common'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import type { Request, Response } from 'express'
+import { lockedReadsMessage } from '../core/team-check'
 import { createMcpServer } from '../mcp/mcp-server'
 import { CWD_HEADER } from '../mcp/stdio-proxy'
 import type { MicelioNode } from '../node/micelio-node'
@@ -54,7 +55,16 @@ export class McpController {
    */
   @Post()
   async handle (@Req() req: Request, @Res() res: Response): Promise<void> {
-    await this.serve(this.nodeForRequest(req), req, res)
+    const node = this.nodeForRequest(req)
+    // Cartella in nessun team (o sconosciuta): gli strumenti di lettura non rispondono, `remember`
+    // continua a funzionare (va in Inbox, mai pubblicato). Revisione di sicurezza 2026-10-26: un
+    // repository non fidato non deve poter far leggere all'agente la memoria di un team.
+    // EN: Folder in no team (or unknown): the read tools don't answer, `remember` keeps working (it
+    //     goes to the Inbox, never published). Security review 2026-10-26: an untrusted repository
+    //     must not be able to make the agent read a team's memory.
+    const cwd = this.cwdOf(req)
+    const locked = cwd && this.micelio.host.ownerOf(cwd) ? undefined : lockedReadsMessage(cwd)
+    await this.serve(node, req, res, locked)
   }
 
   /**
@@ -109,11 +119,11 @@ export class McpController {
   }
 
   /** Collega un McpServer nuovo al nodo del team e gestisce la richiesta. / EN: Connects a new McpServer to the team node and handles the request. */
-  private async serve (node: MicelioNode, req: Request, res: Response): Promise<void> {
+  private async serve (node: MicelioNode, req: Request, res: Response, locked?: string): Promise<void> {
     // `remember` controlla sempre che la cartella della sessione sia del team (0.6.1)
     // EN: `remember` always checks that the session's folder belongs to the team (0.6.1)
     const cwd = this.cwdOf(req)
-    const server = createMcpServer(node, async (input) => await this.micelio.host.rememberFromAgent(node, input, cwd))
+    const server = createMcpServer(node, async (input) => await this.micelio.host.rememberFromAgent(node, input, cwd), locked)
     // enableJsonResponse: risposta JSON semplice invece di uno stream SSE.
     // EN: enableJsonResponse: plain JSON response instead of an SSE stream.
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true })

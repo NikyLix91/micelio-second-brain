@@ -4,6 +4,18 @@ All notable changes to Micelio. The format follows [Keep a Changelog](https://ke
 
 ## [Unreleased]
 
+### Security
+Fixes from the security review done before publishing the repository. None of them lets someone outside a team get in: they need a team member, an ex-member, a leaked invite code or another user of the same PC.
+- A memory "from a document" with a crafted reference could make a colleague's Micelio read any file of their PC (for example an SSH key) and hand it to their agent. The reference must now be the document's SHA-256 hash.
+- The team keys were handed to a joining node even when its entry was then rejected (for example a key already used by a member), creating a reader who doesn't appear among the members. They are now handed over only after the entry is accepted. A malformed join request no longer crashes the daemon.
+- A folder that isn't enabled in any team no longer receives the default team's memory: no automatic context, and the read tools (`recall`, `get`, `architecture`, `fetch_source`, Inbox) reply with an explanation. An untrusted repository could push the agent to read the memory and send it out. `remember` still works and goes to the Inbox.
+- The original of a document is accepted only from its author, who now signs the answer: any peer connected to the topic could answer first and make the download fail. Older versions can't serve originals to 0.6.2 until they update.
+- On macOS and Linux the data folder (`~/.micelio`) is now readable only by its user, also for existing installations.
+
+### Documentation
+- `SECURITY.md` lists the known limitations, starting with removed members still being able to read new memories until key rotation arrives.
+- The Docker image docs recommend publishing the API only on `127.0.0.1`.
+
 ## [0.6.1] - 2026-10-24
 
 ### Fixed

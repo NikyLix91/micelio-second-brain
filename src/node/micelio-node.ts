@@ -514,6 +514,17 @@ const SLOW_CONSULTATION_MS = 1000
 /** Dopo quanti giorni le copie scaricate escono dalla cache (decisione D11). / EN: After how many days downloaded copies leave the cache (decision D11). */
 const SOURCE_CACHE_DAYS = 30
 
+/**
+ * Il riferimento di un ricordo «da documento» è l'hash SHA-256 del file (64 cifre esadecimali).
+ * Lo scrive un collega: prima di usarlo in un percorso va controllato (vedi fetchSource).
+ *
+ * EN: The reference of a "from document" memory is the file's SHA-256 hash (64 hex digits).
+ * A colleague writes it: it must be checked before using it in a path (see fetchSource).
+ */
+export function isDocumentRef (ref: string): boolean {
+  return /^[0-9a-f]{64}$/.test(ref)
+}
+
 /** Stato dell'ingestione, per `micelio ingest status` e la futura Dashboard. / EN: Ingestion status, for `micelio ingest status` and the future Dashboard. */
 export interface IngestStatus {
   llm: { adapter: string, available: boolean, budget: { used: number, limit: number } } | null
@@ -3149,6 +3160,14 @@ export class MicelioNode extends EventEmitter {
     if (!rec) throw new UserError(`Nessun ricordo con id ${memoryId}`, `No memory with id ${memoryId}`)
     const src = rec.source
     if (src?.type !== 'document' || !src.ref) throw new UserError('Questo ricordo non viene da un documento: non c\'è un originale da scaricare', 'This memory does not come from a document: there is no original to download')
+    // Il riferimento arriva da un collega e finisce in un percorso: deve essere l'hash SHA-256 del
+    // documento e nient'altro. Senza questo controllo un ricordo con ref `../../.ssh` e nome
+    // `id_rsa` faceva leggere (e passare all'agente) un file qualsiasi del PC (revisione di
+    // sicurezza 2026-10-26).
+    // EN: The reference comes from a colleague and ends up in a path: it must be the document's
+    //     SHA-256 hash and nothing else. Without this check a memory with ref `../../.ssh` and name
+    //     `id_rsa` made the PC read (and hand to the agent) any file (security review 2026-10-26).
+    if (!isDocumentRef(src.ref)) throw new UserError('Riferimento al documento non valido: questo ricordo non può essere scaricato', 'Invalid document reference: this memory cannot be downloaded')
     const name = path.basename(src.name ?? 'documento')
     // Documento di questo nodo: nessun download.
     // EN: Document of this node: no download.
@@ -3160,7 +3179,7 @@ export class MicelioNode extends EventEmitter {
     if (fs.existsSync(cached)) return { path: cached, name, size: fs.statSync(cached).size, local: true }
     let r: { data: Buffer, name: string }
     try {
-      r = await this.files.fetch(src.ref)
+      r = await this.files.fetch(src.ref, rec.author)
     } catch (err) {
       throw new UserError(`Download non riuscito: ${(err as Error).message}`, `Download failed: ${(err as Error).message}`)
     }
