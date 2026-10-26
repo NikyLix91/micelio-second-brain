@@ -36,7 +36,7 @@ Micelio lo conserva. Ogni PC del team ha un nodo Micelio: distilla quello che le
 
 ## Installazione
 
-**Windows:** scarica `Micelio-Setup-<versione>.exe` dalla pagina [Releases](https://github.com/salvatorestracquadanio86/micelio-brain/releases). Si installa per l'utente corrente, senza diritti di amministratore.
+**Windows:** scarica `Micelio-Setup-<versione>.exe` dalla pagina [Releases](https://github.com/salvatorestracquadanio86/micelio-second-brain/releases). Si installa per l'utente corrente, senza diritti di amministratore.
 
 **Linux:** AppImage e pacchetto `.deb` sono nella stessa pagina.
 

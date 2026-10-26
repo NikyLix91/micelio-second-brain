@@ -83,6 +83,6 @@ Memory that learns from use.
 ### Added
 - First version: P2P team, memories, hybrid search, MCP for Claude Code, automatic collection with privacy filter and Inbox, document folders, priority and dreaming, desktop app with the 3D Nucleus.
 
-[Unreleased]: https://github.com/salvatorestracquadanio86/micelio-brain/compare/v0.6.1...HEAD
-[0.6.1]: https://github.com/salvatorestracquadanio86/micelio-brain/releases/tag/v0.6.1
-[0.6.0]: https://github.com/salvatorestracquadanio86/micelio-brain/releases/tag/v0.6.0
+[Unreleased]: https://github.com/salvatorestracquadanio86/micelio-second-brain/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/salvatorestracquadanio86/micelio-second-brain/releases/tag/v0.6.1
+[0.6.0]: https://github.com/salvatorestracquadanio86/micelio-second-brain/releases/tag/v0.6.0

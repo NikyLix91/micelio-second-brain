@@ -36,7 +36,7 @@ Micelio keeps it. Each PC in the team runs a Micelio node: it distills what the 
 
 ## Install
 
-**Windows:** download `Micelio-Setup-<version>.exe` from the [Releases](https://github.com/salvatorestracquadanio86/micelio-brain/releases) page. It installs for the current user, with no administrator rights.
+**Windows:** download `Micelio-Setup-<version>.exe` from the [Releases](https://github.com/salvatorestracquadanio86/micelio-second-brain/releases) page. It installs for the current user, with no administrator rights.
 
 **Linux:** AppImage and `.deb` packages are on the same page.
 
