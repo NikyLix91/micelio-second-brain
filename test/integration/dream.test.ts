@@ -43,8 +43,13 @@ describe('dreaming', () => {
     await eventually(async () => (await bob.status()).memories === 2, [bob]) // 2 vecchi → 1 nuovo, + l'altro / EN: 2 old → 1 new, + the other one
     expect((await bob.recallHybrid('magazzino timeout'))[0].title).toMatch(/consolidato/)
     expect(bob.archived().filter((m) => m.status === 'superseded')).toHaveLength(2)
-    const log = await bob.dreams()
-    expect(log[0]).toMatchObject({ by: (await alice.status()).nodeKey })
+    // Il diario del sogno è un evento a parte, che può arrivare a bob dopo le fusioni: va atteso
+    // anche lui (sui runner lenti della CI il test falliva leggendolo subito).
+    // EN: The dream log is a separate event that can reach bob after the merges: it must be waited
+    //     for too (on slow CI runners the test failed by reading it right away).
+    const by = (await alice.status()).nodeKey
+    await eventually(async () => (await bob.dreams())[0]?.by === by, [bob])
+    expect((await bob.dreams())[0]).toMatchObject({ by })
   })
 
   it('un ricordo sostituito si può ripristinare', async () => {

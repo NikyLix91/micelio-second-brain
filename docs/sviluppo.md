@@ -224,6 +224,27 @@ I prompt ([src/ingest/prompts.ts](../src/ingest/prompts.ts)) e le regole del fil
 - `MICELIO_TEST_LOG=1 npm test` mostra i log dei nodi.
 - L'adapter finto ([src/llm/fake.ts](../src/llm/fake.ts)) ha regole semplici e documentate: per esempio "LEZIONE: titolo | corpo" nel testo produce un ricordo.
 
+## Integrazione continua (CI)
+
+I workflow di GitHub Actions sono in [.github/workflows/](../.github/workflows/).
+
+| Workflow | Quando | Cosa fa |
+|---|---|---|
+| `ci.yml` | push su `main`/`develop`, pull request verso di loro, a mano | `npm ci`, `typecheck`, `build`, `npm test`, `test:ui` su **Linux, Windows e macOS** con Node 22 (più Node 24 su Linux); build del server del team (`server/`); sulle pull request, *dependency review* delle dipendenze nuove (blocca vulnerabilità alte o critiche) |
+| `codeql.yml` | come sopra, più ogni lunedì | Analisi di sicurezza CodeQL del codice TypeScript e dei workflow; risultati in *Security → Code scanning* |
+| `cla.yml` | pull request e commenti | Controlla che chi contribuisce abbia accettato il [CLA](../CLA.md) |
+
+Fuori dalla CI, da lanciare a mano: lo scenario Docker (`npm run e2e:docker`, usa la DHT pubblica e dipende da internet) e il set di valutazione (`npm run eval:ingest`, usa Claude reale).
+
+Regole dei workflow, perché la repository è pubblica:
+- **permessi minimi** (`contents: read`), alzati solo nel job che ne ha bisogno (CodeQL: `security-events: write`);
+- **azioni fissate allo SHA del commit**, con la versione in commento (`@<sha> # v7.0.1`): un tag si può spostare, uno SHA no. Le aggiorna Dependabot ([.github/dependabot.yml](../.github/dependabot.yml)), che apre ogni settimana PR verso `develop` anche per le dipendenze npm (minori e patch raggruppate);
+- **`pull_request`, mai `pull_request_target` con checkout del codice della PR**: il codice di un fork gira senza segreti e con un token in sola lettura (l'unica eccezione è `cla.yml`, che non esegue codice della PR);
+- `persist-credentials: false` nel checkout;
+- in CI `ELECTRON_SKIP_BINARY_DOWNLOAD=1`: il binario di Electron non serve per tipi, build e test.
+
+Se un test fallisce solo su un sistema, la matrice non si ferma (`fail-fast: false`): il riepilogo dell'esecuzione mostra quali sistemi sono rotti.
+
 ## UI e app desktop
 
 - La UI importa i **tipi** dal daemon (`import type … from '../../../src/…'`): una forma che cambia da una parte viene segnalata da TypeScript anche dall'altra, senza duplicare definizioni.

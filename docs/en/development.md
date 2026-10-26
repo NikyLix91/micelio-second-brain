@@ -226,6 +226,27 @@ The prompts ([src/ingest/prompts.ts](../../src/ingest/prompts.ts)) and the filte
 - `MICELIO_TEST_LOG=1 npm test` shows the node logs.
 - The fake adapter ([src/llm/fake.ts](../../src/llm/fake.ts)) has simple, documented rules: for example "LEZIONE: titolo | corpo" in the text produces a memory.
 
+## Continuous integration (CI)
+
+The GitHub Actions workflows are in [.github/workflows/](../../.github/workflows/).
+
+| Workflow | When | What it does |
+|---|---|---|
+| `ci.yml` | push to `main`/`develop`, pull requests against them, manual | `npm ci`, `typecheck`, `build`, `npm test`, `test:ui` on **Linux, Windows and macOS** with Node 22 (plus Node 24 on Linux); build of the team server (`server/`); on pull requests, *dependency review* of new dependencies (blocks high or critical vulnerabilities) |
+| `codeql.yml` | as above, plus every Monday | CodeQL security analysis of the TypeScript code and of the workflows; results in *Security → Code scanning* |
+| `cla.yml` | pull requests and comments | Checks that the contributor accepted the [CLA](../../CLA.md) |
+
+Outside CI, run by hand: the Docker scenario (`npm run e2e:docker`, uses the public DHT and depends on the internet) and the evaluation set (`npm run eval:ingest`, uses the real Claude).
+
+Workflow rules, because the repository is public:
+- **least privilege** (`contents: read`), raised only in the job that needs it (CodeQL: `security-events: write`);
+- **actions pinned to the commit SHA**, with the version in a comment (`@<sha> # v7.0.1`): a tag can be moved, a SHA can't. Dependabot updates them ([.github/dependabot.yml](../../.github/dependabot.yml)) and every week also opens PRs against `develop` for npm dependencies (minor and patch grouped);
+- **`pull_request`, never `pull_request_target` with a checkout of the PR code**: code from a fork runs without secrets and with a read-only token (the only exception is `cla.yml`, which doesn't run PR code);
+- `persist-credentials: false` on checkout;
+- in CI `ELECTRON_SKIP_BINARY_DOWNLOAD=1`: the Electron binary isn't needed for types, build and tests.
+
+If a test fails on one OS only, the matrix doesn't stop (`fail-fast: false`): the run summary shows which systems are broken.
+
 ## UI and desktop app
 
 - The UI imports **types** from the daemon (`import type … from '../../../src/…'`): a shape that changes on one side is flagged by TypeScript on the other too, without duplicating definitions.

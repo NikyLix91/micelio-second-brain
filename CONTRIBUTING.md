@@ -33,7 +33,7 @@ npm test             # daemon: unit and integration tests (fake LLM, local DHT)
 npm run test:ui      # UI tests (jsdom)
 ```
 
-All of them must pass. If you change the ingestion prompts or the privacy filter, also run `npm run eval:ingest` (it uses the real Claude CLI) and report the results in the pull request.
+All of them must pass. The same checks run automatically on every pull request on Linux, Windows and macOS (see [Continuous integration](docs/en/development.md#continuous-integration-ci)); a pull request is merged only when they are green. If you change the ingestion prompts or the privacy filter, also run `npm run eval:ingest` (it uses the real Claude CLI) and report the results in the pull request.
 
 ## Rules of the codebase
 
