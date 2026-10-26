@@ -1,0 +1,46 @@
+# Dependabot: pull request settimanali verso develop per aggiornare le azioni dei workflow
+# (fissate allo SHA, quindi altrimenti non si aggiornerebbero mai) e le dipendenze npm.
+# Gli aggiornamenti minori e le patch sono raggruppati in una sola PR per ecosistema, così
+# non arrivano decine di PR alla settimana; le versioni maggiori restano PR separate, perché
+# possono rompere qualcosa e vanno guardate una per una.
+# Gli avvisi di sicurezza (Dependabot alerts) sono a parte e arrivano subito.
+# EN: Dependabot: weekly pull requests against develop to update the workflow actions (pinned
+#     to a SHA, so they would never be updated otherwise) and the npm dependencies.
+#     Minor and patch updates are grouped into a single PR per ecosystem, so we don't get dozens
+#     of PRs a week; major versions stay separate PRs, since they can break things and need
+#     to be looked at one by one.
+#     Security alerts (Dependabot alerts) are separate and arrive immediately.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ['*']
+
+  # Radice del monorepo: daemon, ui/ e desktop/ (workspace npm, un solo package-lock.json)
+  # EN: Monorepo root: daemon, ui/ and desktop/ (npm workspaces, a single package-lock.json)
+  - package-ecosystem: npm
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      npm-minor-patch:
+        update-types: [minor, patch]
+
+  # Server del team: pacchetto separato, con il suo package-lock.json
+  # EN: Team server: separate package, with its own package-lock.json
+  - package-ecosystem: npm
+    directory: /server
+    target-branch: develop
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      server-minor-patch:
+        update-types: [minor, patch]

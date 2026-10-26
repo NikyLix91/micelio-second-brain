@@ -4,6 +4,10 @@ All notable changes to Micelio. The format follows [Keep a Changelog](https://ke
 
 ## [Unreleased]
 
+### Added
+
+- Continuous integration with GitHub Actions: typecheck, build and tests on Linux, Windows and macOS for every push and pull request, team server build, dependency review on pull requests, CodeQL security analysis, Dependabot for actions and npm dependencies. Actions are pinned to commit SHAs.
+
 ## [0.7.0] - 2026-10-26
 
 ### Security
