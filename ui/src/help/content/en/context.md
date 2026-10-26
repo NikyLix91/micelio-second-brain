@@ -8,7 +8,7 @@ An agent uses Micelio only if it decides to call `recall`, and often it does not
 - `SessionStart`: when a Claude Code session starts it runs `micelio hook session-start`;
 - `UserPromptSubmit`: at every user request it runs `micelio hook prompt`.
 
-The command asks the daemon for the context (`POST /api/context`, with the working folder and, for requests, the text) and returns it to Claude Code as `additionalContext`: the agent reads it as part of the conversation. The team is the one of the working **folder** (see **Several teams**), otherwise the default one.
+The command asks the daemon for the context (`POST /api/context`, with the working folder and, for requests, the text) and returns it to Claude Code as `additionalContext`: the agent reads it as part of the conversation. The team is the one of the working **folder** (see **Several teams**). A folder that is in no team gets no context: it's a protection against untrusted repositories (see **Agents and MCP**).
 
 ## At session start {#session-start}
 

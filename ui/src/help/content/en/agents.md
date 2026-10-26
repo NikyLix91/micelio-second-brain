@@ -6,7 +6,7 @@ AI agents (Claude Code, Codex, VS Code, WebStorm…) use Micelio through **MCP**
 
 The daemon exposes an MCP server at `http://127.0.0.1:7337/mcp`, protected by the token. `micelio setup claude-code` (or the button in Settings) registers it at **user level** (with `claude mcp add`, found even outside the PATH, or by writing `~/.claude.json` directly: see **Settings**): from then on every Claude Code session, in any folder, sees Micelio's tools. For clients that use MCP through a process there is the `micelio mcp` shim; `micelio setup codex|vscode|webstorm` prints the configuration to paste.
 
-With several teams, Claude Code's MCP picks the team from the project folder: the team that enabled it, otherwise the **default team** (for searches). Every `remember` reply says which team the memory went to. See **Several teams**.
+With several teams, Claude Code's MCP picks the team from the project folder: the team that enabled it. From a folder that is in no team the agent doesn't read the memory (see below). Every `remember` reply says which team the memory went to. See **Several teams**.
 
 ## The team check of `remember` {#team-check}
 
@@ -17,6 +17,14 @@ A memory saved by an agent is **published only if the session's folder is enable
 - **the session doesn't say which folder it comes from** (old HTTP registration or a client other than the shim): same thing, and the fix is "Configure" in Settings → Claude Code and reopening the sessions.
 
 **How it works behind the scenes.** The `micelio mcp` shim sends the session's folder (`CLAUDE_PROJECT_DIR`, otherwise the working folder) on every request in the `x-micelio-cwd` header. The daemon looks for the team with the most specific enabled folder containing it, the same rule as session collection. A held memory still goes through the filter and classification: if it's private it stays private. Born from a real bug: a session opened before its folder was enabled was saving into the default team.
+
+## A folder outside every team doesn't read the memory {#locked}
+
+From a folder that **isn't enabled in any team** the agent gets nothing from Micelio: neither the automatic context at session start and on every request, nor the answers of `recall`, `get`, `architecture`, `fetch_source`, the Inbox and the other read tools. Instead the agent gets a message explaining why and how to enable the folder. The same applies when the session doesn't say which folder it comes from. `remember` keeps working: the memory goes to the Inbox, never published.
+
+**Why.** An untrusted repository, for example one cloned from the internet, can contain a `CLAUDE.md` or comments written to push the agent to search the memory and send out what it finds. Before 0.6.2 a folder outside the teams received the default team's knowledge; now a team's memory reaches only the folders that team has enabled.
+
+**How it works behind the scenes.** The team is chosen on every request from the session's folder (the shim's `x-micelio-cwd` header): as soon as you enable the folder in Settings → Automatic collection the tools answer, without reopening the session. A registration tied to a specific team (`micelio --team <team> mcp` or `/mcp/<team>`) is an explicit choice of whoever configures the PC and keeps reading that team.
 
 ## The registration updates itself {#migration}
 
@@ -45,4 +53,4 @@ Separate from MCP: the `SessionEnd` hook notifies the daemon at the end of a ses
 
 ## Security {#security}
 
-The MCP server answers only on 127.0.0.1 and only with the token. Micelio's own calls to Claude run with a variable that excludes them from collection: a distillation is not distilled in turn.
+The MCP server answers only on 127.0.0.1 and only with the token. A folder outside every team doesn't read the memory (see above). Micelio's own calls to Claude run with a variable that excludes them from collection: a distillation is not distilled in turn.

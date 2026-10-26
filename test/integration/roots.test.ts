@@ -46,7 +46,27 @@ describe('Radici fra due nodi', () => {
     await dht?.destroy()
   })
 
-  it('chiunque può promuovere: la Radice di bruno arriva ad alice', async () => {
+  it('team nuovo: solo gli admin creano Radici, anche contro un client modificato (0.6.2)', async () => {
+    expect((await alice.teamConfig()).rootsAdminOnly).toBe(true)
+    await expect(bruno.rootSet(arch, 'architecture')).rejects.toThrow(/solo gli admin creano e tolgono le Radici/)
+    // Un client modificato che scrive comunque l'evento: ogni nodo lo scarta
+    // EN: A modified client that writes the event anyway: every node drops it
+    await (bruno as any).team.append({ type: 'root.set', id: arch, category: 'architecture' })
+    // un voto subito dopo fa da segnale: quando alice lo vede, ha applicato anche il root.set
+    // EN: a vote right after acts as a marker: when alice sees it, she has applied the root.set too
+    await bruno.vote(arch, 1)
+    await eventually(() => alice.detail(arch)?.votes === 1, nodes)
+    expect(await alice.roots()).toEqual([])
+    expect(await bruno.roots()).toEqual([])
+    // Un membro non può nemmeno cambiare l'impostazione
+    // EN: A member can't even change the setting
+    await expect(bruno.setTeamConfig('roots.adminOnly', false)).rejects.toThrow(/riservata agli admin/)
+    await expect(alice.setTeamConfig('roots.adminOnly', 'no')).rejects.toThrow(/true oppure false/)
+  })
+
+  it('con la regola spenta dall\'admin chiunque può promuovere: la Radice di bruno arriva ad alice', async () => {
+    await alice.setTeamConfig('roots.adminOnly', false)
+    await eventually(async () => !(await bruno.teamConfig()).rootsAdminOnly, nodes)
     await bruno.rootSet(arch, 'architecture')
     await bruno.rootSet(sec, 'policy')
     await eventually(async () => (await alice.roots()).length === 2, nodes)

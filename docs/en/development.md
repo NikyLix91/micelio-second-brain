@@ -304,6 +304,8 @@ docker run -d --name micelio-peer -v micelio-data:/data micelio-node
 docker exec micelio-peer micelio init "Team Dev" --name server
 ```
 
+**Security:** inside the container the API listens on every interface, but it isn't published: you use it with `docker exec`. If you need to reach it from the host, publish it only locally with `-p 127.0.0.1:7337:7337`. With `-p 7337:7337` it would be reachable from the network over plain HTTP, and the token could be intercepted.
+
 **Disk hygiene:** every rebuild leaves the previous image dangling (about 480 MB). The image has the label `org.micelio.image=node`. The e2e scenario runs this on its own at the end:
 
 ```bash

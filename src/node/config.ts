@@ -292,6 +292,9 @@ function readJson (file: string): unknown {
 function writePrivate (file: string, data: unknown): void {
   fs.mkdirSync(path.dirname(file), { recursive: true })
   fs.writeFileSync(file, JSON.stringify(data, null, 2), { mode: 0o600 })
+  // `mode` vale solo quando il file nasce: un file creato da una versione vecchia va sistemato
+  // EN: `mode` only applies when the file is created: a file made by an older version must be fixed
+  if (process.platform !== 'win32') fs.chmodSync(file, 0o600)
 }
 
 /**

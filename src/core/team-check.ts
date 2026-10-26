@@ -106,6 +106,23 @@ export function teamCheckReason (c: TeamCheck): string {
 }
 
 /**
+ * Risposta degli strumenti di lettura MCP (recall, get, architecture…) quando la sessione arriva da
+ * una cartella che non è in nessun team, o non ha detto da quale cartella arriva. In italiano,
+ * come le altre risposte MCP: l'agente la riferisce all'utente.
+ *
+ * EN: Reply of the MCP read tools (recall, get, architecture…) when the session comes from a folder
+ * that is in no team, or didn't say which folder it comes from. In Italian, like the other MCP
+ * replies: the agent relays it to the user.
+ */
+export function lockedReadsMessage (cwd: string | null): string {
+  const where = cwd ? `la cartella ${cwd} non è abilitata in nessun team` : 'il client non ha indicato da quale cartella arriva (registrazione MCP vecchia o client diverso dallo shim «micelio mcp»)'
+  return `Micelio non legge la memoria da questa sessione: ${where}. ` +
+    'È una protezione: un repository non fidato non deve poter far leggere all\'agente i ricordi di un team. ' +
+    'Per usarla: in Micelio, Impostazioni → Raccolta automatica, abilita la cartella nel team giusto (vale subito, senza riaprire la sessione). ' +
+    '«remember» funziona anche qui: il ricordo va nell\'Inbox per una verifica, non viene pubblicato. Dillo all\'utente.'
+}
+
+/**
  * Soluzione proposta, per la risposta all'agente (MCP, in italiano come le altre risposte MCP).
  * L'interfaccia ha i suoi testi in italiano e inglese.
  *

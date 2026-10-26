@@ -90,4 +90,16 @@ describe('MemoryPanel: Rendi Radice', () => {
     await waitFor(() => expect(sent(m, 'POST', '/api/roots/m1')).toBeTruthy())
     expect(JSON.parse(sent(m, 'POST', '/api/roots/m1')![1]!.body as string)).toEqual({ category: 'policy' })
   })
+
+  it('«Radici solo per gli admin»: un membro vede la spiegazione invece del pulsante (0.6.2)', async () => {
+    const node = { id: 'm1', title: 'Policy dei segreti', kind: 'reference', tags: [], author: A, authorName: 'alice', ts: 0 } as unknown as GraphNode
+    mockFetch({
+      'GET /api/memories/m1': hit('m1', 'Policy dei segreti'),
+      'GET /api/team/config': { language: 'it', blockKeywords: [], maxMemories: 5, updateOnWrite: true, rootsAdminOnly: true },
+      'GET /api/status': { role: 'member' }
+    })
+    render(<QueryClientProvider client={new QueryClient()}><MemoryRouter><MemoryPanel node={node} onClose={() => {}} /></MemoryRouter></QueryClientProvider>)
+    expect(await screen.findByText(/solo gli admin creano e tolgono le Radici/)).toBeTruthy()
+    expect(screen.queryByText('Rendi Radice')).toBeNull()
+  })
 })

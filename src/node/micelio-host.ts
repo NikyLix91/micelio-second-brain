@@ -58,7 +58,7 @@ import type { NodeStatus } from '../core/model'
 import type { MemoryData, MemoryInput } from '../core/events'
 import { checkSessionTeam, type TeamRef } from '../core/team-check'
 import type { ExplicitOutcome } from '../ingest/pipeline'
-import { hostFiles, type NodePaths, teamPaths } from '../core/paths'
+import { hostFiles, type NodePaths, protectHome, teamPaths } from '../core/paths'
 import type { Embedder } from '../embed/embedder'
 import { LlmRunner } from '../llm/runner'
 import type { LlmAdapter } from '../llm/types'
@@ -133,6 +133,9 @@ export class MicelioHost extends EventEmitter {
 
   /** Migra la struttura a un team, crea i servizi condivisi e apre tutti i team. / EN: Migrates the single-team layout, creates the shared services and opens all teams. */
   async start (): Promise<void> {
+    // Cartella leggibile solo da questo utente (macOS/Linux), anche se creata prima della 0.6.2
+    // EN: Folder readable only by this user (macOS/Linux), even if created before 0.6.2
+    protectHome(this.root.home)
     fs.mkdirSync(this.files.teams, { recursive: true })
     this.migrate()
     const config = loadConfig(this.root)
@@ -339,16 +342,23 @@ export class MicelioHost extends EventEmitter {
   }
 
   /**
-   * Contesto automatico per un agente (B4): dal team della cartella di lavoro, o dal predefinito
-   * se la cartella non è abilitata in nessun team (lo stesso team che l'agente vede via `/mcp`).
+   * Contesto automatico per un agente (B4): dal team della cartella di lavoro. Una cartella che
+   * non è abilitata in nessun team non riceve niente.
    *
-   * EN: Automatic context for an agent (B4): from the working folder's team, or from the default
-   * one if the folder isn't enabled in any team (the same team the agent sees via `/mcp`).
+   * EN: Automatic context for an agent (B4): from the working folder's team. A folder that isn't
+   * enabled in any team gets nothing.
+   *
+   * Revisione di sicurezza 2026-10-26: prima riceveva il contesto del team predefinito. Un
+   * repository non fidato (CLAUDE.md o commenti scritti apposta) poteva così far leggere all'agente
+   * la memoria del team e fargliela mandare fuori.
+   *
+   * EN: Security review 2026-10-26: before, it got the default team's context. An untrusted
+   * repository (a crafted CLAUDE.md or comments) could thus make the agent read the team's memory
+   * and send it out.
    */
   async agentContext (o: { event: 'session-start' | 'prompt', cwd: string, sessionId?: string, prompt?: string }): Promise<string> {
     const owner = this.ownerOf(o.cwd)
-    const node = owner ? this.nodes.get(owner) : this.node()
-    return node ? node.agentContext(o) : ''
+    return owner ? await this.nodes.get(owner)!.agentContext(o) : ''
   }
 
   /**

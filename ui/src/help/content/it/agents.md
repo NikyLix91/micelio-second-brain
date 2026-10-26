@@ -6,7 +6,7 @@ Gli agenti AI (Claude Code, Codex, VS Code, WebStorm…) usano Micelio tramite *
 
 Il daemon espone un server MCP su `http://127.0.0.1:7337/mcp`, protetto dal token. `micelio setup claude-code` (o il pulsante in Impostazioni) lo registra a **livello utente** (con `claude mcp add`, trovato anche fuori dal PATH, oppure scrivendo direttamente `~/.claude.json`: vedi **Impostazioni**): da quel momento ogni sessione di Claude Code, in qualunque cartella, vede gli strumenti di Micelio. Per i client che usano MCP via processo c'è lo shim `micelio mcp`; `micelio setup codex|vscode|webstorm` stampa la configurazione da incollare.
 
-Con più team, l'MCP di Claude Code sceglie il team dalla cartella del progetto: il team che l'ha abilitata, altrimenti il **team predefinito** (per le ricerche). Ogni risposta di `remember` dice in quale team è finito il ricordo. Vedi **Più team**.
+Con più team, l'MCP di Claude Code sceglie il team dalla cartella del progetto: il team che l'ha abilitata. Da una cartella che non è in nessun team l'agente non legge la memoria (vedi sotto). Ogni risposta di `remember` dice in quale team è finito il ricordo. Vedi **Più team**.
 
 ## Il controllo del team di `remember` {#team-check}
 
@@ -17,6 +17,14 @@ Un ricordo salvato da un agente viene **pubblicato solo se la cartella della ses
 - **la sessione non dice da quale cartella arriva** (registrazione HTTP vecchia o un client diverso dallo shim): stessa cosa, e la soluzione è «Configura» in Impostazioni → Claude Code e riaprire le sessioni.
 
 **Come funziona dietro.** Lo shim `micelio mcp` manda a ogni richiesta la cartella della sessione (`CLAUDE_PROJECT_DIR`, altrimenti la cartella di lavoro) nell'intestazione `x-micelio-cwd`. Il daemon cerca il team con la cartella abilitata più specifica che la contiene, la stessa regola della raccolta delle sessioni. Il ricordo trattenuto passa comunque dal filtro e dalla classificazione: se è privato resta privato. Nato da un bug reale: una sessione aperta prima che la cartella fosse abilitata salvava nel team predefinito.
+
+## Una cartella fuori da tutti i team non legge la memoria {#locked}
+
+Da una cartella che **non è abilitata in nessun team** l'agente non riceve niente da Micelio: né il contesto automatico a inizio sessione e a ogni richiesta, né le risposte di `recall`, `get`, `architecture`, `fetch_source`, dell'Inbox e degli altri strumenti di lettura. Al loro posto l'agente riceve un messaggio che spiega perché e come abilitare la cartella. Vale anche quando la sessione non dice da quale cartella arriva. `remember` continua a funzionare: il ricordo va nell'Inbox, mai pubblicato.
+
+**Perché.** Un repository non fidato, per esempio clonato da internet, può contenere un `CLAUDE.md` o dei commenti scritti per spingere l'agente a cercare nella memoria e a mandare fuori quello che trova. Prima della 0.6.2 una cartella fuori dai team riceveva il sapere del team predefinito; ora la memoria di un team arriva solo nelle cartelle che quel team ha abilitato.
+
+**Come funziona dietro.** Il team si sceglie a ogni richiesta dalla cartella della sessione (intestazione `x-micelio-cwd` dello shim): appena abiliti la cartella in Impostazioni → Raccolta automatica gli strumenti rispondono, senza riaprire la sessione. Una registrazione legata a un team preciso (`micelio --team <team> mcp` o `/mcp/<team>`) è una scelta esplicita di chi configura il PC e continua a leggere quel team.
 
 ## La registrazione si aggiorna da sola {#migration}
 
@@ -45,4 +53,4 @@ Separata da MCP: l'hook `SessionEnd` avvisa il daemon a fine sessione, e lo scan
 
 ## Sicurezza {#security}
 
-Il server MCP risponde solo su 127.0.0.1 e solo con il token. Le chiamate di Micelio a Claude girano con una variabile che le esclude dalla raccolta: una distillazione non viene a sua volta distillata.
+Il server MCP risponde solo su 127.0.0.1 e solo con il token. Una cartella fuori da tutti i team non legge la memoria (vedi sopra). Le chiamate di Micelio a Claude girano con una variabile che le esclude dalla raccolta: una distillazione non viene a sua volta distillata.

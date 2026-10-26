@@ -31,6 +31,7 @@ const S = defineStrings({
     stillValid: 'Rivista: è ancora valida',
     changeCategory: 'Cambia categoria',
     notRoot: 'Non è più una Radice',
+    adminOnly: 'In questo team solo gli admin creano e tolgono le Radici. Se pensi che questo ricordo lo meriti, chiedilo a un admin.',
     fromCode: 'Dal codice:',
     project: 'progetto',
     repository: 'repository',
@@ -75,6 +76,7 @@ const S = defineStrings({
     stillValid: 'Reviewed: still valid',
     changeCategory: 'Change category',
     notRoot: 'No longer a Root',
+    adminOnly: 'In this team only admins create and remove Roots. If you think this memory deserves it, ask an admin.',
     fromCode: 'From code:',
     project: 'project',
     repository: 'repository',
@@ -137,11 +139,13 @@ function SourceBox ({ id, name, size }: { id: string, name: string, size?: numbe
 /**
  * Riquadro "Radice" (Fase 8). Per una Radice: categoria, stato di revisione con i motivi, e le
  * azioni (confermare dopo averla rivista, cambiare categoria, togliere). Per un ricordo normale:
- * "Rendi Radice" con la scelta della categoria. Qualunque membro può farlo.
+ * "Rendi Radice" con la scelta della categoria. Qualunque membro può farlo, salvo che il team abbia
+ * scelto «Radici solo per gli admin» (0.6.2).
  *
  * EN: "Root" box (Phase 8). For a Root: category, review status with the reasons, and the
  * actions (confirm after reviewing it, change category, remove). For a normal memory:
- * "Make it a Root" with the category choice. Any member can do it.
+ * "Make it a Root" with the category choice. Any member can do it, unless the team chose "Roots for
+ * admins only" (0.6.2).
  */
 function RootBox ({ id, root }: { id: string, root?: { category: string, status: 'ok' | 'review' } }) {
   const s = useStrings(S)
@@ -154,6 +158,11 @@ function RootBox ({ id, root }: { id: string, root?: { category: string, status:
   const set = useMutation({ mutationFn: (c: string) => api.rootSet(id, c), onSuccess: refresh })
   const unset = useMutation({ mutationFn: () => api.rootUnset(id), onSuccess: refresh })
   const confirm = useMutation({ mutationFn: () => api.rootConfirm(id), onSuccess: refresh })
+  // «Radici solo per gli admin» (0.6.2): un membro vede la spiegazione invece dei pulsanti
+  // EN: "Roots for admins only" (0.6.2): a member sees the explanation instead of the buttons
+  const cfg = useQuery({ queryKey: ['teamConfig'], queryFn: api.teamConfig })
+  const status = useQuery({ queryKey: ['status'], queryFn: api.status })
+  const locked = !!cfg.data?.rootsAdminOnly && !!status.data && status.data.role !== 'admin'
   const select = (
     <select style={{ width: 200 }} value={category} onChange={(e) => setCategory(e.target.value)}>
       {ROOT_CATEGORY_ORDER.map((c) => <option key={c} value={c}>{ROOT_CATEGORY_LABEL[c]}</option>)}
@@ -164,10 +173,14 @@ function RootBox ({ id, root }: { id: string, root?: { category: string, status:
     return (
       <div className='notice small' style={{ marginTop: 12 }}>
         <div style={{ marginBottom: 6 }}>◆ {s.rootAsk} <strong>{s.rootWord}</strong>{s.rootNever}</div>
-        <div className='row'>
-          {select}
-          <button className='btn small primary' disabled={set.isPending} onClick={() => set.mutate(category)}>{s.makeRoot}</button>
-        </div>
+        {locked
+          ? <div className='muted'>{s.adminOnly} <HelpButton topic='roots#admin-only' /></div>
+          : (
+            <div className='row'>
+              {select}
+              <button className='btn small primary' disabled={set.isPending} onClick={() => set.mutate(category)}>{s.makeRoot}</button>
+            </div>
+            )}
         <ErrorBox error={set.error} />
       </div>
     )
@@ -184,9 +197,9 @@ function RootBox ({ id, root }: { id: string, root?: { category: string, status:
       {flags.length > 0 && <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>{flags.map((f, i) => <li key={i}>{f.reason}{f.refs.length ? <span className='muted mono'> ({f.refs.slice(0, 4).join(', ')})</span> : null}</li>)}</ul>}
       <div className='row' style={{ marginTop: 8 }}>
         {root.status === 'review' && <button className='btn small primary' disabled={confirm.isPending} onClick={() => confirm.mutate()}>{s.stillValid}</button>}
-        {select}
-        <button className='btn small' disabled={set.isPending || category === root.category} onClick={() => set.mutate(category)}>{s.changeCategory}</button>
-        <button className='btn small' disabled={unset.isPending} onClick={() => unset.mutate()}>{s.notRoot}</button>
+        {!locked && select}
+        {!locked && <button className='btn small' disabled={set.isPending || category === root.category} onClick={() => set.mutate(category)}>{s.changeCategory}</button>}
+        {!locked && <button className='btn small' disabled={unset.isPending} onClick={() => unset.mutate()}>{s.notRoot}</button>}
       </div>
       <ErrorBox error={set.error ?? unset.error ?? confirm.error} />
     </div>
