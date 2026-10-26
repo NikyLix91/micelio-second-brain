@@ -147,7 +147,7 @@ export const api = {
   membersOf: (team: string) => call<MemberRecord[]>('GET', '/api/members', undefined, team),
   /** Collega Claude Code avviato in una cartella al team scelto (MCP in ambito "local"). / EN: Connects Claude Code started in a folder to the chosen team (MCP with "local" scope). */
   setupProject: (path: string) => call<{ dir: string, via: 'cli' | 'file' }>('POST', '/api/setup/project', { path }),
-  teamConfig: () => call<{ language: string, blockKeywords: string[], maxMemories: number, updateOnWrite: boolean }>('GET', '/api/team/config'),
+  teamConfig: () => call<{ language: string, blockKeywords: string[], maxMemories: number, updateOnWrite: boolean, rootsAdminOnly: boolean }>('GET', '/api/team/config'),
   distillQuality: () => call<DistillQuality>('GET', '/api/distill/quality'),
   setTeamConfig: (key: string, value: unknown) => call<{ ok: true }>('POST', '/api/team/config', { key, value }),
   members: () => call<MemberRecord[]>('GET', '/api/members'),

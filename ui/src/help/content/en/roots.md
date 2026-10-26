@@ -17,9 +17,17 @@ It is a view record (`root/<id>`) with category, who promoted it, date of the la
 
 ## How a Root is born {#create}
 
-- **Any member** can promote (and remove) a Root: from a memory's details ("Make it a Root"), from the CLI (`micelio roots add <id> <category>`) or by asking the agent (tool `mark_root`).
+- **Any member**, unless the team chose "Roots for admins only" (see below), can promote (and remove) a Root: from a memory's details ("Make it a Root"), from the CLI (`micelio roots add <id> <category>`) or by asking the agent (tool `mark_root`).
 - **Suggested by Micelio**: the distiller flags memories that look foundational; they stay suggestions in your `private.db` until you promote or dismiss them.
 - **Roots folders**: the documents of a folder marked "Roots" (Settings) become Roots by themselves.
+
+## Roots for admins only {#admin-only}
+
+Roots reach everyone's agents as rules to follow, and with "keep up to date" they end up in the colleagues' `CLAUDE.md` and `AGENTS.md`. That's why a team can decide that **only admins create and remove Roots**: Team → Team settings → "Roots for admins only". The other members keep flagging them and confirming them after review, and their Root suggestions stay suggestions until an admin promotes them.
+
+It's **on in new teams** since 0.6.2. In existing teams an admin turns it on; the Roots created before stay.
+
+**How it works behind the scenes.** It's the `roots.adminOnly` team setting, replicated to everyone. The real check is in the replicated log (`src/net/apply.ts`): a `root.set` or `root.unset` from a member who isn't an admin is dropped by every node, even if it comes from a modified client. It applies from the moment the admin turns it on, so every node reaches the same view.
 
 ## The review {#review}
 

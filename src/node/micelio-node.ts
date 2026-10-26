@@ -70,6 +70,7 @@ import { FakeAdapter } from '../llm/fake'
 import { LlmRunner } from '../llm/runner'
 import type { LlmAdapter } from '../llm/types'
 import { TeamNode } from '../net/team-node'
+import { ROOTS_ADMIN_ONLY } from '../net/apply'
 import { applyFilter, builtinDetectors, compileTeamPatterns, mergeRules, type TeamSecretPattern } from '../privacy/filter'
 import { DEFAULT_SENSITIVE_FILES, mergeSensitiveFiles, sensitiveMatch } from '../privacy/sensitive-files'
 import { mergeBlockedPaths } from '../privacy/paths'
@@ -673,7 +674,12 @@ export class MicelioNode extends EventEmitter {
         this.privateStore.addRootSuggestion(id, category, title)
         this.changed('roots')
       },
-      promoteRoot: async (id, category) => { await this.team?.append({ type: 'root.set', id, category }) },
+      // Con «Radici solo per gli admin» un membro non promuove: la Radice diventa un suggerimento
+      // EN: With "Roots for admins only" a member doesn't promote: the Root becomes a suggestion
+      promoteRoot: async (id, category) => {
+        if (await this.canManageRoots()) await this.team?.append({ type: 'root.set', id, category })
+        else if (!this.rootsById.has(id)) { this.privateStore.addRootSuggestion(id, category, this.index.get(id)?.title ?? id); this.changed('roots') }
+      },
       rootFolder: (folder) => this.config.watch.documents.some((d) => d.roots && canonicalPath(d.path) === canonicalPath(folder))
     })
     this.documents = new DocumentWatcher(this.pipeline, this.privateStore, this.log)
@@ -900,6 +906,9 @@ export class MicelioNode extends EventEmitter {
   async setTeamConfig (key: string, value: unknown): Promise<void> {
     // Validazione delle chiavi note: un valore sbagliato vale per tutto il team
     // EN: Validate known keys: a wrong value applies to the whole team
+    if (key === ROOTS_ADMIN_ONLY && typeof value !== 'boolean') {
+      throw new UserError(`${ROOTS_ADMIN_ONLY}: true oppure false`, `${ROOTS_ADMIN_ONLY}: true or false`)
+    }
     if (key === 'memory.updateOnWrite' && typeof value !== 'boolean') {
       throw new UserError('memory.updateOnWrite: true oppure false', 'memory.updateOnWrite: true or false')
     }
@@ -913,7 +922,7 @@ export class MicelioNode extends EventEmitter {
   }
 
   /** Configurazione condivisa del team (lingua, parole chiave del filtro), per la UI. / EN: Shared team configuration (language, filter keywords), for the UI. */
-  async teamConfig (): Promise<{ language: string, blockKeywords: string[], maxMemories: number, updateOnWrite: boolean }> {
+  async teamConfig (): Promise<{ language: string, blockKeywords: string[], maxMemories: number, updateOnWrite: boolean, rootsAdminOnly: boolean }> {
     const team = this.requireTeam()
     const kw = await team.config<unknown>('filter.blockKeywords')
     return {
@@ -922,7 +931,10 @@ export class MicelioNode extends EventEmitter {
       maxMemories: maxMemoriesOf(await team.config('distill.maxMemories')),
       // B4: aggiornare invece di aggiungere (attivo salvo scelta contraria dell'admin)
       // EN: B4: update instead of add (on unless the admin decides otherwise)
-      updateOnWrite: (await team.config('memory.updateOnWrite')) !== false
+      updateOnWrite: (await team.config('memory.updateOnWrite')) !== false,
+      // 0.6.2: solo gli admin creano e tolgono Radici (acceso nei team nuovi)
+      // EN: 0.6.2: only admins create and remove Roots (on in new teams)
+      rootsAdminOnly: (await team.config(ROOTS_ADMIN_ONLY)) === true
     }
   }
 
@@ -1627,6 +1639,7 @@ export class MicelioNode extends EventEmitter {
   async rootSet (id: string, category: RootCategory): Promise<RootView> {
     if (!ROOT_CATEGORIES.includes(category)) throw new UserError(`Categoria sconosciuta: ${category} (${ROOT_CATEGORIES.join(', ')})`, `Unknown category: ${category} (${ROOT_CATEGORIES.join(', ')})`)
     const rec = this.requireMemory(id)
+    await this.requireRootsRight()
     await this.requireTeam().append({ type: 'root.set', id: rec.id, category })
     this.privateStore.removeRootSuggestion(rec.id)
     this.changed('roots')
@@ -1656,6 +1669,7 @@ export class MicelioNode extends EventEmitter {
   /** Il ricordo smette di essere una Radice. / EN: The memory stops being a Root. */
   async rootUnset (id: string): Promise<void> {
     const r = this.requireRoot(id)
+    await this.requireRootsRight()
     await this.requireTeam().append({ type: 'root.unset', id: r.id })
     await this.sync()
   }
@@ -2403,6 +2417,7 @@ export class MicelioNode extends EventEmitter {
   async importRoots (target: string, category?: RootCategory): Promise<{ imported: number, updated: number, duplicates: number, blocked: string[], ids: string[] }> {
     const team = this.requireTeam()
     if (category && !ROOT_CATEGORIES.includes(category)) throw new UserError(`Categoria sconosciuta: ${category}`, `Unknown category: ${category}`)
+    await this.requireRootsRight()
     let items
     try { items = readImport(target) } catch (err) { throw new UserError((err as Error).message, `Path not found: ${target}`) }
     if (!items.length) throw new UserError('Nessun file Markdown da importare', 'No Markdown file to import')
@@ -3531,6 +3546,22 @@ export class MicelioNode extends EventEmitter {
   private async requireAdmin (): Promise<void> {
     await this.sync()
     if ((await this.status()).role !== 'admin') throw new UserError('Operazione riservata agli admin del team', 'Only team admins can do this')
+  }
+
+  /**
+   * Creare e togliere Radici: a tutti, salvo «Radici solo per gli admin» (vedi ROOTS_ADMIN_ONLY
+   * in apply.ts). Il controllo vero è in apply; qui si dà subito un errore chiaro.
+   *
+   * EN: Creating and removing Roots: open to all, unless "Roots for admins only" (see
+   * ROOTS_ADMIN_ONLY in apply.ts). The real check is in apply; here we give a clear error right away.
+   */
+  private async canManageRoots (): Promise<boolean> {
+    if ((await this.requireTeam().config(ROOTS_ADMIN_ONLY)) !== true) return true
+    return (await this.status()).role === 'admin'
+  }
+
+  private async requireRootsRight (): Promise<void> {
+    if (!(await this.canManageRoots())) throw new UserError('In questo team solo gli admin creano e tolgono le Radici: chiedi a un admin', 'In this team only admins create and remove Roots: ask an admin')
   }
 
   private assertNotConfigured (): void {

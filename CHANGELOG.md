@@ -10,6 +10,7 @@ Fixes from the security review done before publishing the repository. None of th
 - The team keys were handed to a joining node even when its entry was then rejected (for example a key already used by a member), creating a reader who doesn't appear among the members. They are now handed over only after the entry is accepted. A malformed join request no longer crashes the daemon.
 - A folder that isn't enabled in any team no longer receives the default team's memory: no automatic context, and the read tools (`recall`, `get`, `architecture`, `fetch_source`, Inbox) reply with an explanation. An untrusted repository could push the agent to read the memory and send it out. `remember` still works and goes to the Inbox.
 - The original of a document is accepted only from its author, who now signs the answer: any peer connected to the topic could answer first and make the download fail. Older versions can't serve originals to 0.6.2 until they update.
+- **Roots for admins only:** a new team setting, on for new teams, lets only admins create and remove Roots. Roots reach everyone's agents as rules and end up in the colleagues' CLAUDE.md files, so any member could use them to instruct the others' agents. The rule is enforced by every node on the replicated log; in existing teams an admin turns it on in Team → Team settings.
 - On macOS and Linux the data folder (`~/.micelio`) is now readable only by its user, also for existing installations.
 
 ### Documentation

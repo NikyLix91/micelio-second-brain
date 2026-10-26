@@ -233,10 +233,12 @@ export function createMcpServer (node: MicelioNode, agentRemember: AgentRemember
   })
 
   // ── mark_root ───────────────────────────────────────────────────────────────────────
-  // Qualunque membro può promuovere una Radice (decisione dell'utente); l'agente lo fa solo su
-  // richiesta esplicita, perché una Radice vale per tutto il team e non viene mai dimenticata.
-  // EN: Any member can promote a Root (user decision); the agent does it only on explicit
-  //     request, because a Root applies to the whole team and is never forgotten.
+  // Qualunque membro può promuovere una Radice, salvo «Radici solo per gli admin» (0.6.2: allora
+  // l'errore lo spiega); l'agente lo fa solo su richiesta esplicita, perché una Radice vale per
+  // tutto il team e non viene mai dimenticata.
+  // EN: Any member can promote a Root, unless "Roots for admins only" (0.6.2: then the error
+  //     explains it); the agent does it only on explicit request, because a Root applies to the
+  //     whole team and is never forgotten.
   register('mark_root', {
     title: 'Rendi un ricordo una Radice',
     description: 'Promuove un ricordo del team a RADICE (sapere fondante che non viene mai dimenticato: architettura, rete, interfacce, ' +

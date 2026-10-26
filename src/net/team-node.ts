@@ -46,7 +46,7 @@ import b4a from 'b4a'
 import z32 from 'z32'
 import { envelope, type EventPayload } from '../core/events'
 import type { GapRecord, InviteRecord, MemberRecord, MemoryRecord, RedactAck, RootRecord, TeamRecord } from '../core/model'
-import { KEYS, RANGES, applyNodes, openView } from './apply'
+import { KEYS, RANGES, ROOTS_ADMIN_ONLY, applyNodes, openView } from './apply'
 import { relayKeyFor } from './relay-key'
 
 /**
@@ -172,6 +172,9 @@ export class TeamNode extends EventEmitter {
     // EN: bootstrap = null: Autobase creates a new base whose first writer is our local feed.
     await this.openBase(null, encryptionKey)
     await this.append({ type: 'team.init', name: teamName, founderName: nodeName })
+    // Team nuovi: Radici solo per gli admin (0.6.2, vedi ROOTS_ADMIN_ONLY in apply.ts)
+    // EN: New teams: Roots for admins only (0.6.2, see ROOTS_ADMIN_ONLY in apply.ts)
+    await this.append({ type: 'team.config', key: ROOTS_ADMIN_ONLY, value: true })
     await this.base.update()
     return this.secrets()
   }

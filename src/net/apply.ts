@@ -50,6 +50,15 @@ import type { GapRecord, InviteRecord, MemberRecord, MemoryRecord, RedactAck, Ro
  * EN: View keys. The prefix groups records of the same type, so they can be scanned with a
  * range (see RANGES).
  */
+/**
+ * Configurazione di team «Radici solo per gli admin» (0.6.2): con `true` solo gli admin creano e
+ * tolgono Radici. Accesa alla creazione dei team nuovi; nei team esistenti la accende un admin.
+ *
+ * EN: "Roots for admins only" team configuration (0.6.2): with `true` only admins create and
+ * remove Roots. On when new teams are created; in existing teams an admin turns it on.
+ */
+export const ROOTS_ADMIN_ONLY = 'roots.adminOnly'
+
 export const KEYS = {
   team: 'team',
   member: (k: string) => `member/${k}`,
@@ -365,11 +374,22 @@ async function applyEvent (ev: TeamEvent, author: string, view: any, host: any):
     }
 
     // ── Radici: root.set / root.unset / root.flag / root.confirm ───────────────────
-    // Qualunque membro. Una Radice esiste solo per un ricordo attivo; le segnalazioni si
+    // Qualunque membro, salvo che il team abbia scelto «Radici solo per gli admin»
+    // (`roots.adminOnly`, 0.6.2): allora creare e togliere una Radice è da admin; segnalarla e
+    // confermarla resta di tutti. Una Radice esiste solo per un ricordo attivo; le segnalazioni si
     // accumulano (al massimo 20, le più recenti) finché qualcuno non conferma la Radice.
-    // EN: Roots: any member. A Root exists only for an active memory; flags accumulate
-    //     (at most 20, the most recent ones) until someone confirms the Root.
+    // Perché: le Radici arrivano nel contesto degli agenti di tutti e nei CLAUDE.md dei colleghi;
+    // un membro malintenzionato poteva usarle per dare istruzioni agli agenti degli altri.
+    // La regola vale dal momento in cui l'admin la attiva: le Radici create prima restano.
+    // EN: Roots: any member, unless the team chose "Roots for admins only" (`roots.adminOnly`,
+    //     0.6.2): then creating and removing a Root is for admins; flagging and confirming stay
+    //     open to all. A Root exists only for an active memory; flags accumulate (at most 20, the
+    //     most recent ones) until someone confirms the Root.
+    //     Why: Roots reach everyone's agents as context and the colleagues' CLAUDE.md files; a
+    //     malicious member could use them to give instructions to the others' agents.
+    //     The rule applies from the moment the admin turns it on: Roots created before stay.
     case 'root.set': {
+      if (!isAdmin && (await get<{ value: unknown }>(view, KEYS.config(ROOTS_ADMIN_ONLY)))?.value === true) return
       const mem = await get<MemoryRecord>(view, KEYS.memory(ev.id))
       if (!mem || mem.status !== 'active') return
       const prev = await get<RootRecord>(view, KEYS.root(ev.id))
@@ -380,6 +400,7 @@ async function applyEvent (ev: TeamEvent, author: string, view: any, host: any):
       return
     }
     case 'root.unset': {
+      if (!isAdmin && (await get<{ value: unknown }>(view, KEYS.config(ROOTS_ADMIN_ONLY)))?.value === true) return
       if (await get(view, KEYS.root(ev.id))) await view.del(KEYS.root(ev.id))
       return
     }
