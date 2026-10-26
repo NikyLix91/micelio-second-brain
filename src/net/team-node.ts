@@ -46,7 +46,8 @@ import b4a from 'b4a'
 import z32 from 'z32'
 import { envelope, type EventPayload } from '../core/events'
 import type { GapRecord, InviteRecord, MemberRecord, MemoryRecord, RedactAck, RootRecord, TeamRecord } from '../core/model'
-import { KEYS, RANGES, ROOTS_ADMIN_ONLY, applyNodes, openView } from './apply'
+import { KEYS, RANGES, ROOTS_ADMIN_ONLY, STRICT, applyNodes, openView } from './apply'
+import { MemberGate } from './member-gate'
 import { relayKeyOf } from './relay-key'
 
 /**
@@ -142,6 +143,11 @@ export class TeamNode extends EventEmitter {
   private relayReachable: boolean | null = null
   private base: any = null
   private readonly log: (msg: string) => void
+  /** Cancello delle connessioni (0.7.0, src/net/member-gate.ts). / EN: Connection gate (0.7.0, src/net/member-gate.ts). */
+  private gate: MemberGate | null = null
+  /** Si risolve quando il registro è aperto: il cancello decide solo da lì. / EN: Resolves when the log is open: the gate decides only from then on. */
+  private baseOpened!: () => void
+  private readonly baseReady = new Promise<void>((resolve) => { this.baseOpened = resolve })
 
   constructor (private readonly opts: TeamNodeOptions) {
     super()
@@ -175,6 +181,9 @@ export class TeamNode extends EventEmitter {
     // Team nuovi: Radici solo per gli admin (0.6.2, vedi ROOTS_ADMIN_ONLY in apply.ts)
     // EN: New teams: Roots for admins only (0.6.2, see ROOTS_ADMIN_ONLY in apply.ts)
     await this.append({ type: 'team.config', key: ROOTS_ADMIN_ONLY, value: true })
+    // Team nuovi: protezione completa (0.7.0, vedi STRICT in apply.ts)
+    // EN: New teams: full protection (0.7.0, see STRICT in apply.ts)
+    await this.append({ type: 'team.config', key: STRICT, value: true })
     await this.base.update()
     return this.secrets()
   }
@@ -295,19 +304,36 @@ export class TeamNode extends EventEmitter {
       ...(relay ? { relayThrough: (force: boolean, swarm: any) => ((force || swarm.dht.randomized) && this.relayReachable ? relay : null) } : {})
     })
     if (relay) this.watchRelay(relay)
+    // Cancello (0.7.0): la replica si aggancia solo quando il peer ha dimostrato di essere un
+    // membro attivo, se il team ha la protezione completa (vedi src/net/member-gate.ts)
+    // EN: Gate (0.7.0): replication is attached only once the peer has proved to be an active
+    //     member, if the team has full protection (see src/net/member-gate.ts)
+    this.gate = new MemberGate({
+      ready: () => this.baseReady,
+      strict: async () => (await this.config(STRICT)) === true,
+      isActiveMember: async (writer) => {
+        const m = await this.getRecord<MemberRecord>(KEYS.member(writer))
+        return !!m && !m.removed
+      },
+      localWriter: () => this.localKeyPair,
+      replicate: (conn) => {
+        // Replica di tutti i core del Corestore su questa connessione, più il protocollo wakeup.
+        // Insieme equivalgono a `base.replicate(conn)` (lezione dello spike A), ma funzionano
+        // anche per le connessioni aperte prima che la base esista.
+        // EN: Replicate all the Corestore cores on this connection, plus the wakeup protocol.
+        //     Together they are equivalent to `base.replicate(conn)` (lesson from spike A), but
+        //     they also work for connections opened before the base exists.
+        this.store.replicate(conn)
+        this.wakeup.addStream(conn)
+      },
+      log: this.log
+    })
     this.swarm.on('connection', (conn: any, info: any) => {
       // Un errore su una singola connessione (peer che cade) non deve far crashare il nodo.
       // EN: An error on a single connection (a peer dropping) must not crash the node.
       conn.on('error', () => {})
       this.log(`peer connesso ${hex(info.publicKey).slice(0, 8)}`)
-      // Replica di tutti i core del Corestore su questa connessione…
-      // EN: Replicate all the Corestore cores on this connection…
-      this.store.replicate(conn)
-      // …più il protocollo wakeup. Insieme equivalgono a `base.replicate(conn)` (lezione dello
-      // spike A), ma funzionano anche per le connessioni aperte prima che la base esista.
-      // EN: …plus the wakeup protocol. Together they are equivalent to `base.replicate(conn)`
-      //     (lesson from spike A), but they also work for connections opened before the base exists.
-      this.wakeup.addStream(conn)
+      this.gate!.attach(conn)
       this.emit('peers', this.swarm.connections.size)
       // Altri protocolli (es. il download dei documenti, src/net/file-share.ts) si agganciano qui.
       // EN: Other protocols (e.g. document download, src/net/file-share.ts) attach here.
@@ -341,9 +367,15 @@ export class TeamNode extends EventEmitter {
       // EN: The same wakeup protocol attached to the connections in startNetwork.
       wakeup: this.wakeup
     })
-    this.base.on('update', () => this.emit('update'))
+    // Ogni aggiornamento può cambiare membri e protezione: il cancello riesamina le connessioni
+    // EN: Every update may change members and protection: the gate re-examines the connections
+    this.base.on('update', () => { this.emit('update'); void this.gate?.recheck() })
     this.base.on('error', (err: Error) => this.log(`errore autobase: ${err.message}`))
     await this.base.ready()
+    // Il cancello può decidere: la vista (membri, protezione) è disponibile
+    // EN: The gate can decide: the view (members, protection) is available
+    this.baseOpened()
+    void this.gate?.recheck()
     // Solo locale: nessun annuncio sulla DHT e nessuna risposta alle richieste d'ingresso
     // EN: Local only: no DHT announcement and no answer to join requests
     if (!this.swarm) return

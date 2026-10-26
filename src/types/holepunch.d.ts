@@ -7,6 +7,7 @@ declare module 'corestore' { const m: any; export = m }
 declare module 'hyperswarm' { const m: any; export = m }
 declare module 'hyperbee' { const m: any; export = m }
 declare module 'hypercore-crypto' { const m: any; export = m }
+declare module 'hypercore' { const m: any; export = m }
 declare module 'blind-pairing' { const m: any; export = m }
 declare module 'protomux-wakeup' { const m: any; export = m }
 declare module 'b4a' { const m: any; export = m }

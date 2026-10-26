@@ -70,7 +70,7 @@ import { FakeAdapter } from '../llm/fake'
 import { LlmRunner } from '../llm/runner'
 import type { LlmAdapter } from '../llm/types'
 import { TeamNode } from '../net/team-node'
-import { ROOTS_ADMIN_ONLY } from '../net/apply'
+import { ROOTS_ADMIN_ONLY, STRICT } from '../net/apply'
 import { applyFilter, builtinDetectors, compileTeamPatterns, mergeRules, type TeamSecretPattern } from '../privacy/filter'
 import { DEFAULT_SENSITIVE_FILES, mergeSensitiveFiles, sensitiveMatch } from '../privacy/sensitive-files'
 import { mergeBlockedPaths } from '../privacy/paths'
@@ -906,6 +906,9 @@ export class MicelioNode extends EventEmitter {
   async setTeamConfig (key: string, value: unknown): Promise<void> {
     // Validazione delle chiavi note: un valore sbagliato vale per tutto il team
     // EN: Validate known keys: a wrong value applies to the whole team
+    if (key === STRICT && typeof value !== 'boolean') {
+      throw new UserError(`${STRICT}: true oppure false`, `${STRICT}: true or false`)
+    }
     if (key === ROOTS_ADMIN_ONLY && typeof value !== 'boolean') {
       throw new UserError(`${ROOTS_ADMIN_ONLY}: true oppure false`, `${ROOTS_ADMIN_ONLY}: true or false`)
     }

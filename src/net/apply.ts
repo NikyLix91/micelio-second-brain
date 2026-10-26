@@ -59,6 +59,19 @@ import type { GapRecord, InviteRecord, MemberRecord, MemoryRecord, RedactAck, Ro
  */
 export const ROOTS_ADMIN_ONLY = 'roots.adminOnly'
 
+/**
+ * Configurazione di team «protezione completa» (0.7.0): con `true` ogni nodo replica solo con i
+ * membri attivi (src/net/member-gate.ts) e cifra il contenuto con la chiave della generazione
+ * corrente. Accesa alla creazione dei team nuovi; nei team esistenti la accende un admin quando
+ * tutti i membri hanno la 0.7.0, perché un nodo più vecchio non saprebbe sincronizzarsi.
+ *
+ * EN: "Full protection" team configuration (0.7.0): with `true` every node replicates only with
+ * active members (src/net/member-gate.ts) and encrypts content with the current generation's key.
+ * On when new teams are created; in existing teams an admin turns it on when every member has
+ * 0.7.0, because an older node couldn't sync.
+ */
+export const STRICT = 'security.strict'
+
 export const KEYS = {
   team: 'team',
   member: (k: string) => `member/${k}`,
