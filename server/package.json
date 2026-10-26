@@ -1,6 +1,6 @@
 {
   "name": "micelio-server",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Nodo di avvio (bootstrap) della DHT privata di Micelio: punto d'incontro dei nodi del team su internet",
   "license": "AGPL-3.0-only",
   "author": "Salvatore Stracquadanio <salvatorestracquadanio86@gmail.com>",

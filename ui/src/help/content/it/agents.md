@@ -53,4 +53,6 @@ Separata da MCP: l'hook `SessionEnd` avvisa il daemon a fine sessione, e lo scan
 
 ## Sicurezza {#security}
 
-Il server MCP risponde solo su 127.0.0.1 e solo con il token. Una cartella fuori da tutti i team non legge la memoria (vedi sopra). Le chiamate di Micelio a Claude girano con una variabile che le esclude dalla raccolta: una distillazione non viene a sua volta distillata.
+Il server MCP risponde solo su 127.0.0.1 e solo con il token. Una cartella fuori da tutti i team non legge la memoria (vedi sopra).
+
+**Il daemon dimostra di essere il tuo.** Prima di mandare il token, la CLI, gli hook, lo shim MCP e l'app chiedono al daemon una prova: mandano un numero casuale e il daemon risponde con un HMAC calcolato con il token (`GET /api/hello`). Solo chi conosce il token sa calcolarlo, e il token non viaggia. Se la prova non torna non parte niente, e il messaggio spiega che sulla porta risponde un altro programma. Serve sui PC usati da più persone: un altro utente poteva occupare la porta 7337 mentre il tuo daemon era spento e ricevere il token. Lo shim e l'app, che restano aperti a lungo, rifanno la prova a ogni chiamata. Le chiamate di Micelio a Claude girano con una variabile che le esclude dalla raccolta: una distillazione non viene a sua volta distillata.

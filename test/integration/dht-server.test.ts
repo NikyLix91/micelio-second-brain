@@ -12,6 +12,7 @@ import Hyperswarm from 'hyperswarm'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { checkNetwork } from '../../src/net/diagnose'
 import { relayKeyFor } from '../../src/net/relay-key'
+import { parseBootstrap } from '../../src/node/config'
 import type { MicelioNode } from '../../src/node/micelio-node'
 import { startServer, type RunningServer } from '../../server/src/dht-server'
 import { eventually, localDht, makeNode } from '../helpers'
@@ -168,5 +169,36 @@ describe('cambio di rete a caldo e spazio occupato', () => {
     expect(r.members.reduce((n, m) => n + m.share, 0)).toBeCloseTo(1, 5)
     expect(r.teamLogBytes).toBe(r.members.reduce((n, m) => n + m.bytes, 0))
     expect(r.members.find((m) => m.name === 'bruno')!.memories).toBe(1)
+  })
+})
+
+describe('server del team: chiave casuale del relay (0.6.2)', () => {
+  it('l\'indirizzo da dare ai PC porta la chiave; senza chiave vecchia il relay non si impersona più', async () => {
+    const port = await freeUdpPort()
+    const seed = randomBytes(32)
+    const srv = await startServer({ publicHost: '127.0.0.1', bindHost: '127.0.0.1', port, relay: { seed, legacy: false } })
+    try {
+      expect(srv.bootstrap).toBe(`127.0.0.1:${port}#${srv.relayKey}`)
+      // La chiave non è più quella che chiunque calcola dall'indirizzo
+      // EN: The key is no longer the one anyone computes from the address
+      expect(srv.relayKey).not.toBe(relayKeyFor('127.0.0.1', port).toString('hex'))
+      const withKey = await checkNetwork(parseBootstrap([srv.bootstrap]), 10_000)
+      expect(withKey.relay).toBe(true)
+      const derived = await checkNetwork(parseBootstrap([`127.0.0.1:${port}`]), 10_000)
+      expect(derived.relay).toBe(false)
+    } finally {
+      await srv.close()
+    }
+  })
+
+  it('transizione: con la chiave vecchia ancora accesa rispondono entrambe', async () => {
+    const port = await freeUdpPort()
+    const srv = await startServer({ publicHost: '127.0.0.1', bindHost: '127.0.0.1', port, relay: { seed: randomBytes(32) } })
+    try {
+      expect((await checkNetwork(parseBootstrap([srv.bootstrap]), 10_000)).relay).toBe(true)
+      expect((await checkNetwork(parseBootstrap([`127.0.0.1:${port}`]), 10_000)).relay).toBe(true)
+    } finally {
+      await srv.close()
+    }
   })
 })

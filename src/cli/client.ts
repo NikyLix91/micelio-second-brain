@@ -11,6 +11,7 @@
  * is the only process that owns them. This way CLI, MCP and (in the future) UI see the same state
  * and don't fight over the files.
  */
+import { impostorMessage, verifyDaemon } from '../core/daemon-proof'
 import type { NodePaths } from '../core/paths'
 import { loadConfig, type Config } from '../node/config'
 
@@ -57,6 +58,19 @@ export class DaemonClient {
   }
 
   /**
+   * Verifica che sulla porta risponda il daemon di questo utente prima di mandargli il token.
+   *
+   * EN: Checks that this user's daemon answers on the port before sending it the token.
+   * @throws DaemonError se non risponde nessuno, o se risponde un impostore
+   *         EN: if nobody answers, or if an impostor answers
+   */
+  async requireOwnDaemon (): Promise<void> {
+    if (await verifyDaemon(this.baseUrl, this.config.token)) return
+    if (!(await this.health())) throw new DaemonError(`Il daemon Micelio non risponde su ${this.baseUrl}. Avvialo con \`micelio start\`.`)
+    throw new DaemonError(impostorMessage(this.baseUrl).it)
+  }
+
+  /**
    * Chiama una rotta dell'API con il token.
    *
    * EN: Calls an API route with the token.
@@ -67,6 +81,9 @@ export class DaemonClient {
    *         EN: with the daemon's message, or with instructions if the daemon doesn't answer
    */
   async call<T = any> (method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown, timeoutMs = 180_000): Promise<T> {
+    // Il token parte solo verso il NOSTRO daemon (0.6.2, vedi src/core/daemon-proof.ts)
+    // EN: The token goes only to OUR daemon (0.6.2, see src/core/daemon-proof.ts)
+    await this.requireOwnDaemon()
     let res: Response
     try {
       res = await fetch(`${this.baseUrl}${path}`, {

@@ -28,7 +28,7 @@
  * wiring to the stream.
  */
 import type { DaemonInfo } from './daemon'
-import { get } from './daemon'
+import { get, requireOwnDaemon } from './daemon'
 import { t } from './strings'
 
 export interface Notice { title: string, body: string, route: string }
@@ -171,6 +171,7 @@ export function watchDaemon (info: DaemonInfo, notify: (n: Notice) => void, week
     while (!stopped) {
       controller = new AbortController()
       try {
+        await requireOwnDaemon(info)
         const res = await fetch(`${info.baseUrl}/api/events`, { headers: { authorization: `Bearer ${info.token}` }, signal: controller.signal })
         if (!res.ok || !res.body) throw new Error(String(res.status))
         await check('init')

@@ -47,7 +47,7 @@ import z32 from 'z32'
 import { envelope, type EventPayload } from '../core/events'
 import type { GapRecord, InviteRecord, MemberRecord, MemoryRecord, RedactAck, RootRecord, TeamRecord } from '../core/model'
 import { KEYS, RANGES, ROOTS_ADMIN_ONLY, applyNodes, openView } from './apply'
-import { relayKeyFor } from './relay-key'
+import { relayKeyOf } from './relay-key'
 
 /**
  * Le due chiavi che identificano un team. Vanno salvate (state.json) e protette:
@@ -67,7 +67,7 @@ export interface TeamNodeOptions {
   /** Cartella del Corestore (i feed replicati). / EN: Corestore folder (the replicated feeds). */
   storeDir: string
   /** Nodi bootstrap della DHT (test o rete privata). Vuoto = DHT pubblica di Holepunch. / EN: DHT bootstrap nodes (tests or private network). Empty = Holepunch public DHT. */
-  bootstrap?: { host: string, port: number }[]
+  bootstrap?: { host: string, port: number, relay?: string }[]
   /** Funzione di log; di default silenziosa. / EN: Log function; silent by default. */
   log?: (msg: string) => void
   /**
@@ -286,12 +286,12 @@ export class TeamNode extends EventEmitter {
     // EN: B8: with the private DHT, the team server's relay is the fallback when hole punching
     //     fails (or our NAT is symmetric). Hyperswarm calls the function on every connection:
     //     `force` = a direct attempt with that peer has already failed.
-    const relay = this.opts.bootstrap?.length ? relayKeyFor(this.opts.bootstrap[0].host, this.opts.bootstrap[0].port) : null
+    const relay = this.opts.bootstrap?.length ? relayKeyOf(this.opts.bootstrap[0]) : null
     this.swarm = new Hyperswarm({
       // Chiave stabile del nodo sulla DHT, conservata nel Corestore.
       // EN: Stable node key on the DHT, kept in the Corestore.
       keyPair: await this.store.createKeyPair('hyperswarm'),
-      ...(this.opts.bootstrap?.length ? { bootstrap: this.opts.bootstrap } : {}),
+      ...(this.opts.bootstrap?.length ? { bootstrap: this.opts.bootstrap.map(({ host, port }) => ({ host, port })) } : {}),
       ...(relay ? { relayThrough: (force: boolean, swarm: any) => ((force || swarm.dht.randomized) && this.relayReachable ? relay : null) } : {})
     })
     if (relay) this.watchRelay(relay)

@@ -53,4 +53,6 @@ Separate from MCP: the `SessionEnd` hook notifies the daemon at the end of a ses
 
 ## Security {#security}
 
-The MCP server answers only on 127.0.0.1 and only with the token. A folder outside every team doesn't read the memory (see above). Micelio's own calls to Claude run with a variable that excludes them from collection: a distillation is not distilled in turn.
+The MCP server answers only on 127.0.0.1 and only with the token. A folder outside every team doesn't read the memory (see above).
+
+**The daemon proves it is yours.** Before sending the token, the CLI, the hooks, the MCP shim and the app ask the daemon for a proof: they send a random number and the daemon answers with an HMAC computed with the token (`GET /api/hello`). Only whoever knows the token can compute it, and the token doesn't travel. If the proof doesn't match nothing is sent, and the message explains that another program answers on the port. It matters on PCs used by several people: another user could occupy port 7337 while your daemon was off and receive the token. The shim and the app, which stay open for a long time, repeat the proof on every call. Micelio's own calls to Claude run with a variable that excludes them from collection: a distillation is not distilled in turn.

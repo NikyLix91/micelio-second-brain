@@ -22,6 +22,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
+import { impostorMessage, verifyDaemon } from '../core/daemon-proof'
 
 /**
  * Intestazione con la cartella di lavoro dell'agente (codificata con encodeURIComponent).
@@ -49,6 +50,16 @@ export async function runStdioProxy (mcpUrl: string, token: string, cwd?: string
   const upstream = new Client({ name: 'micelio-stdio', version: '0.3.0' })
   // Codificata: un'intestazione HTTP non può contenere lettere accentate
   // EN: Encoded: an HTTP header can't contain accented letters
+  // Prima della prima richiesta: il token parte solo verso il NOSTRO daemon (0.6.2, vedi
+  // src/core/daemon-proof.ts)
+  // EN: Before the first request: the token goes only to OUR daemon (0.6.2, see
+  //     src/core/daemon-proof.ts)
+  const base = new URL(mcpUrl).origin
+  if (!(await verifyDaemon(base, token))) {
+    const up = await fetch(`${base}/api/health`, { signal: AbortSignal.timeout(1000) }).then((r) => r.ok, () => false)
+    process.stderr.write(`Micelio: ${up ? impostorMessage(base).it : `il daemon non risponde su ${base}. Avvialo con \`micelio start\`.`}\n`)
+    process.exit(1)
+  }
   const headers: Record<string, string> = { authorization: `Bearer ${token}` }
   if (cwd) headers[CWD_HEADER] = encodeURIComponent(cwd)
   try {
@@ -66,7 +77,14 @@ export async function runStdioProxy (mcpUrl: string, token: string, cwd?: string
   )
   // Inoltro puro: la risposta del daemon torna al client così com'è.
   // EN: Pure forwarding: the daemon's response goes back to the client as is.
-  server.setRequestHandler(ListToolsRequestSchema, async () => await upstream.listTools())
-  server.setRequestHandler(CallToolRequestSchema, async (req) => await upstream.callTool(req.params) as any)
+  // Lo shim vive quanto la sessione: il daemon può ripartire e la porta passare ad altri, quindi
+  // la prova si richiede a ogni chiamata (pochi millisecondi in locale)
+  // EN: The shim lives as long as the session: the daemon may restart and the port pass to
+  //     someone else, so the proof is asked on every call (a few milliseconds locally)
+  const guard = async (): Promise<void> => {
+    if (!(await verifyDaemon(base, token, { fresh: true }))) throw new Error(impostorMessage(base).it)
+  }
+  server.setRequestHandler(ListToolsRequestSchema, async () => { await guard(); return await upstream.listTools() })
+  server.setRequestHandler(CallToolRequestSchema, async (req) => { await guard(); return await upstream.callTool(req.params) as any })
   await server.connect(new StdioServerTransport())
 }

@@ -9,15 +9,16 @@
  * EN: The controller is deliberately "thin": it validates HTTP input with zod and calls the MicelioNode. All
  * the logic lives in the node, so CLI, MCP and UI behave the same way.
  *
- * Tutte le rotte richiedono il token (TokenGuard), tranne /api/health.
+ * Tutte le rotte richiedono il token (TokenGuard), tranne /api/health e /api/hello.
  * Gli errori diventano JSON `{ error }` tramite ErrorFilter (400 per errori dell'utente).
  *
- * EN: Every route requires the token (TokenGuard), except /api/health. Errors become JSON `{ error }`
+ * EN: Every route requires the token (TokenGuard), except /api/health and /api/hello. Errors become JSON `{ error }`
  * through ErrorFilter (400 for user errors).
  */
 import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Post, Put, Query, SetMetadata } from '@nestjs/common'
 import { z } from 'zod'
 import { readManifest } from '../backup/archive'
+import { daemonProof, NONCE_RE } from '../core/daemon-proof'
 import { MEMORY_KINDS, ROOT_CATEGORIES } from '../core/events'
 import { claudeMcpStatus, IntegrationError, registerProjectMcp, setupClaudeCode } from '../node/integrations'
 import { UserError } from '../node/micelio-node'
@@ -119,11 +120,25 @@ export class ApiController {
   // ═══════════════════════════════ Servizio ═══════════════════════════════
   // EN: Service
 
-  /** Usata da `micelio start` per sapere quando il daemon è pronto. Unica rotta pubblica. / EN: Used by `micelio start` to know when the daemon is ready. The only public route. */
+  /** Usata da `micelio start` per sapere quando il daemon è pronto. Pubblica, come `hello`. / EN: Used by `micelio start` to know when the daemon is ready. Public, like `hello`. */
   @Get('health')
   @SetMetadata(PUBLIC_ROUTE, true)
   health () {
     return { ok: true, pid: process.pid }
+  }
+
+  /**
+   * Prova d'identità del daemon (0.6.2, vedi src/core/daemon-proof.ts): i client la chiedono prima
+   * di mandare il token. Pubblica, ma risponde solo con un HMAC: il token non esce.
+   *
+   * EN: The daemon's identity proof (0.6.2, see src/core/daemon-proof.ts): clients ask for it before
+   * sending the token. Public, but it only answers with an HMAC: the token doesn't leave.
+   */
+  @Get('hello')
+  @SetMetadata(PUBLIC_ROUTE, true)
+  hello (@Query('nonce') nonce: unknown) {
+    if (typeof nonce !== 'string' || !NONCE_RE.test(nonce)) throw new UserError('nonce: da 32 a 64 cifre esadecimali', 'nonce: 32 to 64 hex digits')
+    return { proof: daemonProof(this.options.config.token, nonce) }
   }
 
   @Get('status')

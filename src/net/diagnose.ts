@@ -26,7 +26,7 @@
  * single-node private server this information is not available (see server/README.md, --extra-nodes).
  */
 import HyperDHT from 'hyperdht'
-import { relayKeyFor } from './relay-key'
+import { relayKeyOf } from './relay-key'
 
 export interface NetworkCheck {
   /** "pubblica" (Holepunch) o l'elenco dei nodi di avvio privati. / EN: "pubblica" (Holepunch) or the list of private bootstrap nodes. */
@@ -60,9 +60,9 @@ export interface NetworkCheck {
  * @param timeoutMs tempo massimo per entrare nella DHT
  *        EN: maximum time to join the DHT
  */
-export async function checkNetwork (bootstrap: { host: string, port: number }[] | undefined, timeoutMs = 20_000): Promise<NetworkCheck> {
+export async function checkNetwork (bootstrap: { host: string, port: number, relay?: string }[] | undefined, timeoutMs = 20_000): Promise<NetworkCheck> {
   const t0 = Date.now()
-  const dht = new HyperDHT({ ...(bootstrap ? { bootstrap } : {}) })
+  const dht = new HyperDHT({ ...(bootstrap ? { bootstrap: bootstrap.map(({ host, port }) => ({ host, port })) } : {}) })
   try {
     // fullyBootstrapped: attende il primo giro di contatti con la DHT (o il fallimento).
     // EN: fullyBootstrapped: waits for the first round of contacts with the DHT (or the failure).
@@ -74,7 +74,7 @@ export async function checkNetwork (bootstrap: { host: string, port: number }[] 
     // Il campionatore NAT di dht-rpc: `host` noto e `port` 0 = porta diversa per ogni destinazione.
     // EN: dht-rpc's NAT sampler: known `host` and `port` 0 = a different port for each destination.
     const host: string | null = dht.host ?? null
-    const relay = bootstrap?.length && nodes > 0 ? await relayAnswers(dht, relayKeyFor(bootstrap[0].host, bootstrap[0].port)) : null
+    const relay = bootstrap?.length && nodes > 0 ? await relayAnswers(dht, relayKeyOf(bootstrap[0])) : null
     return {
       dht: bootstrap ? bootstrap.map((b) => `${b.host}:${b.port}`).join(', ') : 'pubblica (Holepunch)',
       reachable: nodes > 0,

@@ -4,6 +4,8 @@ All notable changes to Micelio. The format follows [Keep a Changelog](https://ke
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-10-26
+
 ### Security
 Fixes from the security review done before publishing the repository. None of them lets someone outside a team get in: they need a team member, an ex-member, a leaked invite code or another user of the same PC.
 - A memory "from a document" with a crafted reference could make a colleague's Micelio read any file of their PC (for example an SSH key) and hand it to their agent. The reference must now be the document's SHA-256 hash.
@@ -11,7 +13,12 @@ Fixes from the security review done before publishing the repository. None of th
 - A folder that isn't enabled in any team no longer receives the default team's memory: no automatic context, and the read tools (`recall`, `get`, `architecture`, `fetch_source`, Inbox) reply with an explanation. An untrusted repository could push the agent to read the memory and send it out. `remember` still works and goes to the Inbox.
 - The original of a document is accepted only from its author, who now signs the answer: any peer connected to the topic could answer first and make the download fail. Older versions can't serve originals to 0.6.2 until they update.
 - **Roots for admins only:** a new team setting, on for new teams, lets only admins create and remove Roots. Roots reach everyone's agents as rules and end up in the colleagues' CLAUDE.md files, so any member could use them to instruct the others' agents. The rule is enforced by every node on the replicated log; in existing teams an admin turns it on in Team → Team settings.
+- **The daemon proves it is yours** before the CLI, the hooks, the MCP shim or the app send it the token (an HMAC of a random number, keyed with the token). On a PC with several users, another user could occupy the port while your daemon was off and receive the token.
+- **Random relay key on the team server:** the relay key was derived from the server address, so anyone could compute the secret key and run a fake relay (no reading, but denial of service and who-talks-to-whom). The server now generates a random seed at installation and prints the address for the PCs as `host:port#key`; it keeps answering on the old key for PCs not yet updated until `MICELIO_SERVER_RELAY_LEGACY=0`. Reinstall the server with the new `install.sh`.
 - On macOS and Linux the data folder (`~/.micelio`) is now readable only by its user, also for existing installations.
+
+### Fixed
+- The Windows installer couldn't close Micelio ("Micelio is running" kept coming back): Claude Code's hooks and MCP shim restarted the daemon from the installation folder as soon as it was closed. The installer now marks the installation as in progress (hooks and shim don't restart the daemon meanwhile), stops the daemon in an orderly way, closes every Micelio process and retries; it asks to close Micelio by hand only if something still resists.
 
 ### Documentation
 - `SECURITY.md` lists the known limitations, starting with removed members still being able to read new memories until key rotation arrives.
@@ -96,6 +103,7 @@ Memory that learns from use.
 ### Added
 - First version: P2P team, memories, hybrid search, MCP for Claude Code, automatic collection with privacy filter and Inbox, document folders, priority and dreaming, desktop app with the 3D Nucleus.
 
-[Unreleased]: https://github.com/salvatorestracquadanio86/micelio-second-brain/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/salvatorestracquadanio86/micelio-second-brain/compare/v0.6.2...HEAD
+[0.6.2]: https://github.com/salvatorestracquadanio86/micelio-second-brain/releases/tag/v0.6.2
 [0.6.1]: https://github.com/salvatorestracquadanio86/micelio-second-brain/releases/tag/v0.6.1
 [0.6.0]: https://github.com/salvatorestracquadanio86/micelio-second-brain/releases/tag/v0.6.0

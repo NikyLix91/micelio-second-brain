@@ -6,6 +6,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import b4a from 'b4a'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { DaemonClient } from '../../src/cli/client'
+import { daemonProof, verifyDaemon } from '../../src/core/daemon-proof'
 import { protectHome } from '../../src/core/paths'
 import { FileShare } from '../../src/net/file-share'
 import { parseJoinRequest } from '../../src/net/team-node'
@@ -108,6 +110,36 @@ describe('revisione di sicurezza 0.6.2', () => {
     const sig = crypto.sign(b4a.concat([b4a.from('micelio-file-answer'), conn.conn.handshakeHash, b4a.from(hash, 'hex')]), intruder.secretKey)
     ;(files as any).onResponse(conn, { id, ok: true, name: 'x', writer: 'f'.repeat(64), signer: b4a.toString(intruder.publicKey, 'hex'), sig: b4a.toString(sig, 'hex') })
     await expect(got).rejects.toThrow(/non firmata dall'autore/)
+  })
+
+  it('il token parte solo verso il daemon che dimostra di conoscerlo (porta occupata da altri)', async () => {
+    const http = await import('node:http')
+    const token = 'token-dell-utente'
+    // Un impostore sulla porta: risponde a tutto, ma non conosce il token
+    // EN: An impostor on the port: it answers everything, but doesn't know the token
+    let gotToken = false
+    const serve = (prove: (nonce: string) => string) => new Promise<{ url: string, close: () => void }>((resolve) => {
+      const srv = http.createServer((req, res) => {
+        if (req.headers.authorization) gotToken = true
+        const nonce = new URL(req.url!, 'http://x').searchParams.get('nonce') ?? ''
+        res.setHeader('content-type', 'application/json')
+        res.end(JSON.stringify(req.url!.startsWith('/api/hello') ? { proof: prove(nonce) } : { ok: true }))
+      }).listen(0, '127.0.0.1', () => resolve({ url: `http://127.0.0.1:${(srv.address() as any).port}`, close: () => srv.close() }))
+    })
+    const impostor = await serve(() => 'f'.repeat(64))
+    expect(await verifyDaemon(impostor.url, token)).toBe(false)
+    // Anche la CLI rifiuta di chiamarlo: il token non parte
+    // EN: The CLI refuses to call it too: the token doesn't leave
+    const client = Object.assign(Object.create(DaemonClient.prototype), { baseUrl: impostor.url, config: { token }, team: undefined }) as DaemonClient
+    await expect(client.call('GET', '/api/status')).rejects.toThrow(/non è il tuo daemon Micelio/)
+    expect(gotToken).toBe(false)
+    impostor.close()
+    // Il daemon vero (la stessa formula del daemon) passa
+    // EN: The real daemon (the daemon's own formula) passes
+    const real = await serve((nonce) => daemonProof(token, nonce))
+    expect(await verifyDaemon(real.url, token, { fresh: true })).toBe(true)
+    expect(await verifyDaemon(real.url, 'un-altro-token', { fresh: true })).toBe(false)
+    real.close()
   })
 
   it.skipIf(process.platform === 'win32')('la cartella di Micelio è accessibile solo all\'utente (anche se esisteva già)', () => {
