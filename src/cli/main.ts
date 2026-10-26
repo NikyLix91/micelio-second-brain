@@ -304,7 +304,7 @@ async function applyNetwork (mode: NetworkMode, bootstrap?: string[]): Promise<v
   }
   if (process.env.MICELIO_DHT_BOOTSTRAP) throw new DaemonError('La rete è fissata dalla variabile MICELIO_DHT_BOOTSTRAP: toglila per sceglierla')
   const bad = bootstrap?.find((b) => !BOOTSTRAP_RE.test(b))
-  if (bad) throw new DaemonError(`Nodo di avvio non valido: ${bad} (formato host:porta)`)
+  if (bad) throw new DaemonError(`Nodo di avvio non valido: ${bad} (formato host:porta, oppure host:porta#chiave-del-relay come la stampa il server)`)
   const cfg = updateConfig(offlinePaths(), (c) => {
     c.network.mode = mode
     if (bootstrap) c.network.bootstrap = bootstrap

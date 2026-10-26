@@ -12,6 +12,7 @@ Fixes from the security review done before publishing the repository. None of th
 - The original of a document is accepted only from its author, who now signs the answer: any peer connected to the topic could answer first and make the download fail. Older versions can't serve originals to 0.6.2 until they update.
 - **Roots for admins only:** a new team setting, on for new teams, lets only admins create and remove Roots. Roots reach everyone's agents as rules and end up in the colleagues' CLAUDE.md files, so any member could use them to instruct the others' agents. The rule is enforced by every node on the replicated log; in existing teams an admin turns it on in Team → Team settings.
 - **The daemon proves it is yours** before the CLI, the hooks, the MCP shim or the app send it the token (an HMAC of a random number, keyed with the token). On a PC with several users, another user could occupy the port while your daemon was off and receive the token.
+- **Random relay key on the team server:** the relay key was derived from the server address, so anyone could compute the secret key and run a fake relay (no reading, but denial of service and who-talks-to-whom). The server now generates a random seed at installation and prints the address for the PCs as `host:port#key`; it keeps answering on the old key for PCs not yet updated until `MICELIO_SERVER_RELAY_LEGACY=0`. Reinstall the server with the new `install.sh`.
 - On macOS and Linux the data folder (`~/.micelio`) is now readable only by its user, also for existing installations.
 
 ### Fixed

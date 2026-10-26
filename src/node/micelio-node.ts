@@ -2990,7 +2990,7 @@ export class MicelioNode extends EventEmitter {
     if (process.env.MICELIO_DHT_BOOTSTRAP && mode !== 'local' && !this.localOnly) throw new UserError('La rete è fissata dalla variabile MICELIO_DHT_BOOTSTRAP: toglila per sceglierla da qui', 'The network is set by the MICELIO_DHT_BOOTSTRAP variable: remove it to choose from here')
     if (mode !== 'public' && mode !== 'private' && mode !== 'local') throw new UserError('Rete: "public", "private" oppure "local"', 'Network: "public", "private" or "local"')
     const list = bootstrap?.map((b) => b.trim()).filter(Boolean)
-    if (list?.some((b) => !BOOTSTRAP_RE.test(b))) throw new UserError('Formato dei nodi di avvio: host:porta (es. 203.0.113.10:49737)', 'Bootstrap node format: host:port (e.g. 203.0.113.10:49737)')
+    if (list?.some((b) => !BOOTSTRAP_RE.test(b))) throw new UserError('Formato dei nodi di avvio: host:porta, con la chiave del relay se il server la indica (es. 203.0.113.10:49737 oppure 203.0.113.10:49737#<chiave>)', 'Bootstrap node format: host:port, with the relay key if the server gives one (e.g. 203.0.113.10:49737 or 203.0.113.10:49737#<key>)')
     if (mode === 'private' && !(list ?? this.config.network.bootstrap).length) throw new UserError('Per la DHT privata serve almeno un nodo di avvio (il server del team)', 'The private DHT needs at least one bootstrap node (the team server)')
     this.config = updateConfig(this.paths, (c) => {
       c.network.mode = mode

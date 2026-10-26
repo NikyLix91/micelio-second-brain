@@ -35,12 +35,12 @@ Between two corporate networks, or with very restrictive routers, hole punching 
 
 - The relay is **blind**: it forwards the packets of a connection already encrypted between the two PCs (Noise). The server has no keys and reads nothing.
 - It is used **only when needed**: after a failed hole punch, or if your PC has a symmetric NAT. Otherwise the connection stays direct.
-- **No configuration**: the relay key is derived from the server address, which every PC of the team already knows.
+- **The relay key is in the address** (since 0.6.2): the server prints the address to give to the PCs in the form `host:port#key`. Without the `#key` part the PC uses the key derived from the address, like the previous versions.
 - The PC tries the relay at startup and every 10 minutes, and uses it only if it answers. With an older server, or one that cannot be reached, only direct connections are used: you cannot end up disconnected because of it.
 
 **Network → Check** tells whether the server offers the relay. The **Status** page tells how many connections went through it.
 
-**How it works behind the scenes.** The relay is a Holepunch `blind-relay` living on the same DHT node as the server, so on the same UDP port (no extra port to open). PCs find it because a DHT node also answers for the services listening on itself. The key is derived with SHA-256 from `micelio-relay/v1` plus the `host:port` address. Whoever knows the address could therefore run a fake relay. The traffic, however, stays encrypted between the PCs: the worst it can do is not forward it. In a private DHT only the team knows the address.
+**How it works behind the scenes.** The relay is a Holepunch `blind-relay` living on the same DHT node as the server, so on the same UDP port (no extra port to open). PCs find it because a DHT node also answers for the services listening on itself. Up to 0.6.1 the key was derived with SHA-256 from `micelio-relay/v1` plus the `host:port` address: whoever knew the address could run a fake relay, which read nothing (the traffic is encrypted between the PCs) but could refuse to forward and see who connected to whom. Since 0.6.2 the server has a random key, whose secret seed stays on the server; the PCs get only the public key, after the `#`. To avoid cutting off the PCs not yet updated the server also answers on the old key, until the server administrator turns it off (`MICELIO_SERVER_RELAY_LEGACY=0`).
 
 ## Offline {#offline}
 

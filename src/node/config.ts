@@ -155,8 +155,16 @@ const BackupConfig = z.object({
 }).prefault({})
 export type BackupConfig = z.infer<typeof BackupConfig>
 
-/** Formato di un nodo di avvio: "host:porta" (host senza spazi né due punti). / EN: Format of a bootstrap node: "host:port" (host without spaces or colons). */
-export const BOOTSTRAP_RE = /^[^\s:]+:\d{1,5}$/
+/**
+ * Formato di un nodo di avvio: "host:porta", con in coda la chiave pubblica del relay del server
+ * se il server ne ha una casuale ("host:porta#<64 cifre esadecimali>", dalla 0.6.2: la stampa il
+ * server all'avvio). Senza chiave il PC la ricava dall'indirizzo, come prima.
+ *
+ * EN: Format of a bootstrap node: "host:port", followed by the public key of the server's relay if
+ * the server has a random one ("host:port#<64 hex digits>", since 0.6.2: the server prints it at
+ * startup). Without a key the PC derives it from the address, as before.
+ */
+export const BOOTSTRAP_RE = /^[^\s:#]+:\d{1,5}(#[0-9a-f]{64})?$/
 
 /**
  * Rete P2P: dove i nodi del team si incontrano (vedi server/README.md).
@@ -404,10 +412,11 @@ export function saveState (paths: NodePaths, state: State): void {
 }
 
 /** Converte "host:porta" nella forma che si aspetta HyperDHT. / EN: Converts "host:port" into the shape HyperDHT expects. */
-export function parseBootstrap (list: string[]): { host: string, port: number }[] {
+export function parseBootstrap (list: string[]): { host: string, port: number, relay?: string }[] {
   return list.map((s) => s.trim()).filter(Boolean).map((s) => {
-    const i = s.lastIndexOf(':')
-    return { host: s.slice(0, i), port: Number(s.slice(i + 1)) }
+    const [addr, relay] = s.split('#')
+    const i = addr.lastIndexOf(':')
+    return { host: addr.slice(0, i), port: Number(addr.slice(i + 1)), ...(relay ? { relay } : {}) }
   })
 }
 
@@ -422,7 +431,7 @@ export function parseBootstrap (list: string[]): { host: string, port: number }[
  * 2. `network.bootstrap` in config.json (team server, `micelio network set`);
  * 3. undefined = Holepunch public DHT.
  */
-export function dhtBootstrap (config?: Config): { host: string, port: number }[] | undefined {
+export function dhtBootstrap (config?: Config): { host: string, port: number, relay?: string }[] | undefined {
   const env = process.env.MICELIO_DHT_BOOTSTRAP
   if (env) return parseBootstrap(env.split(','))
   if (!config || networkMode(config.network) !== 'private') return undefined

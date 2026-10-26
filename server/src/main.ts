@@ -21,6 +21,7 @@
 import os from 'node:os'
 import { parseArgs } from 'node:util'
 import { DEFAULT_PORT, startServer } from './dht-server'
+import { relayPublicKeyFromSeed } from './relay'
 
 /** Intervallo del messaggio di stato nel log (journalctl -u micelio-server). / EN: Interval of the status message in the log (journalctl -u micelio-server). */
 const STATUS_EVERY_MS = 15 * 60 * 1000
@@ -49,11 +50,12 @@ async function main (): Promise<void> {
       port: { type: 'string' },
       bind: { type: 'string' },
       'extra-nodes': { type: 'string' },
+      'print-address': { type: 'boolean' },
       help: { type: 'boolean', short: 'h' }
     }
   })
   if (values.help) {
-    console.log('micelio-server --host <IP pubblico> [--port 49737] [--bind 0.0.0.0] [--extra-nodes 0]\nVedi server/README.md')
+    console.log('micelio-server --host <IP pubblico> [--port 49737] [--bind 0.0.0.0] [--extra-nodes 0] [--print-address]\nVedi server/README.md')
     return
   }
 
@@ -68,8 +70,19 @@ async function main (): Promise<void> {
   const extraNodes = Number(values['extra-nodes'] ?? env.MICELIO_SERVER_EXTRA_NODES ?? 0)
   const bindHost = values.bind ?? env.MICELIO_SERVER_BIND ?? '0.0.0.0'
   if (!Number.isInteger(port) || port <= 0 || port > 65535) throw new Error(`porta non valida: ${port}`)
+  // Chiave casuale del relay (0.6.2, vedi relay.ts): il seme sta nella configurazione del servizio
+  // EN: Random relay key (0.6.2, see relay.ts): the seed is in the service configuration
+  const seedHex = env.MICELIO_SERVER_RELAY_SEED?.trim()
+  if (seedHex && !/^[0-9a-f]{64}$/i.test(seedHex)) throw new Error('MICELIO_SERVER_RELAY_SEED: servono 64 cifre esadecimali (openssl rand -hex 32)')
+  const relay = { seed: seedHex ? Buffer.from(seedHex, 'hex') : undefined, legacy: env.MICELIO_SERVER_RELAY_LEGACY !== '0' }
+  // Solo l'indirizzo da dare ai PC, senza avviare niente (lo usa install.sh)
+  // EN: Only the address to give to the PCs, without starting anything (used by install.sh)
+  if (values['print-address']) {
+    console.log(`${host}:${port}${relay.seed ? '#' + relayPublicKeyFromSeed(relay.seed) : ''}`)
+    return
+  }
 
-  const server = await startServer({ publicHost: host, port, bindHost, extraNodes, log })
+  const server = await startServer({ publicHost: host, port, bindHost, extraNodes, relay, log })
   log(`pronto. Sui PC del team: micelio network set ${server.bootstrap}`)
 
   // Battito periodico: conferma che il processo è vivo e dice cosa è successo nell'intervallo.

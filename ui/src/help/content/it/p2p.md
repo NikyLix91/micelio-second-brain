@@ -35,12 +35,12 @@ Fra due reti aziendali, o con router molto restrittivi, l'hole punching può non
 
 - Il relay è **cieco**: inoltra i pacchetti di una connessione già cifrata fra i due PC (Noise). Il server non ha le chiavi e non legge nulla.
 - Si usa **solo quando serve**: dopo un hole punching fallito, o se il NAT del tuo PC è simmetrico. Altrimenti la connessione resta diretta.
-- **Nessuna configurazione**: la chiave del relay si ricava dall'indirizzo del server, che ogni PC del team conosce già.
+- **La chiave del relay sta nell'indirizzo** (dalla 0.6.2): il server stampa l'indirizzo da dare ai PC nella forma `host:porta#chiave`. Senza la parte `#chiave` il PC usa la chiave ricavata dall'indirizzo, come le versioni precedenti.
 - Il PC prova il relay all'avvio e ogni 10 minuti, e lo usa solo se risponde. Con un server di una versione precedente, o non raggiungibile, restano solo le connessioni dirette: non si rischia di restare scollegati.
 
 **Rete → Verifica** dice se il server offre il relay. La pagina **Stato** dice quante connessioni sono passate da lì.
 
-**Come funziona dietro.** Il relay è un `blind-relay` di Holepunch che vive sullo stesso nodo DHT del server, quindi sulla stessa porta UDP (nessuna porta in più da aprire). I PC lo trovano perché un nodo DHT risponde anche per i servizi in ascolto su sé stesso. La chiave è derivata con SHA-256 da `micelio-relay/v1` più l'indirizzo `host:porta`. Chi conosce l'indirizzo potrebbe quindi avviare un finto relay. Il traffico però resta cifrato fra i PC: il peggio che può fare è non inoltrarlo. In una DHT privata l'indirizzo lo conosce solo il team.
+**Come funziona dietro.** Il relay è un `blind-relay` di Holepunch che vive sullo stesso nodo DHT del server, quindi sulla stessa porta UDP (nessuna porta in più da aprire). I PC lo trovano perché un nodo DHT risponde anche per i servizi in ascolto su sé stesso. Fino alla 0.6.1 la chiave era derivata con SHA-256 da `micelio-relay/v1` più l'indirizzo `host:porta`: chi conosceva l'indirizzo poteva avviare un finto relay, che non leggeva niente (il traffico è cifrato fra i PC) ma poteva non inoltrare e vedere chi si collegava con chi. Dalla 0.6.2 il server ha una chiave casuale, il cui seme segreto resta sul server; i PC ricevono solo la chiave pubblica, dopo il `#`. Per non staccare i PC non ancora aggiornati il server risponde anche sulla chiave vecchia, finché l'amministratore del server non la spegne (`MICELIO_SERVER_RELAY_LEGACY=0`).
 
 ## Offline {#offline}
 
