@@ -161,7 +161,11 @@ describe('cambio di rete a caldo e spazio occupato', () => {
 
   it('storage: totale su disco e quote del log del team per membro (somma 100%)', async () => {
     await bruno.remember({ kind: 'fact', title: 'Ricordo di bruno', body: 'Serve per avere due autori.' })
-    await eventually(async () => (await alice.storage()).members.every((m) => m.bytes > 0), [alice, bruno])
+    // Dalla 0.7.0 il feed di bruno ha byte anche prima del ricordo (la sua chiave pubblica): si
+    // aspetta anche il ricordo
+    // EN: Since 0.7.0 bruno's feed has bytes even before the memory (his public key): wait for the
+    //     memory too
+    await eventually(async () => { const st = await alice.storage(); return st.members.every((m) => m.bytes > 0) && st.members.find((m) => m.name === 'bruno')?.memories === 1 }, [alice, bruno])
     const r = await alice.storage()
     expect(r.disk.total).toBe(r.disk.log + r.disk.index + r.disk.private + r.disk.cache + r.disk.export)
     expect(r.disk.log).toBeGreaterThan(0)

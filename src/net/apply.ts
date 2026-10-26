@@ -41,7 +41,7 @@ import Hyperbee from 'hyperbee'
 import b4a from 'b4a'
 import { TeamEvent, memoryId } from '../core/events'
 import { verifyMembership, verifyRedactAck } from '../core/identity'
-import type { GapRecord, InviteRecord, MemberRecord, MemoryRecord, RedactAck, RootRecord, TeamRecord } from '../core/model'
+import type { GapRecord, InviteRecord, KeyGeneration, MemberRecord, MemoryRecord, RedactAck, RootRecord, TeamRecord } from '../core/model'
 
 /**
  * Chiavi della vista. Il prefisso raggruppa i record dello stesso tipo, così si possono
@@ -58,6 +58,19 @@ import type { GapRecord, InviteRecord, MemberRecord, MemoryRecord, RedactAck, Ro
  * remove Roots. On when new teams are created; in existing teams an admin turns it on.
  */
 export const ROOTS_ADMIN_ONLY = 'roots.adminOnly'
+
+/**
+ * Configurazione di team «protezione completa» (0.7.0): con `true` ogni nodo replica solo con i
+ * membri attivi (src/net/member-gate.ts) e cifra il contenuto con la chiave della generazione
+ * corrente. Accesa alla creazione dei team nuovi; nei team esistenti la accende un admin quando
+ * tutti i membri hanno la 0.7.0, perché un nodo più vecchio non saprebbe sincronizzarsi.
+ *
+ * EN: "Full protection" team configuration (0.7.0): with `true` every node replicates only with
+ * active members (src/net/member-gate.ts) and encrypts content with the current generation's key.
+ * On when new teams are created; in existing teams an admin turns it on when every member has
+ * 0.7.0, because an older node couldn't sync.
+ */
+export const STRICT = 'security.strict'
 
 export const KEYS = {
   team: 'team',
@@ -85,7 +98,15 @@ export const KEYS = {
   /** Diario del sogno di un'epoca. / EN: Dream log of an epoch. */
   dreamLog: (epoch: string) => `dreamlog/${epoch}`,
   /** Lacuna di conoscenza segnalata al team (B4). / EN: Knowledge gap reported to the team (B4). */
-  gap: (id: string) => `gap/${id}`
+  gap: (id: string) => `gap/${id}`,
+  /** Chiave pubblica X25519 di un membro (0.7.0). / EN: A member's X25519 public key (0.7.0). */
+  boxkey: (k: string) => `boxkey/${k}`,
+  /** Una generazione delle chiavi (0.7.0); il numero è a lunghezza fissa per l'ordine. / EN: A key generation (0.7.0); the number is fixed-width for ordering. */
+  keygen: (g: number) => `keygen/${String(g).padStart(10, '0')}`,
+  /** Generazione corrente. / EN: Current generation. */
+  keyCurrent: 'keycurrent',
+  /** Rotazione perdente di una generazione, di un admin: le sue consegne restano per i testi scritti nella corsa. / EN: An admin's losing rotation of a generation: its grants stay for texts written during the race. */
+  keyAlt: (g: number, by: string) => `keyalt/${String(g).padStart(10, '0')}/${by}`
 } as const
 
 /**
@@ -109,8 +130,38 @@ export const RANGES = {
   links: { gt: 'link/', lt: 'link0' },
   dreamLogs: { gt: 'dreamlog/', lt: 'dreamlog0' },
   gaps: { gt: 'gap/', lt: 'gap0' },
-  configs: { gt: 'config/', lt: 'config0' }
+  configs: { gt: 'config/', lt: 'config0' },
+  boxkeys: { gt: 'boxkey/', lt: 'boxkey0' },
+  keygens: { gt: 'keygen/', lt: 'keygen0' },
+  keyAlts: { gt: 'keyalt/', lt: 'keyalt0' }
 } as const
+
+/**
+ * Record di un ricordo da un evento: in chiaro (id calcolato sul contenuto) o cifrato (id scritto
+ * dall'autore, contenuto nella busta). Null per un ricordo cifrato senza id: non si può indicizzare.
+ *
+ * EN: Memory record from an event: in clear (id computed on the content) or encrypted (id written
+ * by the author, content in the envelope). Null for an encrypted memory without an id: it can't be
+ * indexed.
+ */
+function memoryRecord (m: Extract<TeamEvent, { type: 'memory.add' }>['memory'], eventId: string | undefined, author: string, ts: number, fallback: string): MemoryRecord | null {
+  if ('sealed' in m) {
+    if (!eventId) return null
+    return { id: eventId, kind: m.kind, title: '', body: '', tags: [], source: { type: 'sealed' }, sealed: m.sealed, author, ts, status: 'active' }
+  }
+  const kind = m.kind ?? 'fact'
+  return { id: memoryId({ kind, title: m.title, body: m.body }), kind, title: m.title, body: m.body, tags: m.tags ?? [], source: m.source ?? { type: fallback }, author, ts, status: 'active' }
+}
+
+/** Solo le consegne destinate a membri attivi. / EN: Only grants meant for active members. */
+async function activeOnly (view: any, grants: Record<string, string>): Promise<Record<string, string>> {
+  const out: Record<string, string> = {}
+  for (const [k, v] of Object.entries(grants)) {
+    const m = await get<MemberRecord>(view, KEYS.member(k))
+    if (m && !m.removed) out[k] = v
+  }
+  return out
+}
 
 /**
  * Crea la vista. Viene chiamata da Autobase, che le passa uno store "speciale" i cui core sono
@@ -201,23 +252,18 @@ async function applyEvent (ev: TeamEvent, author: string, view: any, host: any):
   switch (ev.type) {
     // ── memory.add ───────────────────────────────────────────────────────────────────
     case 'memory.add': {
-      const m = ev.memory
       // I default sono già applicati da zod nel parse, ma restiamo difensivi: un nodo con uno
-      // schema diverso potrebbe aver scritto un evento senza qualche campo opzionale.
+      // schema diverso potrebbe aver scritto un evento senza qualche campo opzionale (memoryRecord).
       // EN: Defaults are already applied by zod during parsing, but we stay defensive: a node
-      //     with a different schema might have written an event without some optional field.
-      const kind = m.kind ?? 'fact'
-      const id = memoryId({ kind, title: m.title, body: m.body })
+      //     with a different schema might have written an event without some optional field (memoryRecord).
+      const rec = memoryRecord(ev.memory, ev.id, author, ev.ts, 'api')
+      if (!rec) return
       // Idempotenza: se il ricordo esiste già (stesso contenuto, anche da un altro autore)
       // si tiene il PRIMO nell'ordine linearizzato, che è lo stesso su tutti i nodi.
       // EN: Idempotency: if the memory already exists (same content, even from another author)
       //     we keep the FIRST one in linearized order, which is the same on every node.
-      if (await get(view, KEYS.memory(id))) return
-      const rec: MemoryRecord = {
-        id, kind, title: m.title, body: m.body, tags: m.tags ?? [], source: m.source ?? { type: 'api' },
-        author, ts: ev.ts, status: 'active'
-      }
-      await view.put(KEYS.memory(id), rec)
+      if (await get(view, KEYS.memory(rec.id))) return
+      await view.put(KEYS.memory(rec.id), rec)
       return
     }
 
@@ -456,12 +502,10 @@ async function applyEvent (ev: TeamEvent, author: string, view: any, host: any):
         if (!o || o.status !== 'active' || await get(view, KEYS.pin(id)) || await get(view, KEYS.root(id))) return
         olds.push(o)
       }
-      const m = ev.memory
-      const kind = m.kind ?? 'fact'
-      const id = memoryId({ kind, title: m.title, body: m.body })
-      if (!(await get(view, KEYS.memory(id)))) {
-        await view.put(KEYS.memory(id), { id, kind, title: m.title, body: m.body, tags: m.tags ?? [], source: m.source ?? { type: 'dream' }, author, ts: ev.ts, status: 'active' } satisfies MemoryRecord)
-      }
+      const rec = memoryRecord(ev.memory, ev.id, author, ev.ts, 'dream')
+      if (!rec) return
+      const id = rec.id
+      if (!(await get(view, KEYS.memory(id)))) await view.put(KEYS.memory(id), rec)
       for (const o of olds) if (o.id !== id) await view.put(KEYS.memory(o.id), { ...o, status: 'superseded', supersededBy: id, statusReason: ev.reason })
       return
     }
@@ -503,7 +547,8 @@ async function applyEvent (ev: TeamEvent, author: string, view: any, host: any):
       if (!isAdmin) return
       const m = await get<MemoryRecord>(view, KEYS.memory(ev.id))
       if (!m || m.status === 'redacted') return
-      await view.put(KEYS.memory(ev.id), { ...m, title: '[contenuto rimosso]', body: '', tags: [], status: 'redacted', statusReason: ev.reason, redactedAt: ev.ts, redactedBy: author })
+      const { sealed: _gone, ...clear } = m
+      await view.put(KEYS.memory(ev.id), { ...clear, title: '[contenuto rimosso]', body: '', tags: [], status: 'redacted', statusReason: ev.reason, redactedAt: ev.ts, redactedBy: author })
       await view.del(KEYS.pin(ev.id))
       return
     }
@@ -544,6 +589,50 @@ async function applyEvent (ev: TeamEvent, author: string, view: any, host: any):
     // Il valore è libero: chi lo legge deve validarlo.
     // EN: Shared configuration (e.g. memory.language, filter.blockKeywords). Admins only.
     //     The value is free-form: whoever reads it must validate it.
+    // ── Chiavi per generazione (0.7.0, src/core/team-crypto.ts) ──────────────────────
+    // member.boxkey: ognuno pubblica solo la PROPRIA chiave pubblica (chiave = autore).
+    // keys.rotate: solo admin, e solo la generazione successiva alla corrente: fra due rotazioni
+    //   concorrenti vince la prima nell'ordine linearizzato, uguale su tutti i nodi.
+    // keys.grant: qualunque membro con la chiave la consegna a chi non l'ha; si aggiungono solo
+    //   consegne mancanti e solo per membri attivi (un rimosso non la riceve da nessuno).
+    // Chi applica non apre niente: le chiavi restano cifrate nella vista.
+    // EN: Per-generation keys (0.7.0, src/core/team-crypto.ts).
+    //     member.boxkey: everyone publishes only their OWN public key (key = author).
+    //     keys.rotate: admins only, and only the generation right after the current one: between
+    //       two concurrent rotations the first in linearized order wins, the same on every node.
+    //     keys.grant: any member holding the key hands it to whoever lacks it; only missing grants
+    //       are added and only for active members (nobody can hand it to a removed member).
+    //     Whoever applies opens nothing: keys stay encrypted in the view.
+    case 'member.boxkey': {
+      await view.put(KEYS.boxkey(author), { pk: ev.pk, ts: ev.ts, ...(ev.version ? { version: ev.version } : {}) })
+      return
+    }
+    case 'keys.rotate': {
+      if (!isAdmin) return
+      const cur = (await get<{ gen: number }>(view, KEYS.keyCurrent))?.gen ?? 0
+      const grants = await activeOnly(view, ev.grants)
+      const rec: KeyGeneration = { gen: ev.gen, grants, ...(ev.prev ? { prev: ev.prev } : {}), by: author, ts: ev.ts }
+      if (ev.gen === cur + 1) {
+        await view.put(KEYS.keygen(ev.gen), rec)
+        await view.put(KEYS.keyCurrent, { gen: ev.gen })
+      } else if (ev.gen <= cur && !(await get(view, KEYS.keyAlt(ev.gen, author)))) {
+        // Ha perso la corsa con un altro admin: non diventa la chiave con cui si scrive, ma le sue
+        // consegne restano, così ciò che il suo autore ha cifrato nel frattempo resta leggibile
+        // EN: It lost the race with another admin: it doesn't become the key used to write, but
+        //     its grants stay, so what its author encrypted meanwhile stays readable
+        await view.put(KEYS.keyAlt(ev.gen, author), rec)
+      }
+      return
+    }
+    case 'keys.grant': {
+      const g = await get<KeyGeneration>(view, KEYS.keygen(ev.gen))
+      if (!g) return
+      const extra = await activeOnly(view, ev.grants)
+      const missing = Object.fromEntries(Object.entries(extra).filter(([k]) => !(k in g.grants)))
+      if (Object.keys(missing).length) await view.put(KEYS.keygen(ev.gen), { ...g, grants: { ...g.grants, ...missing } })
+      return
+    }
+
     case 'team.config': {
       if (!isAdmin) return
       await view.put(KEYS.config(ev.key), { value: ev.value, by: author, ts: ev.ts })

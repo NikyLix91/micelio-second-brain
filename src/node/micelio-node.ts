@@ -70,7 +70,7 @@ import { FakeAdapter } from '../llm/fake'
 import { LlmRunner } from '../llm/runner'
 import type { LlmAdapter } from '../llm/types'
 import { TeamNode } from '../net/team-node'
-import { ROOTS_ADMIN_ONLY } from '../net/apply'
+import { ROOTS_ADMIN_ONLY, STRICT } from '../net/apply'
 import { applyFilter, builtinDetectors, compileTeamPatterns, mergeRules, type TeamSecretPattern } from '../privacy/filter'
 import { DEFAULT_SENSITIVE_FILES, mergeSensitiveFiles, sensitiveMatch } from '../privacy/sensitive-files'
 import { mergeBlockedPaths } from '../privacy/paths'
@@ -906,6 +906,14 @@ export class MicelioNode extends EventEmitter {
   async setTeamConfig (key: string, value: unknown): Promise<void> {
     // Validazione delle chiavi note: un valore sbagliato vale per tutto il team
     // EN: Validate known keys: a wrong value applies to the whole team
+    if (key === STRICT && typeof value !== 'boolean') {
+      throw new UserError(`${STRICT}: true oppure false`, `${STRICT}: true or false`)
+    }
+    // Spegnerla dopo averla accesa farebbe tornare in chiaro il contenuto nuovo: non si torna indietro
+    // EN: Turning it off after turning it on would make new content clear again: no way back
+    if (key === STRICT && value === false && (await this.requireTeam().strict())) {
+      throw new UserError('La protezione completa, una volta accesa, non si spegne', 'Full protection, once on, cannot be turned off')
+    }
     if (key === ROOTS_ADMIN_ONLY && typeof value !== 'boolean') {
       throw new UserError(`${ROOTS_ADMIN_ONLY}: true oppure false`, `${ROOTS_ADMIN_ONLY}: true or false`)
     }
@@ -919,6 +927,49 @@ export class MicelioNode extends EventEmitter {
     await this.requireTeam().append({ type: 'team.config', key, value })
     await this.sync()
     this.changed('status')
+  }
+
+  // ═══════════════════ Protezione completa (0.7.0) ═══════════════════
+  // EN: Full protection (0.7.0)
+
+  /**
+   * Stato della protezione completa: accesa o no, generazione delle chiavi, membri con versione e
+   * chiave. `canEnable` è vero quando tutti i membri attivi hanno la 0.7.0 o successiva: un nodo più
+   * vecchio non saprebbe né passare il cancello né leggere il contenuto cifrato.
+   *
+   * EN: Full protection status: on or off, key generation, members with version and key.
+   * `canEnable` is true when every active member runs 0.7.0 or later: an older node could neither
+   * pass the gate nor read the encrypted content.
+   */
+  async protection (): Promise<{ strict: boolean, gen: number, ready: boolean, canEnable: boolean, waitingFor: string[], members: { key: string, name: string, role: string, version: string | null, hasKey: boolean }[] }> {
+    const p = await this.requireTeam().protection()
+    const waitingFor = p.members.filter((m) => m.version === null).map((m) => m.name)
+    return { ...p, canEnable: !p.strict && waitingFor.length === 0, waitingFor }
+  }
+
+  /**
+   * Accende la protezione completa (solo admin, senza ritorno). La prima generazione la crea da
+   * sola il primo admin che vede l'impostazione (vedi i doveri in TeamNode).
+   *
+   * EN: Turns full protection on (admins only, no way back). The first generation is created by
+   * the first admin who sees the setting (see the duties in TeamNode).
+   */
+  async enableProtection (): Promise<void> {
+    await this.requireAdmin()
+    const p = await this.protection()
+    if (p.strict) return
+    if (p.waitingFor.length) throw new UserError(`Prima devono aggiornare Micelio alla 0.7.0: ${p.waitingFor.join(', ')}`, `They must first update Micelio to 0.7.0: ${p.waitingFor.join(', ')}`)
+    await this.setTeamConfig(STRICT, true)
+  }
+
+  /** Cambia la chiave del team adesso (solo admin), per esempio dopo un PC perso. / EN: Changes the team key now (admins only), for example after a lost PC. */
+  async rotateKeys (): Promise<{ gen: number }> {
+    await this.requireAdmin()
+    if (!(await this.requireTeam().strict())) throw new UserError('La protezione completa non è accesa per questo team', 'Full protection is not on for this team')
+    const gen = await this.requireTeam().rotateKeys()
+    await this.sync()
+    this.changed('status')
+    return { gen }
   }
 
   /** Configurazione condivisa del team (lingua, parole chiave del filtro), per la UI. / EN: Shared team configuration (language, filter keywords), for the UI. */
