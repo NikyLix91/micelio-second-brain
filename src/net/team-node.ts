@@ -48,6 +48,7 @@ import { envelope, type EventPayload } from '../core/events'
 import type { GapRecord, InviteRecord, KeyGeneration, MemberRecord, MemoryRecord, RedactAck, RootRecord, TeamRecord } from '../core/model'
 import { KEYS, RANGES, ROOTS_ADMIN_ONLY, STRICT, applyNodes, openView } from './apply'
 import { boxKeyPairFrom } from '../core/team-crypto'
+import { APP_VERSION } from '../core/version'
 import { MemberGate } from './member-gate'
 import { TeamKeys } from './team-keys'
 import { relayKeyOf } from './relay-key'
@@ -973,9 +974,11 @@ export class TeamNode extends EventEmitter {
     await this.refreshKeys()
     const me = this.localKey!
     const myPk = keys.box.publicKey.toString('hex')
-    const mine = (await this.base.view.get(KEYS.boxkey(me)))?.value as { pk: string } | undefined
-    if (mine?.pk !== myPk) {
-      await this.base.append(envelope({ type: 'member.boxkey', pk: myPk }))
+    const mine = (await this.base.view.get(KEYS.boxkey(me)))?.value as { pk: string, version?: string } | undefined
+    // Anche dopo un aggiornamento dell'app: la pagina Team mostra la versione di ciascuno
+    // EN: Also after an app update: the Team page shows everyone's version
+    if (mine?.pk !== myPk || mine.version !== APP_VERSION) {
+      await this.base.append(envelope({ type: 'member.boxkey', pk: myPk, version: APP_VERSION }))
       return // il resto al prossimo aggiornamento, con la chiave nella vista / EN: the rest at the next update, with the key in the view
     }
     if (!(await this.strict())) return
@@ -997,6 +1000,43 @@ export class TeamNode extends EventEmitter {
       const lacking = Object.fromEntries(Object.entries(recipients).filter(([k]) => !(k in current.grants)))
       if (Object.keys(lacking).length) await this.base.append(envelope({ type: 'keys.grant', gen, grants: keys.grantsFor(lacking) }))
     }
+  }
+
+  /**
+   * Stato della protezione completa per l'interfaccia: accesa o no, generazione, e per ogni membro
+   * attivo la versione dell'app (null = precedente alla 0.7.0) e se ha la chiave corrente.
+   *
+   * EN: Full protection status for the interface: on or off, generation, and for every active
+   * member the app version (null = older than 0.7.0) and whether they hold the current key.
+   */
+  async protection (): Promise<{ strict: boolean, gen: number, ready: boolean, members: { key: string, name: string, role: string, version: string | null, hasKey: boolean }[] }> {
+    const { gen, ready } = this.keyStatus
+    const current = gen ? (await this.base.view.get(KEYS.keygen(gen)))?.value as KeyGeneration | undefined : undefined
+    const versions = new Map<string, string | null>()
+    for await (const { key, value } of this.base.view.createReadStream(RANGES.boxkeys)) versions.set(String(key).slice('boxkey/'.length), (value as { version?: string }).version ?? '0.7.0')
+    const members = (await this.members()).filter((m) => !m.removed).map((m) => ({
+      key: m.key, name: m.name, role: m.role, version: versions.get(m.key) ?? null, hasKey: !!current && m.key in current.grants
+    }))
+    return { strict: await this.strict(), gen, ready, members }
+  }
+
+  /**
+   * Cambio di chiave a mano (admin), per esempio dopo un PC perso: una generazione nuova
+   * consegnata ai membri attivi. Il controllo dei permessi vero è in apply.
+   *
+   * EN: Manual key change (admin), for example after a lost PC: a new generation handed to the
+   * active members. The real permission check is in apply.
+   */
+  async rotateKeys (): Promise<number> {
+    if (!this.keys) throw new Error('Registro del team non aperto')
+    await this.refreshKeys()
+    const active = new Set((await this.members()).filter((m) => !m.removed).map((m) => m.key))
+    const recipients = Object.fromEntries((await this.boxKeys()).filter(([k]) => active.has(k)))
+    const next = this.keys.newGeneration(recipients)
+    await this.base.append(envelope({ type: 'keys.rotate', ...next }))
+    await this.base.update()
+    await this.refreshKeys()
+    return next.gen
   }
 
   /** Chiavi pubbliche X25519 dei membri: feed → chiave (hex). / EN: Members' X25519 public keys: feed → key (hex). */

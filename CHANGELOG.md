@@ -4,6 +4,12 @@ All notable changes to Micelio. The format follows [Keep a Changelog](https://ke
 
 ## [Unreleased]
 
+### Security
+- **Full protection** for teams: closes the main known limitation, removed members still reading new memories.
+  - **Only active members receive the team's data:** on every connection the peer proves, with its feed's key and bound to that session, to be an active member; nodes replicate only after the proof and cut off whoever gets removed.
+  - **Content is encrypted with a per-generation key:** memories (title, body, tags, source), gap questions, Root flag reasons and dream summaries. Every active member gets the key encrypted with their own public key; the key changes by itself when an admin removes someone, so whoever left can't read new content even if a member passes them the data. Newcomers read the whole history through the key chain.
+  - On in new teams. In existing teams an admin turns it on from Team → Full protection once every member runs 0.7.0 (the card shows everyone's version); it can't be turned off. Admins can also change the key by hand, for example after a lost PC.
+
 ## [0.6.2] - 2026-10-26
 
 ### Security

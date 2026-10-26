@@ -368,8 +368,14 @@ export const TeamEvent = z.discriminatedUnion('type', [
 
   // ── Protezione completa: chiavi per generazione (0.7.0, src/core/team-crypto.ts) ──────
   // EN: Full protection: per-generation keys (0.7.0, src/core/team-crypto.ts)
-  /** Chiave pubblica X25519 del membro che scrive, per ricevere le chiavi di generazione. / EN: X25519 public key of the writing member, to receive generation keys. */
-  z.object({ ...base, type: z.literal('member.boxkey'), pk: hexKey }),
+  /**
+   * Chiave pubblica X25519 del membro che scrive, per ricevere le chiavi di generazione, con la
+   * versione dell'app: un membro senza questo evento ha una versione precedente alla 0.7.0.
+   *
+   * EN: X25519 public key of the writing member, to receive generation keys, with the app version:
+   * a member without this event runs a version older than 0.7.0.
+   */
+  z.object({ ...base, type: z.literal('member.boxkey'), pk: hexKey, version: z.string().max(40).optional() }),
   /**
    * Nuova generazione (solo admin): la chiave consegnata a ogni membro attivo e, dalla seconda in
    * poi, la precedente cifrata con la nuova (`prev`). Vale solo la generazione successiva a quella

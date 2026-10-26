@@ -80,6 +80,8 @@ micelio init "Team Dev" --name pc-mario
 
 Whoever creates the team is its **admin**. Admins can remove members, appoint other admins and change the team settings. Tip: **appoint 2–3 admins** among the people whose PCs are on most often. Admins also act as "guarantors" of the order of events (*indexers*).
 
+**Full protection (since 0.7.0).** The team's data travels only among active members and the content is encrypted with a key that changes by itself when an admin removes someone: whoever leaves neither receives nor reads anything new. It's on in new teams; in an existing team an admin turns it on from the Team page, once everyone has 0.7.0. After a lost PC: remove the member, then "Change the key now".
+
 ```bash
 micelio members promote pc-lucia
 ```

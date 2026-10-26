@@ -152,13 +152,38 @@ describe('protezione spenta (team esistenti, nodi 0.6.x): come prima della 0.7.0
     nodes.push(alice, carla)
     await Promise.all(nodes.map((n) => n.start()))
     await alice.init('Team Aperto', 'alice')
-    await alice.setTeamConfig('security.strict', false)
+    // Un team di prima della 0.7.0: protezione mai accesa (dalla UI non si spegne, qui si simula)
+    // EN: A team from before 0.7.0: protection never on (the UI can't turn it off, here we simulate it)
+    await (alice as any).team.append({ type: 'team.config', key: 'security.strict', value: false })
     await carla.join((await alice.invite()).code, 'carla')
   })
 
   afterAll(async () => {
     await Promise.all(nodes.map((n) => n.stop().catch(() => {})))
     await dht?.destroy()
+  })
+
+  it('accensione: solo un admin, e da lì non si spegne più; la prima generazione nasce da sola', async () => {
+    // Si può accendere quando tutti i membri hanno pubblicato versione e chiave pubblica
+    // EN: It can be turned on when every member has published version and public key
+    await eventually(async () => (await alice.protection()).canEnable, nodes)
+    const before = await alice.protection()
+    expect(before).toMatchObject({ strict: false, waitingFor: [] })
+    expect(before.members.map((m) => m.name).sort()).toEqual(['alice', 'carla'])
+    expect(before.members.every((m) => m.version !== null)).toBe(true)
+    await expect(carla.enableProtection()).rejects.toThrow(/riservata agli admin/)
+    await alice.enableProtection()
+    await eventually(async () => { const p = await alice.protection(); return p.strict && p.gen >= 1 && p.members.every((m) => m.hasKey) }, nodes)
+    const gen = (await alice.protection()).gen
+    await expect(alice.setTeamConfig('security.strict', false)).rejects.toThrow(/non si spegne/)
+    // Cambio di chiave a mano: generazione 2, consegnata a tutti
+    // EN: Manual key change: generation 2, handed to everyone
+    expect(await alice.rotateKeys()).toEqual({ gen: gen + 1 })
+    await eventually(async () => (await carla.protection()).gen === gen + 1 && (carla as any).team.keyStatus.ready, nodes)
+    // Si spegne di nuovo solo per la controprova qui sotto (simula un team vecchio)
+    // EN: Turned off again only for the counter-check below (simulates an old team)
+    await (alice as any).team.append({ type: 'team.config', key: 'security.strict', value: false })
+    await eventually(async () => !(await carla.protection()).strict, nodes)
   })
 
   it('senza il cancello un membro rimosso continua a ricevere: è il limite che la protezione chiude', async () => {

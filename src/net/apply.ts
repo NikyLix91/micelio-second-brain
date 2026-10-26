@@ -601,7 +601,7 @@ async function applyEvent (ev: TeamEvent, author: string, view: any, host: any):
     //       are added and only for active members (nobody can hand it to a removed member).
     //     Whoever applies opens nothing: keys stay encrypted in the view.
     case 'member.boxkey': {
-      await view.put(KEYS.boxkey(author), { pk: ev.pk, ts: ev.ts })
+      await view.put(KEYS.boxkey(author), { pk: ev.pk, ts: ev.ts, ...(ev.version ? { version: ev.version } : {}) })
       return
     }
     case 'keys.rotate': {
