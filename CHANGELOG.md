@@ -4,6 +4,8 @@ All notable changes to Micelio. The format follows [Keep a Changelog](https://ke
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-26
+
 ### Security
 - **Full protection** for teams: closes the main known limitation, removed members still reading new memories.
   - **Only active members receive the team's data:** on every connection the peer proves, with its feed's key and bound to that session, to be an active member; nodes replicate only after the proof and cut off whoever gets removed.
@@ -109,7 +111,8 @@ Memory that learns from use.
 ### Added
 - First version: P2P team, memories, hybrid search, MCP for Claude Code, automatic collection with privacy filter and Inbox, document folders, priority and dreaming, desktop app with the 3D Nucleus.
 
-[Unreleased]: https://github.com/salvatorestracquadanio86/micelio-second-brain/compare/v0.6.2...HEAD
+[Unreleased]: https://github.com/salvatorestracquadanio86/micelio-second-brain/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/salvatorestracquadanio86/micelio-second-brain/releases/tag/v0.7.0
 [0.6.2]: https://github.com/salvatorestracquadanio86/micelio-second-brain/releases/tag/v0.6.2
 [0.6.1]: https://github.com/salvatorestracquadanio86/micelio-second-brain/releases/tag/v0.6.1
 [0.6.0]: https://github.com/salvatorestracquadanio86/micelio-second-brain/releases/tag/v0.6.0

@@ -192,3 +192,66 @@ describe('protezione spenta (team esistenti, nodi 0.6.x): come prima della 0.7.0
     await eventually(() => carla.recall('Scritto dopo la rimozione').some((h) => h.title === 'Scritto dopo la rimozione'), nodes)
   })
 })
+
+describe('protezione completa: due admin cambiano la chiave insieme senza vedersi', () => {
+  let dht: Awaited<ReturnType<typeof localDht>>
+  const nodes: MicelioNode[] = []
+  let alice: MicelioNode, bruno: MicelioNode, carla: MicelioNode
+  let brunoHome = ''
+
+  beforeAll(async () => {
+    dht = await localDht()
+    alice = makeNode('race-alice', dht.bootstrap).node
+    const b = makeNode('race-bruno', dht.bootstrap)
+    bruno = b.node
+    brunoHome = b.home
+    carla = makeNode('race-carla', dht.bootstrap).node
+    nodes.push(alice, bruno, carla)
+    await Promise.all(nodes.map((n) => n.start()))
+    await alice.init('Team Corsa', 'alice')
+    await bruno.join((await alice.invite()).code, 'bruno')
+    await carla.join((await alice.invite()).code, 'carla')
+    await alice.promoteMember('bruno')
+    await eventually(async () => (await bruno.status()).role === 'admin' && (bruno as any).team.keyStatus.ready && (carla as any).team.keyStatus.ready, nodes)
+  })
+
+  afterAll(async () => {
+    await Promise.all(nodes.map((n) => n.stop().catch(() => {})))
+    await dht?.destroy()
+  })
+
+  it('vince una sola rotazione, ma i ricordi scritti con entrambe le chiavi restano leggibili a tutti', async () => {
+    const gen = (await alice.protection()).gen
+    // bruno spento: alice cambia la chiave e scrive
+    // EN: bruno off: alice changes the key and writes
+    await bruno.stop()
+    nodes.splice(nodes.indexOf(bruno), 1)
+    expect(await alice.rotateKeys()).toEqual({ gen: gen + 1 })
+    published(await alice.remember({ kind: 'fact', title: 'Scritto da alice nella corsa', body: 'Con la chiave di alice.' }))
+    await eventually(() => carla.recall('Scritto da alice nella corsa').some((h) => h.title === 'Scritto da alice nella corsa'), [alice, carla])
+    // bruno riparte da solo (alice e carla spente per lui: niente rete), cambia la chiave e scrive
+    // EN: bruno restarts on his own (alice and carla off for him: no network), changes the key and writes
+    await alice.stop(); await carla.stop()
+    bruno = makeNode('race-bruno', dht.bootstrap, brunoHome).node
+    await bruno.start()
+    expect((await bruno.protection()).gen).toBe(gen)
+    expect(await bruno.rotateKeys()).toEqual({ gen: gen + 1 })
+    published(await bruno.remember({ kind: 'fact', title: 'Scritto da bruno nella corsa', body: 'Con la chiave di bruno.' }))
+    // Tutti di nuovo insieme
+    // EN: Everyone together again
+    await bruno.stop()
+    const again = ['race-alice', 'race-bruno', 'race-carla'].map((l, i) => makeNode(l, dht.bootstrap, [(alice as any).paths.home, brunoHome, (carla as any).paths.home][i]).node)
+    nodes.splice(0, nodes.length, ...again)
+    await Promise.all(again.map((n) => n.start()))
+    const titles = ['Scritto da alice nella corsa', 'Scritto da bruno nella corsa']
+    await eventually(() => again.every((n) => titles.every((t) => n.recall(t).some((h) => h.title === t))), again, 60_000)
+    // Una sola generazione corrente per tutti, e da lì si scrive con quella
+    // EN: A single current generation for everyone, and from there on everyone writes with it
+    await eventually(async () => (await Promise.all(again.map(async (n) => (await n.protection()).gen))).every((g) => g === gen + 1), again)
+    // La rotazione perdente è conservata come alternativa: è lei che tiene leggibile il ricordo del perdente
+    // EN: The losing rotation is kept as an alternate: it's what keeps the loser's memory readable
+    expect((await (again[0] as any).team.rawScan({ gt: 'keyalt/', lt: 'keyalt0' })).length).toBe(1)
+    published(await again[2].remember({ kind: 'fact', title: 'Scritto da carla dopo la corsa', body: 'Con la chiave vincente.' }))
+    await eventually(() => again.every((n) => n.recall('Scritto da carla dopo la corsa').some((h) => h.title === 'Scritto da carla dopo la corsa')), again)
+  }, 180_000)
+})

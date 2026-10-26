@@ -104,7 +104,9 @@ export const KEYS = {
   /** Una generazione delle chiavi (0.7.0); il numero è a lunghezza fissa per l'ordine. / EN: A key generation (0.7.0); the number is fixed-width for ordering. */
   keygen: (g: number) => `keygen/${String(g).padStart(10, '0')}`,
   /** Generazione corrente. / EN: Current generation. */
-  keyCurrent: 'keycurrent'
+  keyCurrent: 'keycurrent',
+  /** Rotazione perdente di una generazione, di un admin: le sue consegne restano per i testi scritti nella corsa. / EN: An admin's losing rotation of a generation: its grants stay for texts written during the race. */
+  keyAlt: (g: number, by: string) => `keyalt/${String(g).padStart(10, '0')}/${by}`
 } as const
 
 /**
@@ -130,7 +132,8 @@ export const RANGES = {
   gaps: { gt: 'gap/', lt: 'gap0' },
   configs: { gt: 'config/', lt: 'config0' },
   boxkeys: { gt: 'boxkey/', lt: 'boxkey0' },
-  keygens: { gt: 'keygen/', lt: 'keygen0' }
+  keygens: { gt: 'keygen/', lt: 'keygen0' },
+  keyAlts: { gt: 'keyalt/', lt: 'keyalt0' }
 } as const
 
 /**
@@ -607,10 +610,18 @@ async function applyEvent (ev: TeamEvent, author: string, view: any, host: any):
     case 'keys.rotate': {
       if (!isAdmin) return
       const cur = (await get<{ gen: number }>(view, KEYS.keyCurrent))?.gen ?? 0
-      if (ev.gen !== cur + 1) return
       const grants = await activeOnly(view, ev.grants)
-      await view.put(KEYS.keygen(ev.gen), { gen: ev.gen, grants, ...(ev.prev ? { prev: ev.prev } : {}), by: author, ts: ev.ts } satisfies KeyGeneration)
-      await view.put(KEYS.keyCurrent, { gen: ev.gen })
+      const rec: KeyGeneration = { gen: ev.gen, grants, ...(ev.prev ? { prev: ev.prev } : {}), by: author, ts: ev.ts }
+      if (ev.gen === cur + 1) {
+        await view.put(KEYS.keygen(ev.gen), rec)
+        await view.put(KEYS.keyCurrent, { gen: ev.gen })
+      } else if (ev.gen <= cur && !(await get(view, KEYS.keyAlt(ev.gen, author)))) {
+        // Ha perso la corsa con un altro admin: non diventa la chiave con cui si scrive, ma le sue
+        // consegne restano, così ciò che il suo autore ha cifrato nel frattempo resta leggibile
+        // EN: It lost the race with another admin: it doesn't become the key used to write, but
+        //     its grants stay, so what its author encrypted meanwhile stays readable
+        await view.put(KEYS.keyAlt(ev.gen, author), rec)
+      }
       return
     }
     case 'keys.grant': {

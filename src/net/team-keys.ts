@@ -27,14 +27,16 @@
  */
 import { memoryId, type EventPayload } from '../core/events'
 import type { KeyGeneration } from '../core/model'
-import { type BoxKeyPair, chainLink, grantTo, isSealed, newGenerationKey, open, openChainLink, openGrant, seal, sealedGeneration } from '../core/team-crypto'
+import { type BoxKeyPair, chainLink, fingerprint, grantTo, isSealed, newGenerationKey, open, openChainLink, openGrant, seal, sealedFingerprint } from '../core/team-crypto'
 
 /** Testo mostrato al posto di un contenuto che questo nodo non sa aprire. / EN: Text shown instead of content this node can't open. */
 export const LOCKED_TEXT = '[cifrato: chiave non disponibile su questo nodo]'
 
 export class TeamKeys {
-  /** Generazione → chiave, solo quelle che questo nodo sa aprire. / EN: Generation → key, only the ones this node can open. */
-  private readonly keys = new Map<number, Buffer>()
+  /** Impronta → chiave: tutte quelle che questo nodo sa aprire, anche delle rotazioni perdenti. / EN: Fingerprint → key: every key this node can open, including losing rotations. */
+  private keys = new Map<string, Buffer>()
+  /** Generazione → chiave VINCENTE (quella con cui si scrive). / EN: Generation → WINNING key (the one used to write). */
+  private winners = new Map<number, Buffer>()
   private currentGen = 0
 
   /**
@@ -46,36 +48,50 @@ export class TeamKeys {
   constructor (readonly box: BoxKeyPair, private readonly me: () => string | null) {}
 
   /**
-   * Ricalcola le chiavi dalle generazioni della vista: apre la consegna per questo nodo e risale
-   * la catena (`prev`) fino alla prima generazione.
+   * Ricalcola da zero le chiavi dalla vista: apre le consegne per questo nodo, delle generazioni
+   * vincenti e delle rotazioni perdenti (`alternates`), e risale la catena (`prev`) delle vincenti.
+   * Da zero perché un riordino del registro può cambiare quale rotazione ha vinto: nessuna chiave
+   * resta in memoria per una generazione sbagliata.
    *
-   * EN: Recomputes the keys from the view's generations: opens the grant for this node and walks
-   * the chain (`prev`) back to the first generation.
+   * EN: Recomputes the keys from scratch from the view: opens the grants for this node, of the
+   * winning generations and of the losing rotations (`alternates`), and walks the chain (`prev`)
+   * of the winning ones. From scratch because a reorder of the log can change which rotation won:
+   * no key stays in memory for the wrong generation.
    */
-  refresh (generations: KeyGeneration[], current: number): void {
+  refresh (generations: KeyGeneration[], current: number, alternates: KeyGeneration[] = []): void {
     this.currentGen = current
     const me = this.me()
-    const byGen = new Map(generations.map((g) => [g.gen, g]))
-    for (const g of [...generations].sort((a, b) => b.gen - a.gen)) {
-      if (this.keys.has(g.gen)) continue
+    const keys = new Map<string, Buffer>()
+    const winners = new Map<number, Buffer>()
+    const mine = (g: KeyGeneration) => {
       const grant = me ? g.grants[me] : undefined
-      const key = grant ? openGrant(grant, this.box) : null
-      if (key) this.keys.set(g.gen, key)
+      return grant ? openGrant(grant, this.box) : null
+    }
+    for (const g of alternates) {
+      const key = mine(g)
+      if (key) keys.set(fingerprint(key), key)
+    }
+    const byGen = new Map(generations.map((g) => [g.gen, g]))
+    for (const g of generations) {
+      const key = mine(g)
+      if (key) { winners.set(g.gen, key); keys.set(fingerprint(key), key) }
     }
     // Catena: dalla più alta nota si scende finché ci sono anelli
     // EN: Chain: from the highest known one we go down while there are links
-    for (let gen = Math.max(0, ...this.keys.keys()); gen > 1; gen--) {
-      const key = this.keys.get(gen)
+    for (let gen = Math.max(0, ...winners.keys()); gen > 1; gen--) {
+      const key = winners.get(gen)
       const link = byGen.get(gen)?.prev
-      if (!key || !link || this.keys.has(gen - 1)) continue
+      if (!key || !link || winners.has(gen - 1)) continue
       const prev = openChainLink(link, key)
-      if (prev) this.keys.set(gen - 1, prev)
+      if (prev) { winners.set(gen - 1, prev); keys.set(fingerprint(prev), prev) }
     }
+    this.keys = keys
+    this.winners = winners
   }
 
   /** Generazione corrente del team e se questo nodo ne ha la chiave. / EN: The team's current generation and whether this node holds its key. */
   get current (): { gen: number, ready: boolean } {
-    return { gen: this.currentGen, ready: this.keys.has(this.currentGen) }
+    return { gen: this.currentGen, ready: this.winners.has(this.currentGen) }
   }
 
   /** Quante chiavi questo nodo sa aprire. / EN: How many keys this node can open. */
@@ -84,13 +100,13 @@ export class TeamKeys {
   }
 
   hasKey (gen: number): boolean {
-    return this.keys.has(gen)
+    return this.winners.has(gen)
   }
 
-  /** Apre un testo sigillato; LOCKED_TEXT se manca la chiave. / EN: Opens a sealed text; LOCKED_TEXT if the key is missing. */
+  /** Apre un testo sigillato con la chiave della sua impronta; LOCKED_TEXT se manca. / EN: Opens a sealed text with its fingerprint's key; LOCKED_TEXT if missing. */
   openText (s: string): string {
-    const gen = sealedGeneration(s)
-    const key = gen === null ? undefined : this.keys.get(gen)
+    const fp = sealedFingerprint(s)
+    const key = fp === null ? undefined : this.keys.get(fp)
     return (key && open(s, key)) ?? LOCKED_TEXT
   }
 
@@ -133,7 +149,7 @@ export class TeamKeys {
    */
   sealEvent (p: EventPayload): EventPayload {
     if (!needsSealing(p)) return p
-    const key = this.keys.get(this.currentGen)
+    const key = this.winners.get(this.currentGen)
     if (!key) throw new Error('Chiave del team non ancora ricevuta: un membro online la consegna entro pochi secondi')
     const s = (t: string) => seal(this.currentGen, key, t)
     switch (p.type) {
@@ -164,7 +180,7 @@ export class TeamKeys {
    */
   newGeneration (recipients: Record<string, string>): { gen: number, grants: Record<string, string>, prev?: string } {
     const gen = this.currentGen + 1
-    const prevKey = this.keys.get(this.currentGen)
+    const prevKey = this.winners.get(this.currentGen)
     if (this.currentGen > 0 && !prevKey) throw new Error('Per cambiare la chiave serve quella attuale, che questo nodo non ha ancora')
     const key = newGenerationKey()
     const grants: Record<string, string> = {}
@@ -174,7 +190,7 @@ export class TeamKeys {
 
   /** Consegne della chiave corrente per membri che non l'hanno. / EN: Grants of the current key for members who lack it. */
   grantsFor (recipients: Record<string, string>): Record<string, string> {
-    const key = this.keys.get(this.currentGen)
+    const key = this.winners.get(this.currentGen)
     if (!key) return {}
     const grants: Record<string, string> = {}
     for (const [writer, pk] of Object.entries(recipients)) grants[writer] = grantTo(Buffer.from(pk, 'hex'), key)

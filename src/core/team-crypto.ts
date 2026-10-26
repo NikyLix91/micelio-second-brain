@@ -5,14 +5,20 @@
  *
  * Il team ha una catena di CHIAVI DI GENERAZIONE (32 byte casuali ciascuna). Il contenuto dei
  * ricordi si cifra con la chiave della generazione corrente (XSalsa20-Poly1305, `secretbox` di
- * libsodium) e viaggia come TESTO SIGILLATO: `mc1:<generazione>:<nonce>:<cifrato>` in base64.
+ * libsodium) e viaggia come TESTO SIGILLATO: `mc1:<generazione>:<impronta>:<nonce>:<cifrato>`
+ * (nonce e cifrato in base64). L'IMPRONTA (16 cifre esadecimali, hash della chiave) dice quale
+ * chiave apre il testo: due admin possono creare insieme due chiavi della stessa generazione, e un
+ * testo scritto con quella che poi perde nel registro deve restare leggibile.
  * Ogni chiave di generazione viene consegnata a ogni membro attivo cifrandola con la sua chiave
  * pubblica X25519 (`crypto_box_seal`): solo quel membro la apre. Chi è stato rimosso non riceve la
  * chiave delle generazioni successive alla sua rimozione.
  *
  * EN: The team has a chain of GENERATION KEYS (32 random bytes each). Memory content is encrypted
  * with the current generation's key (XSalsa20-Poly1305, libsodium `secretbox`) and travels as
- * SEALED TEXT: `mc1:<generation>:<nonce>:<ciphertext>` in base64. Every generation key is handed
+ * SEALED TEXT: `mc1:<generation>:<fingerprint>:<nonce>:<ciphertext>` (nonce and ciphertext in
+ * base64). The FINGERPRINT (16 hex digits, hash of the key) says which key opens the text: two
+ * admins can create two keys of the same generation at once, and a text written with the one that
+ * later loses in the log must stay readable. Every generation key is handed
  * to every active member by encrypting it with their X25519 public key (`crypto_box_seal`): only
  * that member opens it. Whoever was removed doesn't get the keys of the generations after their
  * removal.
@@ -36,7 +42,7 @@ import sodium from 'sodium-universal'
 /** Prefisso del testo sigillato (versione 1 del formato). / EN: Prefix of sealed text (format version 1). */
 export const SEALED_PREFIX = 'mc1:'
 /** Forma di un testo sigillato. / EN: Shape of a sealed text. */
-export const SEALED_RE = /^mc1:\d{1,9}:[A-Za-z0-9+/=]{32}:[A-Za-z0-9+/=]+$/
+export const SEALED_RE = /^mc1:\d{1,9}:[0-9a-f]{16}:[A-Za-z0-9+/=]{32}:[A-Za-z0-9+/=]+$/
 
 const b64 = (b: Uint8Array) => Buffer.from(b).toString('base64')
 const unb64 = (s: string) => Buffer.from(s, 'base64')
@@ -53,6 +59,19 @@ export function newGenerationKey (): Buffer {
   return k
 }
 
+/**
+ * Impronta di una chiave: i primi 8 byte del suo hash BLAKE2b (con un prefisso, così non coincide
+ * con altri usi della chiave). Rivela solo quale chiave è, non la chiave.
+ *
+ * EN: Fingerprint of a key: the first 8 bytes of its BLAKE2b hash (with a prefix, so it doesn't
+ * match other uses of the key). It only reveals which key it is, not the key.
+ */
+export function fingerprint (key: Uint8Array): string {
+  const out = Buffer.alloc(32)
+  sodium.crypto_generichash(out, Buffer.concat([Buffer.from('micelio-key-fp/v1'), key]))
+  return out.subarray(0, 8).toString('hex')
+}
+
 /** Cifra un testo con la chiave di una generazione. / EN: Encrypts a text with a generation's key. */
 export function seal (gen: number, key: Uint8Array, text: string): string {
   const nonce = Buffer.alloc(sodium.crypto_secretbox_NONCEBYTES)
@@ -60,13 +79,13 @@ export function seal (gen: number, key: Uint8Array, text: string): string {
   const msg = Buffer.from(text, 'utf8')
   const out = Buffer.alloc(msg.length + sodium.crypto_secretbox_MACBYTES)
   sodium.crypto_secretbox_easy(out, msg, nonce, key)
-  return `${SEALED_PREFIX}${gen}:${b64(nonce)}:${b64(out)}`
+  return `${SEALED_PREFIX}${gen}:${fingerprint(key)}:${b64(nonce)}:${b64(out)}`
 }
 
-/** Generazione di un testo sigillato (null se il formato non torna). / EN: Generation of a sealed text (null if the format doesn't match). */
-export function sealedGeneration (s: string): number | null {
+/** Impronta della chiave di un testo sigillato (null se il formato non torna). / EN: Key fingerprint of a sealed text (null if the format doesn't match). */
+export function sealedFingerprint (s: string): string | null {
   if (!SEALED_RE.test(s)) return null
-  return Number(s.split(':')[1])
+  return s.split(':')[2]
 }
 
 /**
@@ -78,7 +97,7 @@ export function sealedGeneration (s: string): number | null {
  */
 export function open (sealed: string, key: Uint8Array): string | null {
   if (!SEALED_RE.test(sealed)) return null
-  const [, , n, c] = sealed.split(':')
+  const [, , , n, c] = sealed.split(':')
   const nonce = unb64(n)
   const cipher = unb64(c)
   if (nonce.length !== sodium.crypto_secretbox_NONCEBYTES || cipher.length < sodium.crypto_secretbox_MACBYTES) return null

@@ -923,9 +923,10 @@ export class TeamNode extends EventEmitter {
   private async refreshKeys (): Promise<void> {
     if (!this.keys) return
     const gens = await this.rawScan<KeyGeneration>(RANGES.keygens)
+    const alts = await this.rawScan<KeyGeneration>(RANGES.keyAlts)
     const cur = (await this.base.view.get(KEYS.keyCurrent))?.value?.gen ?? 0
     const before = this.keys.count
-    this.keys.refresh(gens, cur)
+    this.keys.refresh(gens, cur, alts)
     // Chiavi nuove: chi legge deve rileggere (ricordi prima illeggibili ora si aprono)
     // EN: New keys: readers must read again (memories that were unreadable now open)
     if (this.keys.count !== before) this.emit('update')
