@@ -73,6 +73,73 @@ describe('protezione completa: replica solo con i membri attivi', () => {
   })
 })
 
+describe('protezione completa, strato 2: il contenuto nuovo è cifrato con una chiave che chi è stato rimosso non ha', () => {
+  let dht: Awaited<ReturnType<typeof localDht>>
+  const nodes: MicelioNode[] = []
+  let alice: MicelioNode, bruno: MicelioNode, carla: MicelioNode
+
+  beforeAll(async () => {
+    dht = await localDht()
+    alice = makeNode('gen-alice', dht.bootstrap).node
+    bruno = makeNode('gen-bruno', dht.bootstrap).node
+    carla = makeNode('gen-carla', dht.bootstrap).node
+    nodes.push(alice, bruno, carla)
+    await Promise.all(nodes.map((n) => n.start()))
+    await alice.init('Team Generazioni', 'alice')
+    await bruno.join((await alice.invite()).code, 'bruno')
+    await carla.join((await alice.invite()).code, 'carla')
+    published(await carla.remember({ kind: 'fact', title: 'Scritto da carla quando era membro', body: 'Cifrato con la prima generazione.' }))
+    await eventually(() => alice.recall('Scritto da carla').some((h) => h.title === 'Scritto da carla quando era membro'), nodes)
+  })
+
+  afterAll(async () => {
+    await Promise.all(nodes.map((n) => n.stop().catch(() => {})))
+    await dht?.destroy()
+  })
+
+  it('nella vista il contenuto è cifrato: niente testo in chiaro nei blocchi replicati', async () => {
+    const raw: any[] = []
+    for await (const { value } of (alice as any).team.base.view.createReadStream({ gt: 'memory/', lt: 'memory0' })) raw.push(value)
+    expect(raw.length).toBeGreaterThan(0)
+    expect(raw.every((m) => typeof m.sealed === 'string' && m.title === '' && m.body === '')).toBe(true)
+    expect(JSON.stringify(raw)).not.toMatch(/Cifrato con la prima generazione/)
+  })
+
+  it('rimossa e con i dati passati da un membro scavalcando il cancello, carla non legge il nuovo', async () => {
+    await alice.removeMember('carla')
+    // La rotazione parte da sola: generazione 2 senza carla
+    // EN: Rotation starts by itself: generation 2 without carla
+    await eventually(() => (alice as any).team.keyStatus.gen === 2 && (bruno as any).team.keyStatus.ready && (bruno as any).team.keyStatus.gen === 2, [alice, bruno])
+    published(await alice.remember({ kind: 'decision', title: 'Segreto dopo la rimozione', body: 'Carla non deve poterlo leggere.' }))
+    await eventually(() => bruno.recall('Segreto dopo la rimozione').some((h) => h.title === 'Segreto dopo la rimozione'), [alice, bruno])
+    // Un membro "complice" replica direttamente con carla, fuori dal cancello
+    // EN: An "accomplice" member replicates directly with carla, outside the gate
+    const a = (bruno as any).team.store.replicate(true)
+    const c = (carla as any).team.store.replicate(false)
+    a.pipe(c).pipe(a)
+    const sawSealed = async () => {
+      for await (const { value } of (carla as any).team.base.view.createReadStream({ gt: 'memory/', lt: 'memory0' })) if (value.kind === 'decision' && value.sealed) return true
+      return false
+    }
+    await eventually(sawSealed, [carla], 30_000)
+    expect((carla as any).team.keyStatus).toMatchObject({ gen: 2, ready: false })
+    expect(carla.recall('Segreto dopo la rimozione').some((h) => h.title === 'Segreto dopo la rimozione')).toBe(false)
+    expect(JSON.stringify(await (carla as any).team.memories())).not.toMatch(/Carla non deve poterlo leggere/)
+    // ...mentre quello scritto prima, con la generazione 1 che aveva, resta leggibile
+    // EN: ...while what was written before, with generation 1 she had, stays readable
+    expect(carla.recall('Scritto da carla').some((h) => h.title === 'Scritto da carla quando era membro')).toBe(true)
+    a.destroy(); c.destroy()
+  })
+
+  it('chi entra dopo legge anche la storia: la catena delle chiavi risale alle generazioni precedenti', async () => {
+    const dario = makeNode('gen-dario', dht.bootstrap).node
+    nodes.push(dario)
+    await dario.start()
+    await dario.join((await alice.invite()).code, 'dario')
+    await eventually(() => dario.recall('Scritto da carla').some((h) => h.title === 'Scritto da carla quando era membro') && dario.recall('Segreto dopo la rimozione').some((h) => h.title === 'Segreto dopo la rimozione'), [alice, bruno, dario])
+  })
+})
+
 describe('protezione spenta (team esistenti, nodi 0.6.x): come prima della 0.7.0', () => {
   let dht: Awaited<ReturnType<typeof localDht>>
   const nodes: MicelioNode[] = []

@@ -45,9 +45,11 @@ import crypto from 'hypercore-crypto'
 import b4a from 'b4a'
 import z32 from 'z32'
 import { envelope, type EventPayload } from '../core/events'
-import type { GapRecord, InviteRecord, MemberRecord, MemoryRecord, RedactAck, RootRecord, TeamRecord } from '../core/model'
+import type { GapRecord, InviteRecord, KeyGeneration, MemberRecord, MemoryRecord, RedactAck, RootRecord, TeamRecord } from '../core/model'
 import { KEYS, RANGES, ROOTS_ADMIN_ONLY, STRICT, applyNodes, openView } from './apply'
+import { boxKeyPairFrom } from '../core/team-crypto'
 import { MemberGate } from './member-gate'
+import { TeamKeys } from './team-keys'
 import { relayKeyOf } from './relay-key'
 
 /**
@@ -145,6 +147,10 @@ export class TeamNode extends EventEmitter {
   private readonly log: (msg: string) => void
   /** Cancello delle connessioni (0.7.0, src/net/member-gate.ts). / EN: Connection gate (0.7.0, src/net/member-gate.ts). */
   private gate: MemberGate | null = null
+  /** Portachiavi delle generazioni (0.7.0, src/net/team-keys.ts). / EN: Generation keyring (0.7.0, src/net/team-keys.ts). */
+  private keys: TeamKeys | null = null
+  private dutiesRunning = false
+  private dutiesAgain = false
   /** Si risolve quando il registro è aperto: il cancello decide solo da lì. / EN: Resolves when the log is open: the gate decides only from then on. */
   private baseOpened!: () => void
   private readonly baseReady = new Promise<void>((resolve) => { this.baseOpened = resolve })
@@ -369,13 +375,25 @@ export class TeamNode extends EventEmitter {
     })
     // Ogni aggiornamento può cambiare membri e protezione: il cancello riesamina le connessioni
     // EN: Every update may change members and protection: the gate re-examines the connections
-    this.base.on('update', () => { this.emit('update'); void this.gate?.recheck() })
+    this.base.on('update', () => {
+      // Le chiavi prima di avvisare chi legge: la vista nuova può contenere una generazione nuova
+      // EN: Keys before notifying readers: the new view may contain a new generation
+      this.refreshKeys().catch(() => {}).finally(() => {
+        this.emit('update')
+        void this.gate?.recheck()
+        this.keyDuties()
+      })
+    })
     this.base.on('error', (err: Error) => this.log(`errore autobase: ${err.message}`))
     await this.base.ready()
     // Il cancello può decidere: la vista (membri, protezione) è disponibile
     // EN: The gate can decide: the view (members, protection) is available
+    // Portachiavi (0.7.0) prima che il cancello e il resto leggano la vista
+    // EN: Keyring (0.7.0) before the gate and the rest read the view
+    await this.openKeys()
     this.baseOpened()
     void this.gate?.recheck()
+    this.keyDuties()
     // Solo locale: nessun annuncio sulla DHT e nessuna risposta alle richieste d'ingresso
     // EN: Local only: no DHT announcement and no answer to join requests
     if (!this.swarm) return
@@ -505,7 +523,9 @@ export class TeamNode extends EventEmitter {
    */
   async append (payload: EventPayload, ts?: number): Promise<void> {
     if (!this.base?.writable) throw new Error('Questo nodo non è (ancora) un writer del team')
-    await this.base.append(envelope(payload, ts))
+    // Protezione completa: il contenuto parte cifrato (0.7.0)
+    // EN: Full protection: content leaves encrypted (0.7.0)
+    await this.base.append(envelope(await this.sealIfNeeded(payload), ts))
   }
 
   /**
@@ -521,7 +541,9 @@ export class TeamNode extends EventEmitter {
     if (!this.base?.writable) throw new Error('Questo nodo non è (ancora) un writer del team')
     if (!payloads.length) return
     const now = Date.now()
-    await this.base.append(payloads.map((p) => envelope(p, now)))
+    const sealed: EventPayload[] = []
+    for (const p of payloads) sealed.push(await this.sealIfNeeded(p))
+    await this.base.append(sealed.map((p) => envelope(p, now)))
   }
 
   /**
@@ -577,7 +599,16 @@ export class TeamNode extends EventEmitter {
   /** true quando la base è aperta (dopo create/open/join). / EN: true when the base is open (after create/open/join). */
   get ready (): boolean { return this.base !== null }
   /** Versione della vista (cresce a ogni modifica): serve a non ricalcolare ciò che non è cambiato. / EN: View version (grows on every change): used to avoid recomputing what did not change. */
-  get viewVersion (): number { return this.base?.view?.version ?? 0 }
+  /**
+   * Versione di quello che il nodo legge: la vista più le chiavi di generazione aperte (0.7.0).
+   * Una chiave che arriva rende leggibili ricordi già nella vista: deve contare come un cambiamento,
+   * altrimenti chi ricostruisce l'indice salterebbe il giro (bug trovato nei test).
+   *
+   * EN: Version of what the node reads: the view plus the opened generation keys (0.7.0). A key
+   * that arrives makes memories already in the view readable: it must count as a change, otherwise
+   * whoever rebuilds the index would skip the round (bug found in tests).
+   */
+  get viewVersion (): number { return (this.base?.view?.version ?? 0) * 1000 + (this.keys?.count ?? 0) }
   get writable (): boolean { return !!this.base?.writable }
   get isIndexer (): boolean { return !!this.base?.isIndexer }
   /** Chiave del feed locale (hex): è l'identità di questo nodo nel team. / EN: Local feed key (hex): the identity of this node in the team. */
@@ -708,7 +739,7 @@ export class TeamNode extends EventEmitter {
   /** Legge un record qualsiasi della vista; null se assente. / EN: Reads any record from the view; null if missing. */
   async getRecord<T> (key: string): Promise<T | null> {
     const node = await this.base.view.get(key)
-    return node ? node.value as T : null
+    return node ? this.reveal(node.value as T) : null
   }
 
   /** Valore di una configurazione di team (`team.config`), o undefined se non impostata. / EN: Value of a team setting (`team.config`), or undefined if not set. */
@@ -734,7 +765,13 @@ export class TeamNode extends EventEmitter {
   }
 
   async memories (): Promise<MemoryRecord[]> {
-    return this.scan<MemoryRecord>(RANGES.memories)
+    // Un ricordo cifrato che questo nodo non sa (ancora) aprire non esce: indice, export e backup
+    // non devono vederlo vuoto. Quando la chiave arriva compare come ricordo nuovo e viene
+    // indicizzato normalmente (l'indice salta gli id che ha già).
+    // EN: An encrypted memory this node can't open (yet) doesn't come out: index, export and backup
+    //     must not see it empty. When the key arrives it shows up as a new memory and gets indexed
+    //     normally (the index skips ids it already has).
+    return (await this.scan<MemoryRecord & { locked?: boolean }>(RANGES.memories)).filter((m) => !m.locked)
   }
 
   /** Collegamenti espliciti creati dal dreaming. / EN: Explicit links created by dreaming. */
@@ -853,7 +890,137 @@ export class TeamNode extends EventEmitter {
   /** Scorre un range di chiavi della vista. / EN: Scans a key range of the view. */
   private async scan<T> (range: { gt: string, lt: string }): Promise<T[]> {
     const out: T[] = []
+    for await (const { value } of this.base.view.createReadStream(range)) out.push(this.reveal(value) as T)
+    return out
+  }
+
+  /** Apre i testi cifrati di un valore della vista (0.7.0). / EN: Opens the encrypted texts of a view value (0.7.0). */
+  private reveal<T> (value: T): T {
+    return this.keys ? this.keys.openDeep(value) : value
+  }
+
+  // ═══════════════════════ Protezione completa: chiavi (0.7.0) ═══════════════════════
+  // EN: Full protection: keys (0.7.0)
+
+  /** Protezione completa accesa per il team. / EN: Full protection on for the team. */
+  async strict (): Promise<boolean> {
+    return (await this.config(STRICT)) === true
+  }
+
+  /** Stato delle chiavi per l'interfaccia. / EN: Key status for the interface. */
+  get keyStatus (): { gen: number, ready: boolean } {
+    return this.keys?.current ?? { gen: 0, ready: false }
+  }
+
+  /** Apre il portachiavi: la coppia X25519 nasce dal Corestore del nodo (vedi team-crypto.ts). / EN: Opens the keyring: the X25519 pair comes from the node's Corestore (see team-crypto.ts). */
+  private async openKeys (): Promise<void> {
+    const ed = await this.store.createKeyPair('micelio-box')
+    this.keys = new TeamKeys(boxKeyPairFrom(ed), () => this.localKey)
+    await this.refreshKeys()
+  }
+
+  private async refreshKeys (): Promise<void> {
+    if (!this.keys) return
+    const gens = await this.rawScan<KeyGeneration>(RANGES.keygens)
+    const cur = (await this.base.view.get(KEYS.keyCurrent))?.value?.gen ?? 0
+    const before = this.keys.count
+    this.keys.refresh(gens, cur)
+    // Chiavi nuove: chi legge deve rileggere (ricordi prima illeggibili ora si aprono)
+    // EN: New keys: readers must read again (memories that were unreadable now open)
+    if (this.keys.count !== before) this.emit('update')
+  }
+
+  private async rawScan<T> (range: { gt: string, lt: string }): Promise<T[]> {
+    const out: T[] = []
     for await (const { value } of this.base.view.createReadStream(range)) out.push(value as T)
     return out
+  }
+
+  /**
+   * Doveri automatici di ogni nodo, dopo ogni aggiornamento (al massimo uno alla volta):
+   * 1. pubblicare la propria chiave pubblica X25519, se la vista non la ha;
+   * 2. (admin) con la protezione accesa e nessuna generazione, creare la prima;
+   * 3. (admin) se la generazione corrente è stata consegnata a un membro poi rimosso, crearne una
+   *    nuova: così la rotazione avviene anche se l'admin che ha rimosso è andato offline subito;
+   * 4. (chiunque abbia la chiave) consegnare la chiave corrente ai membri attivi che non l'hanno,
+   *    per esempio chi è appena entrato.
+   * Le corse fra nodi sono innocue: apply tiene la prima rotazione e ignora le consegne doppie.
+   *
+   * EN: Automatic duties of every node, after every update (at most one at a time):
+   * 1. publish its own X25519 public key, if the view doesn't have it;
+   * 2. (admin) with protection on and no generation, create the first one;
+   * 3. (admin) if the current generation was handed to a member later removed, create a new one:
+   *    this way rotation happens even if the admin who removed them went offline right away;
+   * 4. (anyone holding the key) hand the current key to the active members who lack it, for
+   *    example whoever has just joined.
+   * Races between nodes are harmless: apply keeps the first rotation and ignores duplicate grants.
+   */
+  private keyDuties (): void {
+    if (!this.keys || !this.base?.writable) return
+    // Un aggiornamento arrivato durante un giro non si perde: il giro riparte alla fine
+    // EN: An update arriving during a round isn't lost: the round starts again at the end
+    if (this.dutiesRunning) { this.dutiesAgain = true; return }
+    this.dutiesRunning = true
+    this.dutiesAgain = false
+    this.runKeyDuties().catch((e) => this.log(`chiavi: ${(e as Error).message}`)).finally(() => {
+      this.dutiesRunning = false
+      if (this.dutiesAgain) this.keyDuties()
+    })
+  }
+
+  private async runKeyDuties (): Promise<void> {
+    const keys = this.keys!
+    await this.refreshKeys()
+    const me = this.localKey!
+    const myPk = keys.box.publicKey.toString('hex')
+    const mine = (await this.base.view.get(KEYS.boxkey(me)))?.value as { pk: string } | undefined
+    if (mine?.pk !== myPk) {
+      await this.base.append(envelope({ type: 'member.boxkey', pk: myPk }))
+      return // il resto al prossimo aggiornamento, con la chiave nella vista / EN: the rest at the next update, with the key in the view
+    }
+    if (!(await this.strict())) return
+    const members = await this.members()
+    const active = new Map(members.filter((m) => !m.removed).map((m) => [m.key, m]))
+    const meAdmin = active.get(me)?.role === 'admin'
+    const pks = new Map(await this.boxKeys())
+    const recipients = Object.fromEntries([...active.keys()].filter((k) => pks.has(k)).map((k) => [k, pks.get(k)!]))
+    const { gen, ready } = keys.current
+    const current = gen ? (await this.base.view.get(KEYS.keygen(gen)))?.value as KeyGeneration | undefined : undefined
+    const leaked = current ? Object.keys(current.grants).some((k) => !active.has(k)) : false
+    if (meAdmin && (gen === 0 || (leaked && ready))) {
+      const next = keys.newGeneration(recipients)
+      this.log(gen === 0 ? 'protezione completa: prima chiave di generazione' : `membro rimosso: nuova chiave di generazione ${next.gen}`)
+      await this.base.append(envelope({ type: 'keys.rotate', ...next }))
+      return
+    }
+    if (ready && current) {
+      const lacking = Object.fromEntries(Object.entries(recipients).filter(([k]) => !(k in current.grants)))
+      if (Object.keys(lacking).length) await this.base.append(envelope({ type: 'keys.grant', gen, grants: keys.grantsFor(lacking) }))
+    }
+  }
+
+  /** Chiavi pubbliche X25519 dei membri: feed → chiave (hex). / EN: Members' X25519 public keys: feed → key (hex). */
+  private async boxKeys (): Promise<[string, string][]> {
+    const out: [string, string][] = []
+    for await (const { key, value } of this.base.view.createReadStream(RANGES.boxkeys)) out.push([String(key).slice('boxkey/'.length), (value as { pk: string }).pk])
+    return out
+  }
+
+  /**
+   * Cifra un evento se il team ha la protezione completa e una generazione. Se questo nodo non ha
+   * ancora la chiave (appena entrato) aspetta qualche secondo che un membro gliela consegni.
+   *
+   * EN: Encrypts an event if the team has full protection and a generation. If this node doesn't
+   * hold the key yet (just joined) it waits a few seconds for a member to hand it over.
+   */
+  private async sealIfNeeded (p: EventPayload): Promise<EventPayload> {
+    if (!this.keys || !(await this.strict())) return p
+    for (let i = 0; i < 50 && this.keys.current.gen > 0 && !this.keys.current.ready; i++) {
+      await new Promise((r) => setTimeout(r, 200))
+      await this.base.update()
+      await this.refreshKeys()
+    }
+    if (this.keys.current.gen === 0) return p
+    return this.keys.sealEvent(p)
   }
 }

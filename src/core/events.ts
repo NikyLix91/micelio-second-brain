@@ -33,6 +33,7 @@
  */
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
+import { SEALED_RE } from './team-crypto'
 
 /** Tipi di ricordo ammessi (DESIGN §4.2). Usati per l'export e, in futuro, per la priorità. / EN: Allowed memory kinds (DESIGN §4.2). Used for export and, in the future, for priority. */
 export const MEMORY_KINDS = ['fact', 'howto', 'decision', 'gotcha', 'snippet', 'reference'] as const
@@ -197,6 +198,31 @@ export type MemoryData = z.output<typeof MemoryInput>
 const base = { v: z.literal(1), ts: z.number().int().nonnegative() }
 
 /**
+ * Testo sigillato con la chiave di una generazione (0.7.0, src/core/team-crypto.ts). Il limite
+ * copre il ricordo più lungo cifrato e in base64.
+ *
+ * EN: Text sealed with a generation's key (0.7.0, src/core/team-crypto.ts). The limit covers the
+ * longest memory, encrypted and in base64.
+ */
+const SealedText = z.string().regex(SEALED_RE).max(60_000)
+
+/**
+ * Ricordo cifrato (protezione completa, 0.7.0): resta in chiaro solo il tipo; titolo, testo, tag e
+ * sorgente stanno nella busta, che è il JSON del MemoryInput sigillato. L'id lo calcola l'autore
+ * sul contenuto in chiaro e va nell'evento (`id`), perché chi applica non legge il contenuto.
+ *
+ * EN: Encrypted memory (full protection, 0.7.0): only the kind stays in clear; title, body, tags
+ * and source are in the envelope, which is the sealed JSON of the MemoryInput. The author computes
+ * the id on the clear content and puts it in the event (`id`), because whoever applies doesn't read
+ * the content.
+ */
+export const SealedMemory = z.object({ kind: MemoryKind, sealed: SealedText })
+export type SealedMemory = z.output<typeof SealedMemory>
+
+/** Consegne di una chiave: feed del membro → chiave cifrata per lui. / EN: Key grants: member's feed → key encrypted for them. */
+const Grants = z.record(z.string().regex(/^[0-9a-f]{64}$/), z.string().regex(/^[A-Za-z0-9+/=]{1,200}$/)).refine((g) => Object.keys(g).length <= 1000, 'al massimo 1000 consegne')
+
+/**
  * Tutti gli eventi del team. Il campo `type` discrimina la variante.
  * Il significato e i PERMESSI di ciascuno sono implementati in src/net/apply.ts.
  *
@@ -207,7 +233,7 @@ export const TeamEvent = z.discriminatedUnion('type', [
   /** Primo evento in assoluto, scritto dal fondatore: crea il team e lo rende admin. / EN: The very first event, written by the founder: creates the team and makes the founder admin. */
   z.object({ ...base, type: z.literal('team.init'), name: z.string().min(1).max(100), founderName: z.string().min(1).max(100) }),
   /** Nuovo ricordo condiviso. Idempotente: lo stesso contenuto produce lo stesso id. / EN: New shared memory. Idempotent: the same content produces the same id. */
-  z.object({ ...base, type: z.literal('memory.add'), memory: MemoryInput }),
+  z.object({ ...base, type: z.literal('memory.add'), memory: z.union([SealedMemory, MemoryInput]), id: memoryIdHex.optional() }),
   /** Invito creato da un membro: contiene solo id e chiave pubblica, mai il segreto. / EN: Invite created by a member: holds only the id and public key, never the secret. */
   z.object({ ...base, type: z.literal('invite.add'), id: hexKey, publicKey: hexKey, expires: z.number().int() }),
   /** Annullamento di un invito non ancora usato. / EN: Revocation of an invite not yet used. */
@@ -264,7 +290,7 @@ export const TeamEvent = z.discriminatedUnion('type', [
   // ── Dreaming (Fase 6, DESIGN §10) ─────────────────────────────────────────────────
   // EN: ── Dreaming (Phase 6, DESIGN §10) ──
   /** Più ricordi sostituiti da uno nuovo (fusione di duplicati). I vecchi restano come storico. / EN: Several memories replaced by a new one (merging duplicates). The old ones stay as history. */
-  z.object({ ...base, type: z.literal('memory.supersede'), old: z.array(z.string().regex(/^[0-9a-f]{64}$/)).min(1).max(20), memory: MemoryInput, reason: z.string().max(500) }),
+  z.object({ ...base, type: z.literal('memory.supersede'), old: z.array(z.string().regex(/^[0-9a-f]{64}$/)).min(1).max(20), memory: z.union([SealedMemory, MemoryInput]), id: memoryIdHex.optional(), reason: z.string().max(500) }),
   /** Collegamento esplicito fra due ricordi (es. "si contraddicono", "approfondisce"). / EN: Explicit link between two memories (e.g. "they contradict each other", "goes deeper"). */
   z.object({ ...base, type: z.literal('memory.link'), from: z.string().regex(/^[0-9a-f]{64}$/), to: z.string().regex(/^[0-9a-f]{64}$/), rel: z.enum(['relates', 'refines', 'contradicts', 'depends-on']) }),
   /** Archiviazione (decadimento o obsolescenza): esce dalla ricerca, resta recuperabile. / EN: Archiving (decay or obsolescence): it leaves search but stays recoverable. */
@@ -274,7 +300,7 @@ export const TeamEvent = z.discriminatedUnion('type', [
   /** Un nodo dichiara di "sognare" per un'epoca: vince il primo nell'ordine linearizzato. / EN: A node claims it will "dream" for an epoch: the first in the linearized order wins. */
   z.object({ ...base, type: z.literal('dream.claim'), epoch: z.string().min(1).max(40) }),
   /** Diario del sogno: cosa è stato consolidato, archiviato, collegato. / EN: Dream journal: what was consolidated, archived, linked. */
-  z.object({ ...base, type: z.literal('dream.complete'), epoch: z.string().min(1).max(40), summary: z.string().max(4000), stats: z.record(z.string(), z.number()) }),
+  z.object({ ...base, type: z.literal('dream.complete'), epoch: z.string().min(1).max(40), summary: z.union([SealedText, z.string().max(4000)]), stats: z.record(z.string(), z.number()) }),
   /**
    * Redazione (solo admin, DESIGN §10.3): il contenuto di un ricordo finito per errore nel team
    * viene tolto dalla vista di tutti i nodi. Best-effort: i blocchi cifrati del log restano.
@@ -324,7 +350,7 @@ export const TeamEvent = z.discriminatedUnion('type', [
    * EN: Flags a Root as "to review" (review started by hand): source code or document changed,
    * newer memories that contradict it. `refs`: commits, memory ids…
    */
-  z.object({ ...base, type: z.literal('root.flag'), id: memoryIdHex, reason: z.string().min(1).max(500), refs: z.array(z.string().max(100)).max(20).default([]) }),
+  z.object({ ...base, type: z.literal('root.flag'), id: memoryIdHex, reason: z.union([SealedText, z.string().min(1).max(500)]), refs: z.array(z.string().max(100)).max(20).default([]) }),
   /** Radice rivista e confermata: le segnalazioni si azzerano e la data di revisione riparte. / EN: Root reviewed and confirmed: flags are cleared and the review date restarts. */
   z.object({ ...base, type: z.literal('root.confirm'), id: memoryIdHex }),
   // ── Lacune di conoscenza (B4) ─────────────────────────────────────────────────────
@@ -336,9 +362,26 @@ export const TeamEvent = z.discriminatedUnion('type', [
    * EN: A question the team memory can't answer, reported by a member. The same question
    * reported by others (same id, see src/insight/gaps.ts) adds who shares it.
    */
-  z.object({ ...base, type: z.literal('gap.report'), id: hexKey, question: z.string().trim().min(3).max(300) }),
+  z.object({ ...base, type: z.literal('gap.report'), id: hexKey, question: z.union([SealedText, z.string().trim().min(3).max(300)]) }),
   /** Lacuna colmata (facoltativamente dal ricordo indicato) o non più utile. Qualunque membro. / EN: Knowledge gap filled (optionally by the given memory) or no longer relevant. Any member. */
-  z.object({ ...base, type: z.literal('gap.close'), id: hexKey, memory: memoryIdHex.optional() })
+  z.object({ ...base, type: z.literal('gap.close'), id: hexKey, memory: memoryIdHex.optional() }),
+
+  // ── Protezione completa: chiavi per generazione (0.7.0, src/core/team-crypto.ts) ──────
+  // EN: Full protection: per-generation keys (0.7.0, src/core/team-crypto.ts)
+  /** Chiave pubblica X25519 del membro che scrive, per ricevere le chiavi di generazione. / EN: X25519 public key of the writing member, to receive generation keys. */
+  z.object({ ...base, type: z.literal('member.boxkey'), pk: hexKey }),
+  /**
+   * Nuova generazione (solo admin): la chiave consegnata a ogni membro attivo e, dalla seconda in
+   * poi, la precedente cifrata con la nuova (`prev`). Vale solo la generazione successiva a quella
+   * corrente: fra due rotazioni concorrenti vince la prima nel registro.
+   *
+   * EN: New generation (admins only): the key handed to every active member and, from the second
+   * on, the previous one encrypted with the new one (`prev`). Only the generation right after the
+   * current one counts: between two concurrent rotations the first in the log wins.
+   */
+  z.object({ ...base, type: z.literal('keys.rotate'), gen: z.number().int().min(1).max(1e9), grants: Grants, prev: SealedText.optional() }),
+  /** Consegna della chiave corrente a membri che non l'hanno (chi è appena entrato). / EN: Handing the current key to members who lack it (newcomers). */
+  z.object({ ...base, type: z.literal('keys.grant'), gen: z.number().int().min(1).max(1e9), grants: Grants })
 ])
 export type TeamEvent = z.infer<typeof TeamEvent>
 
