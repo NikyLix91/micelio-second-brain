@@ -5,14 +5,14 @@
   "description": "App desktop di Micelio (Electron): avvia il daemon, mostra la UI, notifiche e icona nell'area di notifica",
   "license": "AGPL-3.0-only",
   "author": "Salvatore Stracquadanio <salvatorestracquadanio86@gmail.com>",
-  "homepage": "https://github.com/salvatorestracquadanio86/micelio-brain",
+  "homepage": "https://github.com/salvatorestracquadanio86/micelio-second-brain",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/salvatorestracquadanio86/micelio-brain.git",
+    "url": "git+https://github.com/salvatorestracquadanio86/micelio-second-brain.git",
     "directory": "desktop"
   },
   "bugs": {
-    "url": "https://github.com/salvatorestracquadanio86/micelio-brain/issues"
+    "url": "https://github.com/salvatorestracquadanio86/micelio-second-brain/issues"
   },
   "main": "dist/main.js",
   "scripts": {

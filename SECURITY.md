@@ -10,7 +10,7 @@ Only the latest released version receives security fixes. The app can show its v
 
 **Please do not open a public issue.** Use one of these private channels:
 
-1. GitHub's [private vulnerability reporting](https://github.com/salvatorestracquadanio86/micelio-brain/security/advisories/new) (preferred);
+1. GitHub's [private vulnerability reporting](https://github.com/salvatorestracquadanio86/micelio-second-brain/security/advisories/new) (preferred);
 2. an email to **salvatorestracquadanio86@gmail.com** with `[Micelio security]` in the subject.
 
 Include what you found, how to reproduce it, the version and the OS, and what an attacker could achieve. You will get an answer within 7 days. Once the fix is released, the advisory is published and you are credited, unless you prefer otherwise.
