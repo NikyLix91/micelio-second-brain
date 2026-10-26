@@ -25,6 +25,7 @@
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { BackupCard } from '../components/Backup'
+import { ProtectionCard } from '../components/Protection'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, type DistillQuality, type MemberRecord } from '../api/client'
@@ -199,6 +200,7 @@ export function Team () {
           <ErrorBox error={members.error} />
           {members.data && <MemberTree members={members.data} parent={null} me={status.data?.nodeKey ?? null} isAdmin={isAdmin} others={others} />}
         </Card>
+        <ProtectionCard isAdmin={isAdmin} />
         {isAdmin && <TeamSettings />}
         <BackupCard isAdmin={isAdmin} />
         <DistillQualityCard />

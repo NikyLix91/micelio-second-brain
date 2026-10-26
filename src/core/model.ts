@@ -55,6 +55,27 @@ export interface MemoryRecord {
   /** Redazione (B12): quando e da quale admin. Assenti nelle redazioni precedenti alla 0.6.0. / EN: Redaction (B12): when and by which admin. Missing in redactions before 0.6.0. */
   redactedAt?: number
   redactedBy?: string
+  /**
+   * Contenuto cifrato con la chiave di una generazione (protezione completa, 0.7.0): nella vista
+   * titolo, testo e tag sono vuoti e il contenuto sta qui. TeamNode lo apre quando legge (vedi
+   * src/net/team-keys.ts); senza la chiave giusta il ricordo resta illeggibile.
+   *
+   * EN: Content encrypted with a generation's key (full protection, 0.7.0): in the view title,
+   * body and tags are empty and the content is here. TeamNode opens it when reading (see
+   * src/net/team-keys.ts); without the right key the memory stays unreadable.
+   */
+  sealed?: string
+}
+
+/** Una generazione delle chiavi del team (0.7.0). / EN: A generation of the team keys (0.7.0). */
+export interface KeyGeneration {
+  gen: number
+  /** Feed del membro → chiave della generazione cifrata per lui. / EN: Member's feed → generation key encrypted for them. */
+  grants: Record<string, string>
+  /** La chiave precedente cifrata con questa (anello della catena). / EN: The previous key encrypted with this one (chain link). */
+  prev?: string
+  by: string
+  ts: number
 }
 
 /**

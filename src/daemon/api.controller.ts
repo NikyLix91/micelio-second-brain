@@ -904,6 +904,25 @@ export class ApiController {
     return this.node.teamConfig()
   }
 
+  /** Protezione completa (0.7.0): stato, accensione, cambio di chiave. / EN: Full protection (0.7.0): status, enabling, key change. */
+  @Get('team/protection')
+  protection () {
+    return this.node.protection()
+  }
+
+  @Post('team/protection')
+  @HttpCode(200)
+  async enableProtection () {
+    await this.node.enableProtection()
+    return this.node.protection()
+  }
+
+  @Post('team/keys/rotate')
+  @HttpCode(200)
+  rotateKeys () {
+    return this.node.rotateKeys()
+  }
+
   /**
    * Configura Claude Code (MCP + hook di fine sessione) come `micelio setup claude-code`.
    * Modifica la configurazione dell'utente: la UI chiede conferma prima di chiamarla.

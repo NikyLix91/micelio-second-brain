@@ -150,6 +150,10 @@ export const api = {
   teamConfig: () => call<{ language: string, blockKeywords: string[], maxMemories: number, updateOnWrite: boolean, rootsAdminOnly: boolean }>('GET', '/api/team/config'),
   distillQuality: () => call<DistillQuality>('GET', '/api/distill/quality'),
   setTeamConfig: (key: string, value: unknown) => call<{ ok: true }>('POST', '/api/team/config', { key, value }),
+  // Protezione completa (0.7.0) / EN: Full protection (0.7.0)
+  protection: () => call<Protection>('GET', '/api/team/protection'),
+  enableProtection: () => call<Protection>('POST', '/api/team/protection'),
+  rotateKeys: () => call<{ gen: number }>('POST', '/api/team/keys/rotate'),
   members: () => call<MemberRecord[]>('GET', '/api/members'),
   removeMember: (key: string) => call<MemberRecord>('POST', `/api/members/${enc(key)}/remove`),
   promoteMember: (key: string) => call<MemberRecord>('POST', `/api/members/${enc(key)}/promote`),
@@ -251,4 +255,14 @@ export const api = {
   setNetwork: (mode: NetworkMode, bootstrap?: string[]) => call<NetworkSettings>('PUT', '/api/network', { mode, bootstrap }),
   checkNetwork: (mode?: NetworkMode, bootstrap?: string[]) => call<NetworkCheck>('POST', '/api/network/check', { mode, bootstrap }),
   storage: () => call<StorageReport>('GET', '/api/storage')
+}
+
+/** Stato della protezione completa del team (0.7.0). / EN: The team's full protection status (0.7.0). */
+export interface Protection {
+  strict: boolean
+  gen: number
+  ready: boolean
+  canEnable: boolean
+  waitingFor: string[]
+  members: { key: string, name: string, role: string, version: string | null, hasKey: boolean }[]
 }

@@ -78,6 +78,8 @@ micelio init "Team Dev" --name pc-mario
 
 Chi crea il team ne è **admin**. Gli admin possono espellere membri, nominare altri admin e cambiare le impostazioni del team. Consiglio: **nomina 2–3 admin** tra chi ha il PC più spesso acceso. Gli admin fanno anche da "garanti" dell'ordine degli eventi (*indexer*).
 
+**Protezione completa (dalla 0.7.0).** I dati del team passano solo fra membri attivi e il contenuto è cifrato con una chiave che cambia da sola quando un admin rimuove qualcuno: chi esce non riceve né legge più niente di nuovo. È accesa nei team nuovi; in un team esistente la accende un admin dalla pagina Team, quando tutti hanno la 0.7.0. Dopo un PC perso: rimuovi il membro e poi «Cambia la chiave adesso».
+
 ```bash
 micelio members promote pc-lucia
 ```
