@@ -243,7 +243,9 @@ Workflow rules, because the repository is public:
 - **actions pinned to the commit SHA**, with the version in a comment (`@<sha> # v7.0.1`): a tag can be moved, a SHA can't. Dependabot updates them ([.github/dependabot.yml](../../.github/dependabot.yml)) and every week also opens PRs against `develop` for npm dependencies (minor and patch grouped);
 - **`pull_request`, never `pull_request_target` with a checkout of the PR code**: code from a fork runs without secrets and with a read-only token (the only exception is `cla.yml`, which doesn't run PR code);
 - `persist-credentials: false` on checkout;
-- in CI `ELECTRON_SKIP_BINARY_DOWNLOAD=1`: the Electron binary isn't needed for types, build and tests.
+- the Electron binary is never downloaded in CI: since Electron 42 `npm ci` doesn't download it (the first launch does), and types, build and tests don't launch it.
+
+**Forced versions (`overrides` in `package.json`).** `multer` is pinned to `^2.5.0` because even the latest `@nestjs/platform-express` requires 2.4.0, which has a known vulnerability (denial of service). Once NestJS requires 2.5.0 or later on its own, the override must be removed. `package.json` can't hold comments: the reason for each override lives here.
 
 If a test fails on one OS only, the matrix doesn't stop (`fail-fast: false`): the run summary shows which systems are broken.
 

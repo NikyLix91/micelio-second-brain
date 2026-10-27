@@ -36,9 +36,10 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # Il binario di Electron (~100 MB) serve solo per avviare l'app, non per tipi, build e test
-  # EN: The Electron binary (~100 MB) is only needed to run the app, not for types, build and tests
-  ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+  # Il binario di Electron non si scarica con `npm ci` (da Electron 42 lo scarica il primo avvio):
+  # tipi, build e test non lo avviano, quindi in CI non viene mai scaricato.
+  # EN: The Electron binary isn't downloaded by `npm ci` (since Electron 42 the first launch downloads
+  #     it): types, build and tests don't launch it, so CI never downloads it.
   # Niente richieste di telemetria/aggiornamento da npm nei log
   # EN: No npm update/funding noise in the logs
   NPM_CONFIG_FUND: 'false'

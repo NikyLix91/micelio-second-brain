@@ -12,6 +12,11 @@ All notable changes to Micelio. The format follows [Keep a Changelog](https://ke
 
 - Sidebar: a long node name (e.g. `name.surname`) no longer pushes the IT/EN language selector out of view; it is shortened with an ellipsis and shown in full on hover.
 
+### Security
+
+- Desktop app on **Electron 44** (was 38, no longer supported): includes the fix for [GHSA-jr5w-w6x2-84p9](https://github.com/electron/electron/security/advisories/GHSA-jr5w-w6x2-84p9) and the later Chromium security fixes.
+- Daemon dependencies: `body-parser` 2.4.0 and `multer` 2.5.0 (denial of service on crafted requests), `fast-uri` 3.1.9. The daemon only listens on 127.0.0.1 and requires the token, so the exposure was limited to programs already running on the PC.
+
 ## [0.7.0] - 2026-10-26
 
 ### Security
