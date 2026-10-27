@@ -1,0 +1,263 @@
+# Release: quando si pubblica un tag `vX.Y.Z` su un commit di main, rifà i test, costruisce
+# l'installer di Windows e i pacchetti per Linux, calcola i checksum, firma la provenienza dei
+# file (attestazione di GitHub) e crea una release in BOZZA con le note del CHANGELOG.
+# La bozza la pubblica una persona, dopo averla guardata.
+# EN: Release: when a `vX.Y.Z` tag is pushed on a commit of main, reruns the tests, builds the
+#     Windows installer and the Linux packages, computes the checksums, signs the provenance of
+#     the files (GitHub attestation) and creates a DRAFT release with the CHANGELOG notes.
+#     A person publishes the draft, after looking at it.
+#
+# Senza tag fa una prova a secco: costruisce tutto e lascia i file come artefatto dell'esecuzione,
+# senza attestazione né release. Succede a mano (Actions → Release → Run workflow) e da solo sulle
+# pull request che toccano il modo in cui si costruiscono i pacchetti, così un errore si vede
+# prima del giorno della release.
+# EN: Without a tag it does a dry run: it builds everything and leaves the files as a run artifact,
+#     with no attestation or release. It happens by hand (Actions → Release → Run workflow) and by
+#     itself on pull requests that change how the packages are built, so a mistake shows up
+#     before release day.
+#
+# Il flusso completo (versione, PR, tag) è in docs/sviluppo.md, "Rilasciare una versione".
+# EN: The full flow (version, PR, tag) is in docs/en/development.md, "Releasing a version".
+#
+# Sicurezza: stesse regole di ci.yml. Solo l'ultimo job può scrivere (creare la release e
+# l'attestazione), e non esegue codice della repository: scarica i file già costruiti.
+# EN: Security: same rules as ci.yml. Only the last job can write (create the release and the
+#     attestation), and it doesn't run repository code: it downloads the files already built.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - .github/workflows/release.yml
+      - .nvmrc
+      - scripts/package-*.js
+      - scripts/set-version.js
+      - desktop/build/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Una sola release per tag alla volta, e mai annullata a metà (resterebbe una bozza parziale)
+# EN: One release per tag at a time, never cancelled halfway (a partial draft would be left behind)
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NPM_CONFIG_FUND: 'false'
+  NPM_CONFIG_AUDIT: 'false'
+
+jobs:
+  # Controlla che tag, versioni e CHANGELOG siano coerenti prima di spendere tempo nelle build
+  # EN: Checks that tag, versions and CHANGELOG agree before spending time on the builds
+  check:
+    name: Check version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # Tutta la storia: serve a controllare che il tag sia su main
+          # EN: The whole history: needed to check that the tag is on main
+          fetch-depth: 0
+
+      - id: version
+        name: Tag, versions and CHANGELOG
+        run: |
+          version=$(node -p "require('./package.json').version")
+          desktop=$(node -p "require('./desktop/package.json').version")
+          if [ "$version" != "$desktop" ]; then
+            echo "::error::package.json ($version) and desktop/package.json ($desktop) differ: run npm run version:set"
+            exit 1
+          fi
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+              echo "::error::Tag $GITHUB_REF_NAME doesn't match the version in package.json ($version)"
+              exit 1
+            fi
+            # Le release partono solo da main: un tag su un branch qualunque non deve produrre pacchetti
+            # EN: Releases start only from main: a tag on any other branch must not produce packages
+            if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+              echo "::error::Tag $GITHUB_REF_NAME is not on main"
+              exit 1
+            fi
+          fi
+          case "$version" in
+            *-*) prerelease=true ;;
+            *)
+              prerelease=false
+              if ! grep -q "^## \[$version\]" CHANGELOG.md; then
+                echo "::error::CHANGELOG.md has no section for $version: run npm run version:set"
+                exit 1
+              fi
+              ;;
+          esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+          echo "Version $version (pre-release: $prerelease)"
+
+  # Gli stessi controlli della CI, sul commit esatto del tag
+  # EN: The same checks as CI, on the exact commit of the tag
+  test:
+    name: CI
+    needs: check
+    uses: ./.github/workflows/ci.yml
+
+  # I pacchetti di un sistema vanno costruiti SU quel sistema (moduli nativi, vedi scripts/package-common.js).
+  # Node arriva da .nvmrc: è quello che finisce dentro i pacchetti (resources/node).
+  # EN: A system's packages must be built ON that system (native modules, see scripts/package-common.js).
+  #     Node comes from .nvmrc: it's the one that ends up inside the packages (resources/node).
+  windows:
+    name: Package Windows
+    needs: test
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run package:win
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows
+          # latest.yml e .blockmap servono agli aggiornamenti automatici
+          # EN: latest.yml and .blockmap are needed by automatic updates
+          path: |
+            build/win/out/*.exe
+            build/win/out/*.exe.blockmap
+            build/win/out/latest.yml
+          if-no-files-found: error
+          retention-days: 7
+
+  linux:
+    name: Package Linux
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run package:linux
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: linux
+          path: |
+            build/linux/out/*.AppImage
+            build/linux/out/*.deb
+            build/linux/out/latest-linux.yml
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Draft release
+    needs: [check, windows, linux]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      # Creare la release / EN: Create the release
+      contents: write
+      # Attestazione di provenienza (firma senza chiavi tramite l'OIDC di GitHub)
+      # EN: Provenance attestation (keyless signing through GitHub's OIDC)
+      id-token: write
+      attestations: write
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+      PRERELEASE: ${{ needs.check.outputs.prerelease }}
+    steps:
+      # Solo per leggere CHANGELOG.md: in questo job non si esegue codice della repository
+      # EN: Only to read CHANGELOG.md: no repository code runs in this job
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: CHANGELOG.md
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: release
+          merge-multiple: true
+
+      - name: Checksums
+        working-directory: release
+        run: |
+          sha256sum -- * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Provenance attestation
+        if: github.ref_type == 'tag'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            release/*.exe
+            release/*.AppImage
+            release/*.deb
+
+      - name: Release notes
+        run: |
+          # La sezione della versione (o "Unreleased" per una pre-release), senza il titolo
+          # EN: The version's section (or "Unreleased" for a pre-release), without the heading
+          if [ "$PRERELEASE" = "true" ]; then section="Unreleased"; else section="$VERSION"; fi
+          awk -v s="## [$section]" 'index($0, s) == 1 { on = 1; next } /^## \[/ { on = 0 } /^\[[^]]+\]: / { on = 0 } on' CHANGELOG.md > notes.md
+          cat >> notes.md <<EOF
+
+          ---
+
+          **Download**
+          - **Windows**: \`Micelio-Setup-$VERSION.exe\`. The installer is not code-signed yet: SmartScreen shows "Windows protected your PC", click *More info* → *Run anyway*.
+          - **Linux**: \`.AppImage\` (any distribution) or \`.deb\` (Debian, Ubuntu; also installs the \`micelio\` command).
+
+          **Verify the files**
+          - Checksums: \`sha256sum -c SHA256SUMS.txt --ignore-missing\`
+          - Provenance (built by this repository's release workflow): \`gh attestation verify <file> --repo $GITHUB_REPOSITORY\`
+          EOF
+          cat notes.md
+
+      - name: Create draft release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flags=""
+          if [ "$PRERELEASE" = "true" ]; then flags="--prerelease"; fi
+          gh release create "$GITHUB_REF_NAME" release/* \
+            --repo "$GITHUB_REPOSITORY" --verify-tag --draft $flags \
+            --title "Micelio $VERSION" --notes-file notes.md
+
+      # Prova a secco: i file restano come artefatto dell'esecuzione
+      # EN: Dry run: the files stay as a run artifact
+      - name: Upload dry-run files
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: micelio-${{ env.VERSION }}-dry-run
+          path: |
+            release/*
+            notes.md
+          retention-days: 7

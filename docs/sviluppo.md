@@ -233,11 +233,12 @@ I workflow di GitHub Actions sono in [.github/workflows/](../.github/workflows/)
 | `ci.yml` | push su `main`/`develop`, pull request verso di loro, a mano | `npm ci`, `typecheck`, `build`, `npm test`, `test:ui` su **Linux, Windows e macOS** con Node 22 (più Node 24 su Linux); build del server del team (`server/`); sulle pull request, *dependency review* delle dipendenze nuove (blocca vulnerabilità alte o critiche) |
 | `codeql.yml` | come sopra, più ogni lunedì | Analisi di sicurezza CodeQL del codice TypeScript e dei workflow; risultati in *Security → Code scanning* |
 | `cla.yml` | pull request e commenti | Controlla che chi contribuisce abbia accettato il [CLA](../CLA.md) |
+| `release.yml` | tag `v*`; prova a secco sulle PR che toccano i pacchetti | Costruisce installer e pacchetti e crea la release in bozza: vedi [Rilasciare una versione](#rilasciare-una-versione) |
 
 Fuori dalla CI, da lanciare a mano: lo scenario Docker (`npm run e2e:docker`, usa la DHT pubblica e dipende da internet) e il set di valutazione (`npm run eval:ingest`, usa Claude reale).
 
 Regole dei workflow, perché la repository è pubblica:
-- **permessi minimi** (`contents: read`), alzati solo nel job che ne ha bisogno (CodeQL: `security-events: write`);
+- **permessi minimi** (`contents: read`), alzati solo nel job che ne ha bisogno (CodeQL: `security-events: write`; release: `contents: write` e attestazione);
 - **azioni fissate allo SHA del commit**, con la versione in commento (`@<sha> # v7.0.1`): un tag si può spostare, uno SHA no. Le aggiorna Dependabot ([.github/dependabot.yml](../.github/dependabot.yml)), che apre ogni settimana PR verso `develop` anche per le dipendenze npm (minori e patch raggruppate);
 - **`pull_request`, mai `pull_request_target` con checkout del codice della PR**: il codice di un fork gira senza segreti e con un token in sola lettura (l'unica eccezione è `cla.yml`, che non esegue codice della PR);
 - `persist-credentials: false` nel checkout;
@@ -304,6 +305,49 @@ Cose da sapere:
 - `desktop/package.json` ha `homepage`: il .deb la richiede.
 
 Verificato (2026-10-19, Debian 12 pulito in un container, senza Node di sistema): installazione del .deb con le dipendenze, `micelio` nel PATH, daemon con il Node incluso, team e ricordo, app desktop su uno schermo virtuale (avvia il daemon, interfaccia disegnata), rimozione pulita. Non provati: desktop Linux reale con icona nell'area di notifica, Ubuntu 24 con AppArmor, arm64.
+
+## Rilasciare una versione
+
+Le release le costruisce GitHub Actions ([.github/workflows/release.yml](../.github/workflows/release.yml)) quando si pubblica un tag `vX.Y.Z` su `main`: nessun installer si costruisce più a mano sul proprio PC. Il workflow crea una release in **bozza**; la pubblica una persona, dopo averla guardata.
+
+**Passi** (esempio con la 0.7.1):
+
+1. Da `develop` aggiornato, un branch per la versione:
+   ```bash
+   git checkout develop && git pull
+   git checkout -b release/0.7.1
+   ```
+2. Controlla che in `CHANGELOG.md` la sezione **Unreleased** descriva tutto ciò che entra nella versione, poi:
+   ```bash
+   npm run version:set 0.7.1
+   ```
+   Lo script ([scripts/set-version.js](../scripts/set-version.js)) porta a 0.7.1 `package.json`, `desktop/package.json` e `package-lock.json`, e sposta il contenuto di Unreleased sotto `## [0.7.1] - <oggi>`. Se Unreleased è vuota si ferma senza toccare nulla.
+3. Commit `Release 0.7.1`, push, PR verso `develop`; a CI verde, merge.
+4. PR da `develop` verso `main`; a CI verde, merge.
+5. Il tag, sul `main` appena aggiornato:
+   ```bash
+   git checkout main && git pull
+   git tag v0.7.1
+   git push origin v0.7.1
+   ```
+6. In *Actions → Release* il workflow:
+   - controlla che il tag sia uguale alla versione dei `package.json`, che il commit sia su `main` e che il CHANGELOG abbia la sezione;
+   - rifà tutta la CI sul commit del tag;
+   - costruisce l'installer di Windows (su Windows) e AppImage e .deb (su Linux), con il Node di `.nvmrc`, che è quello che finisce dentro i pacchetti;
+   - calcola `SHA256SUMS.txt` e firma la **provenienza** dei pacchetti (attestazione di GitHub: chiunque può verificare che il file viene da questo workflow, su questo commit);
+   - crea la release in bozza, con le note prese dal CHANGELOG.
+7. In *Releases* apri la bozza, controlla note e file, e premi **Publish release**.
+
+Una versione con suffisso (`0.8.0-rc.1`) è una **pre-release**: lo script non tocca il CHANGELOG, le note vengono da Unreleased e la release è marcata come pre-release.
+
+**Prova a secco.** Senza tag il workflow costruisce tutto e lascia i file come artefatto dell'esecuzione, senza attestazione né release. Parte da solo sulle pull request che toccano il modo in cui si costruiscono i pacchetti (`release.yml`, `.nvmrc`, `scripts/package-*.js`, `scripts/set-version.js`, `desktop/build/`), e a mano da *Actions → Release → Run workflow*.
+
+Cose da sapere:
+- `electron-builder` gira con `publish: 'never'` (`BUILD_OPTIONS` in `scripts/package-common.js`): in CI su un tag proverebbe a pubblicare da solo. `latest.yml` e `latest-linux.yml`, che serviranno agli aggiornamenti automatici, si generano comunque e finiscono nella release;
+- solo l'ultimo job del workflow può scrivere nella repository, e non esegue codice: scarica i file già costruiti;
+- un tag sbagliato si cancella con `git push --delete origin vX.Y.Z` (e `git tag -d vX.Y.Z`), insieme alla bozza;
+- i tag `v*` sono protetti da un ruleset: solo l'amministratore li crea, li sposta o li cancella;
+- fuori per ora: pacchetto per macOS, firma del codice su Windows (SmartScreen avvisa, le note della release spiegano come procedere), immagine Docker del server.
 
 ## Variabili d'ambiente
 

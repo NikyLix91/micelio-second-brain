@@ -25,14 +25,21 @@ on:
   pull_request:
     branches: [main, develop]
   workflow_dispatch:
+  # Lo richiama anche il workflow di release, prima di costruire i pacchetti
+  # EN: The release workflow calls it too, before building the packages
+  workflow_call:
 
 permissions:
   contents: read
 
-# Un push nuovo sullo stesso branch o PR annulla l'esecuzione precedente, ormai inutile
-# EN: A new push to the same branch or PR cancels the previous run, which is now useless
+# Un push nuovo sullo stesso branch o PR annulla l'esecuzione precedente, ormai inutile.
+# Il prefisso `ci-` evita che, richiamato dalla release (dove github.workflow è "Release"),
+# il gruppo coincida con quello della release stessa e la blocchi.
+# EN: A new push to the same branch or PR cancels the previous run, which is now useless.
+#     The `ci-` prefix keeps the group, when called by the release (where github.workflow is
+#     "Release"), from matching the release's own group and blocking it.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:

@@ -47,7 +47,7 @@
  */
 const fs = require('node:fs')
 const path = require('node:path')
-const { ROOT, tools, buildAndStage, baseConfig } = require('./package-common')
+const { ROOT, tools, buildAndStage, baseConfig, BUILD_OPTIONS } = require('./package-common')
 
 const OUT = path.join(ROOT, 'build', 'win')
 const STAGE = path.join(OUT, 'stage')
@@ -89,6 +89,7 @@ log('electron-builder')
 process.env.CSC_IDENTITY_AUTO_DISCOVERY = 'false'
 const builder = require(path.join(ROOT, 'node_modules', 'electron-builder'))
 const options = () => ({
+  ...BUILD_OPTIONS,
   targets: builder.Platform.WINDOWS.createTarget(['nsis'], builder.Arch.x64),
   projectDir: path.join(ROOT, 'desktop'),
   config: {

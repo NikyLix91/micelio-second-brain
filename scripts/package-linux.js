@@ -49,7 +49,7 @@
  */
 const fs = require('node:fs')
 const path = require('node:path')
-const { ROOT, tools, buildAndStage, baseConfig } = require('./package-common')
+const { ROOT, tools, buildAndStage, baseConfig, BUILD_OPTIONS } = require('./package-common')
 
 const OUT = path.join(ROOT, 'build', 'linux')
 const STAGE = path.join(OUT, 'stage')
@@ -122,6 +122,7 @@ const builder = require(path.join(ROOT, 'node_modules', 'electron-builder'))
 const arch = process.arch === 'arm64' ? builder.Arch.arm64 : builder.Arch.x64
 
 builder.build({
+  ...BUILD_OPTIONS,
   targets: builder.Platform.LINUX.createTarget(['AppImage', 'deb'], arch),
   projectDir: path.join(ROOT, 'desktop'),
   config: {
