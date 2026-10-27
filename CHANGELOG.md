@@ -4,6 +4,8 @@ All notable changes to Micelio. The format follows [Keep a Changelog](https://ke
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-10-27
+
 ### Added
 
 - Continuous integration with GitHub Actions: typecheck, build and tests on Linux, Windows and macOS for every push and pull request, team server build, dependency review on pull requests, CodeQL security analysis, Dependabot for actions and npm dependencies. Actions are pinned to commit SHAs.
@@ -125,7 +127,8 @@ Memory that learns from use.
 ### Added
 - First version: P2P team, memories, hybrid search, MCP for Claude Code, automatic collection with privacy filter and Inbox, document folders, priority and dreaming, desktop app with the 3D Nucleus.
 
-[Unreleased]: https://github.com/salvatorestracquadanio86/micelio-second-brain/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/salvatorestracquadanio86/micelio-second-brain/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/salvatorestracquadanio86/micelio-second-brain/releases/tag/v0.7.1
 [0.7.0]: https://github.com/salvatorestracquadanio86/micelio-second-brain/releases/tag/v0.7.0
 [0.6.2]: https://github.com/salvatorestracquadanio86/micelio-second-brain/releases/tag/v0.6.2
 [0.6.1]: https://github.com/salvatorestracquadanio86/micelio-second-brain/releases/tag/v0.6.1
