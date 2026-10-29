@@ -24,4 +24,8 @@
  * EN: Empty list: the app installs no update (it only reports that one exists).
  */
 export const UPDATE_PUBLIC_KEYS: string[] = [
+  // bea62a145084d64f, 2026-10-29
+  `-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEAl8AcVciiSABoHWh9LRDxJMR8dgjREXGF43qWJIpciS0=
+-----END PUBLIC KEY-----`,
 ]
