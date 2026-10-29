@@ -30,7 +30,7 @@
     "hyperdht": "^6.34.1"
   },
   "devDependencies": {
-    "@types/node": "^22.18.0",
+    "@types/node": "^26.6.5",
     "typescript": "~5.9.3"
   }
 }
