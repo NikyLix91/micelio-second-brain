@@ -4,6 +4,10 @@ All notable changes to Micelio. The format follows [Keep a Changelog](https://ke
 
 ## [Unreleased]
 
+### Added
+
+- Team colors: with several teams on the PC, the app takes the color of the team shown (tinted sidebar, accent on buttons, links and the active menu item), so you can tell at a glance which team you are on. Each team gets a different color from a palette of 8 automatically (the default keeps green); you change it on the Team page. It is a personal preference stored in the browser.
+
 ## [0.8.0] - 2026-10-29
 
 Install this version by hand one last time: from 0.8.0 on, the desktop app downloads and installs the next versions by itself (the `.deb` package only reports them).

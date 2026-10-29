@@ -16,12 +16,19 @@
  *
  * EN: On switch the query cache is cleared: every screen reloads the new team's data, and the event stream
  * reopens on the new team (see api/live.ts).
+ *
+ * Con più team l'app prende il colore del team mostrato (preferenza personale, vedi
+ * api/teamColors.ts) e accanto all'etichetta compare il suo pallino.
+ *
+ * EN: With several teams the app takes the color of the team shown (personal preference, see
+ * api/teamColors.ts) and its dot appears next to the label.
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import { setCurrentTeam, useCurrentTeam } from '../api/team'
+import { useTeamColors, useTeamTheme } from '../api/teamColors'
 import { HelpButton } from '../help'
 import { defineStrings, useStrings } from '../i18n'
 
@@ -43,6 +50,11 @@ export function TeamSwitch () {
   // Team mostrato: quello scelto, se esiste ancora; altrimenti il predefinito del PC
   // EN: Team shown: the chosen one, if it still exists; otherwise the PC default
   const shown = list.find((t) => t.id === selected) ?? list.find((t) => t.isDefault) ?? list[0]
+  // Con un solo team non c'è niente da distinguere: l'app resta com'è
+  // EN: With a single team there is nothing to tell apart: the app stays as it is
+  const colors = useTeamColors(list)
+  const color = shown && list.length > 1 ? colors[shown.id] : null
+  useTeamTheme(color)
 
   // Il team scelto non c'è più (tolto da questo PC, anche da un'altra finestra): si torna al predefinito
   // EN: The chosen team no longer exists (removed from this PC, even from another window): back to the
@@ -65,7 +77,7 @@ export function TeamSwitch () {
 
   return (
     <div className='team-switch'>
-      <label htmlFor='team-switch'>{s.label} <HelpButton topic='teams#switch' /></label>
+      <label htmlFor='team-switch'>{color && <span className='team-dot' aria-hidden />}{s.label} <HelpButton topic='teams#switch' /></label>
       <select id='team-switch' value={shown?.id ?? ''} onChange={(e) => choose(e.target.value)}>
         {/* Finché l'elenco non arriva: senza questa voce il browser mostrerebbe «Aggiungi un team» come scelta / EN: Until the list arrives: without this entry the browser would show «Aggiungi un team» (Add a team) as the selection */}
         {!shown && <option value='' disabled>{s.loading}</option>}

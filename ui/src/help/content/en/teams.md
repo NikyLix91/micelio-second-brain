@@ -20,6 +20,12 @@ The **Team** switcher at the top of the sidebar chooses which team the screens w
 
 The **default team** (★ on the Team page) is the one used by the command line and the agents when they do not name a team. Change it with "Make default" or `micelio teams default <team>`. From the command line another team is given with `micelio --team <id or name> <command>`.
 
+## Each team's color {#colors}
+
+With several teams the app takes the **color of the team** you are working on: the sidebar is tinted, and buttons, links and the active menu item use the same color. That way you can tell at a glance where you are. With a single team the app stays green as always.
+
+Each team gets a different color automatically; the default one keeps green. To change it, on the **Team** page click the dot next to the team's name and pick from the palette. It is your own preference: it is remembered in this browser and colleagues do not see it.
+
 ## Adding a team {#add}
 
 "＋ Add a team…" in the switcher (or on the Team page) opens the same form as the first start: you create a new team or join an existing one with an invite code. The name is already the one of your identity; you can choose another one for the new team only. From the terminal: `micelio init <name>` or `micelio join <code>`, which are added to the teams already there.

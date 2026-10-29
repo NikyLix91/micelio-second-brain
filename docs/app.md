@@ -143,6 +143,8 @@ La pagina **Riepilogo** mostra la settimana del team (ricordi nuovi per tipo e a
 
 Se il PC fa parte di più team, il selettore **Team** in alto nella barra laterale sceglie su quale team lavorano tutte le schermate. La scelta vale per la finestra e si ricorda; non cambia il team predefinito, che usano CLI e agenti. «＋ Aggiungi un team…» apre il modulo per creare un team o entrare con un invito.
 
+Ogni team ha un **colore**, per capire a colpo d'occhio dove sei: la barra laterale si tinge con il colore del team mostrato, e pulsanti, link e voce attiva del menu lo usano. Ogni team ne riceve uno diverso in automatico (il predefinito tiene il verde) e si cambia nella pagina **Team** cliccando il pallino accanto al nome. È una preferenza personale: si ricorda nel browser e i colleghi non la vedono. Con un solo team l'app resta com'è.
+
 Nella pagina **Team**, la scheda «I tuoi team su questo PC» mostra i team con il predefinito (★), permette di cambiarlo e di togliere un team dal PC (con conferma: cancella i dati locali di quel team). Accanto ai membri compare «stessa persona anche in: …» quando un collega è con te anche in un altro team. Nelle **Impostazioni**, accanto a ogni cartella abilitata, «Collega Claude Code» fa usare questo team a Claude Code avviato in quella cartella.
 
 ## Guida in linea

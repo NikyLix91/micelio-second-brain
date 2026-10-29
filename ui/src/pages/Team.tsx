@@ -30,6 +30,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, type DistillQuality, type MemberRecord } from '../api/client'
 import { currentTeam, setCurrentTeam } from '../api/team'
+import { setTeamColor, TEAM_COLORS, useTeamColors } from '../api/teamColors'
 import { Card, ConfirmButton, ErrorBox, PageHeader } from '../components/ui'
 import { dateTime, short } from '../format'
 import { HelpButton } from '../help'
@@ -83,6 +84,8 @@ const S = defineStrings({
     leave: 'Togli da questo PC',
     leaveConfirm: 'Sì, cancella i dati locali',
     leaveHint: 'Togliere un team cancella da questo PC il suo log, la ricerca, l\'inbox e le impostazioni. Il team resta sui PC dei colleghi: per rientrare serve un nuovo invito.',
+    colorOf: (name: string) => `Colore del team «${name}»`,
+    colorNames: { green: 'Verde', blue: 'Blu', violet: 'Viola', orange: 'Arancio', raspberry: 'Lampone', teal: 'Verde acqua', ochre: 'Ocra', slate: 'Ardesia' },
     addTeam: '＋ Aggiungi un team',
     alsoIn: (teams: string) => `stessa persona anche in: ${teams}`,
     syncing: '(in sincronizzazione)',
@@ -152,6 +155,8 @@ const S = defineStrings({
     leave: 'Remove from this PC',
     leaveConfirm: 'Yes, delete the local data',
     leaveHint: 'Removing a team deletes its log, search index, inbox and settings from this PC. The team stays on your colleagues\' PCs: to come back you need a new invite.',
+    colorOf: (name: string) => `Color of team «${name}»`,
+    colorNames: { green: 'Green', blue: 'Blue', violet: 'Violet', orange: 'Orange', raspberry: 'Raspberry', teal: 'Teal', ochre: 'Ochre', slate: 'Slate' },
     addTeam: '＋ Add a team',
     alsoIn: (teams: string) => `same person also in: ${teams}`,
     syncing: '(syncing)',
@@ -240,7 +245,7 @@ function usePersonTeams (): Map<string, string[]> {
   return q.data ?? new Map()
 }
 
-/** I team di questo PC: predefinito, uscita, identità personale (B3). / EN: The teams on this PC: default, leaving, personal identity (B3). */
+/** I team di questo PC: predefinito, colore, uscita, identità personale (B3). / EN: The teams on this PC: default, color, leaving, personal identity (B3). */
 function YourTeamsCard () {
   const s = useStrings(S)
   const client = useQueryClient()
@@ -256,6 +261,8 @@ function YourTeamsCard () {
       void client.resetQueries()
     }
   })
+  const colors = useTeamColors(teams.data?.teams ?? [])
+  const [picking, setPicking] = useState<string | null>(null)
   const d = teams.data
   if (!d) return <Card title={s.yourTeams}><ErrorBox error={teams.error} /></Card>
   return (
@@ -265,12 +272,28 @@ function YourTeamsCard () {
         {d.teams.map((t) => (
           <div key={t.id} className='team-row'>
             <span title={t.isDefault ? 'default' : undefined}>{t.isDefault ? '★' : '☆'}</span>
-            <strong>{t.name ?? s.syncing}</strong>
+            <button
+              className='swatch' style={{ background: `var(--team-${colors[t.id]})` }} aria-expanded={picking === t.id}
+              aria-label={s.colorOf(t.name ?? t.id)} title={s.colorOf(t.name ?? t.id)}
+              onClick={() => setPicking(picking === t.id ? null : t.id)}
+            />
             <span className='mono muted small'>{t.id}</span>
             <span className='muted small'>{s.teamLine(t.role ?? '-', t.members, t.memories)}</span>
             <span className='spacer' />
             {!t.isDefault && <button className='btn small' disabled={makeDefault.isPending} onClick={() => makeDefault.mutate(t.id)}>{s.makeDefault}</button>}
             <ConfirmButton label={s.leave} confirmLabel={s.leaveConfirm} danger onConfirm={() => leave.mutate(t.id)} />
+            {/* Tavolozza del colore del team (preferenza personale, vedi api/teamColors.ts) / EN: Team color palette (personal preference, see api/teamColors.ts) */}
+            {picking === t.id && (
+              <div className='palette'>
+                {TEAM_COLORS.map((c) => (
+                  <button
+                    key={c} className='swatch' style={{ background: `var(--team-${c})` }} aria-pressed={colors[t.id] === c}
+                    aria-label={s.colorNames[c]} title={s.colorNames[c]}
+                    onClick={() => { setTeamColor(t.id, c); setPicking(null) }}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         ))}
       </div>

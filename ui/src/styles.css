@@ -21,6 +21,15 @@
   --danger-soft: #f8e1de;
   --radius: 10px;
   --shadow: 0 1px 2px rgb(0 0 0 / 6%), 0 2px 8px rgb(0 0 0 / 4%);
+  /* Tavolozza dei colori dei team (vedi api/teamColors.ts): accento e tinta leggera / EN: Team color palette (see api/teamColors.ts): accent and light tint */
+  --team-green: #3f7a4a;     --team-green-soft: #e3efe4;
+  --team-blue: #2f6fa8;      --team-blue-soft: #e0eaf5;
+  --team-violet: #7a52a8;    --team-violet-soft: #ece4f5;
+  --team-orange: #b4561f;    --team-orange-soft: #f7e6db;
+  --team-raspberry: #b23b66; --team-raspberry-soft: #f6e0e8;
+  --team-teal: #1f7f78;      --team-teal-soft: #ddf0ee;
+  --team-ochre: #8a6d0e;     --team-ochre-soft: #f4ecd2;
+  --team-slate: #4f5d6e;     --team-slate-soft: #e4e8ed;
   color-scheme: light;
 }
 
@@ -40,9 +49,27 @@
     --danger: #ec7b6e;
     --danger-soft: #3d2420;
     --shadow: none;
+    --team-green: #6fb27b;     --team-green-soft: #24352a;
+    --team-blue: #6fa3d8;      --team-blue-soft: #1f2c3b;
+    --team-violet: #a88bd6;    --team-violet-soft: #2c2439;
+    --team-orange: #e39563;    --team-orange-soft: #3a2a1f;
+    --team-raspberry: #e07a9f; --team-raspberry-soft: #3a2029;
+    --team-teal: #5cbcb3;      --team-teal-soft: #1b3331;
+    --team-ochre: #d1b04a;     --team-ochre-soft: #342d17;
+    --team-slate: #9aa8b8;     --team-slate-soft: #262c33;
     color-scheme: dark;
   }
 }
+
+/* Colore del team mostrato (solo con più team): diventa l'accento di tutta l'app / EN: Color of the team shown (only with several teams): it becomes the accent of the whole app */
+:root[data-team-color='green'] { --accent: var(--team-green); --accent-soft: var(--team-green-soft); }
+:root[data-team-color='blue'] { --accent: var(--team-blue); --accent-soft: var(--team-blue-soft); }
+:root[data-team-color='violet'] { --accent: var(--team-violet); --accent-soft: var(--team-violet-soft); }
+:root[data-team-color='orange'] { --accent: var(--team-orange); --accent-soft: var(--team-orange-soft); }
+:root[data-team-color='raspberry'] { --accent: var(--team-raspberry); --accent-soft: var(--team-raspberry-soft); }
+:root[data-team-color='teal'] { --accent: var(--team-teal); --accent-soft: var(--team-teal-soft); }
+:root[data-team-color='ochre'] { --accent: var(--team-ochre); --accent-soft: var(--team-ochre-soft); }
+:root[data-team-color='slate'] { --accent: var(--team-slate); --accent-soft: var(--team-slate-soft); }
 
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
@@ -70,6 +97,15 @@ h2 { font-size: 15px; margin: 0 0 10px; }
 .map-detail { position: absolute; top: 12px; right: 12px; width: min(380px, calc(100% - 24px)); max-height: calc(100% - 24px); overflow-y: auto; z-index: 5; border-radius: 12px; box-shadow: 0 8px 24px rgb(0 0 0 / 35%); }
 .team-switch label { display: flex; align-items: center; gap: 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 4px; }
 .team-switch select { width: 100%; }
+/* Con più team la barra laterale prende la tinta del team (sul Nucleo resta scura: vedi .app.holo) / EN: With several teams the sidebar takes the team's tint (on the Nucleus it stays dark: see .app.holo) */
+:root[data-team-color] .sidebar { background: var(--accent-soft); border-right: 3px solid var(--accent); }
+:root[data-team-color] .nav-link.active { background: var(--accent); color: var(--accent-text); }
+:root[data-team-color] .app.holo .sidebar { border-right-color: var(--accent); }
+.team-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); display: inline-block; }
+.swatch { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--surface); box-shadow: 0 0 0 1px var(--border); padding: 0; cursor: pointer; flex: none; }
+.swatch[aria-pressed='true'], .swatch[aria-expanded='true'] { box-shadow: 0 0 0 2px var(--text); }
+.team-list .team-row { flex-wrap: wrap; }
+.team-list .palette { display: flex; gap: 6px; width: 100%; padding: 4px 0 2px 24px; }
 .team-list .team-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--border); }
 .team-list .team-row:last-child { border-bottom: none; }
 .person-chip { font-size: 11px; color: var(--muted); border: 1px dashed var(--border); border-radius: 10px; padding: 1px 7px; margin-left: 6px; }

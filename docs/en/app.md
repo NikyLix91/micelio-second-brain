@@ -145,6 +145,8 @@ The **Digest** page shows the team's week (new memories by kind and author, new 
 
 If the PC belongs to several teams, the **Team** selector at the top of the sidebar picks which team all the screens work on. The choice applies to the window and is remembered; it doesn't change the default team, which the CLI and agents use. "＋ Add a team…" opens the form to create a team or join with an invite.
 
+Each team has a **color**, so you can tell at a glance where you are: the sidebar is tinted with the color of the team shown, and buttons, links and the active menu item use it. Each team gets a different one automatically (the default keeps green) and you change it on the **Team** page by clicking the dot next to its name. It is a personal preference: it is remembered in the browser and colleagues don't see it. With a single team the app stays as it is.
+
 On the **Team** page, the "Your teams on this PC" card shows the teams with the default one (★), lets you change it and remove a team from the PC (with confirmation: it deletes that team's local data). Next to the members, "same person also in: …" appears when a colleague is with you in another team too. In **Settings**, next to each enabled folder, "Connect Claude Code" makes Claude Code started in that folder use this team.
 
 ## In-app help
