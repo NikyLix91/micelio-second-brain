@@ -121,6 +121,37 @@ describe('daemon', () => {
     await api('DELETE', '/api/watch', { path: mcpProject })
   })
 
+  it('Primi passi: cartelle abilitate e ultima chiamata di Claude Code, dalla cartella giusta o no', async () => {
+    const connect = async (cwd: string) => {
+      const c = new Client({ name: 'test', version: '1.0.0' })
+      await c.connect(new StreamableHTTPClientTransport(new URL(`${base}/mcp`), {
+        requestInit: { headers: { authorization: `Bearer ${token}`, 'x-micelio-cwd': encodeURIComponent(cwd) } }
+      }))
+      await c.close()
+    }
+    const project = tmpHome('progetto-primi-passi')
+    const outside = tmpHome('fuori-dai-team')
+    await api('POST', '/api/watch', { path: project })
+    const before = (await api('GET', '/api/setup/first-steps')).data
+    expect(before.folders).toContain(canonicalPath(project))
+    expect(typeof before.claude.found).toBe('boolean')
+    expect(['shim', 'legacy', 'missing', 'other']).toContain(before.registration)
+
+    // Da una cartella fuori dai team: nessun contatto per il team, ma l'ultimo dice dov'era
+    // EN: From a folder outside the teams: no contact for the team, but the last one says where it was
+    await connect(outside)
+    const wrong = (await api('GET', '/api/setup/first-steps')).data
+    expect(wrong.lastAgent).toMatchObject({ cwd: outside, sameTeam: false, inSomeTeam: false })
+
+    // Dalla cartella abilitata: il passo si compie
+    // EN: From the enabled folder: the step is done
+    await connect(project)
+    const ok = (await api('GET', '/api/setup/first-steps')).data
+    expect(ok.agent).toMatchObject({ cwd: project })
+    expect(ok.lastAgent).toMatchObject({ sameTeam: true })
+    await api('DELETE', '/api/watch', { path: project })
+  })
+
   it('ingestione di una sessione: solo nelle cartelle opt-in, poi ricercabile', async () => {
     const project = tmpHome('progetto')
     const transcriptPath = writeTranscript(project, 'sess-1', [

@@ -20,7 +20,8 @@ import { z } from 'zod'
 import { readManifest } from '../backup/archive'
 import { daemonProof, NONCE_RE } from '../core/daemon-proof'
 import { MEMORY_KINDS, ROOT_CATEGORIES } from '../core/events'
-import { claudeMcpStatus, IntegrationError, registerProjectMcp, setupClaudeCode } from '../node/integrations'
+import { locateClaude } from '../node/claude-locator'
+import { claudeMcpStatus, claudeUsedByThisUser, IntegrationError, registerProjectMcp, setupClaudeCode } from '../node/integrations'
 import { UserError } from '../node/micelio-node'
 import type { DaemonOptions } from './micelio.module'
 import { MicelioService } from './micelio.service'
@@ -940,6 +941,31 @@ export class ApiController {
   @Get('setup/claude-code')
   claudeCodeStatus () {
     return claudeMcpStatus(this.options.config.port)
+  }
+
+  /**
+   * Stato dei Primi passi del team della richiesta (ui/src/pages/FirstSteps.tsx): Claude Code
+   * trovato e usato da questo utente, registrazione MCP, cartelle abilitate, ultima chiamata di un
+   * agente da una cartella del team e l'ultima in assoluto (per dire "hai aperto Claude Code in una
+   * cartella che non è abilitata").
+   *
+   * EN: First steps state of the request's team (ui/src/pages/FirstSteps.tsx): Claude Code found
+   * and used by this user, MCP registration, enabled folders, last agent call from a folder of the
+   * team and the very last one (to say "you opened Claude Code in a folder that isn't enabled").
+   */
+  @Get('setup/first-steps')
+  firstSteps () {
+    const claude = locateClaude(this.options.config.llm.command)
+    const node = this.node
+    const team = this.micelio.host.idOf(node)
+    const contact = this.micelio.host.agentContact(team)
+    return {
+      claude: { found: !!claude, file: claude?.file ?? null, usedByThisUser: claudeUsedByThisUser() },
+      registration: claudeMcpStatus(this.options.config.port).registration,
+      folders: node.watched(),
+      agent: contact.team,
+      lastAgent: contact.last && { at: contact.last.at, cwd: contact.last.cwd, sameTeam: contact.last.team === team, inSomeTeam: contact.last.team !== null }
+    }
   }
 
   @Post('setup/claude-code')

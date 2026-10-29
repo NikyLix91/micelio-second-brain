@@ -218,6 +218,44 @@ export class MicelioHost extends EventEmitter {
     return this.nodes.get(this.resolve(ref))!
   }
 
+  /**
+   * Ultima chiamata ricevuta da un agente sull'MCP (Primi passi): quando, da quale cartella e di
+   * quale team è. Solo in memoria: dice "Claude Code ha parlato con Micelio da questa cartella",
+   * la prova che il collegamento funziona. Una cartella che non è di nessun team resta con
+   * `team: null`: è proprio il caso da spiegare a chi la sta configurando.
+   *
+   * EN: Last call received from an agent on the MCP (First steps): when, from which folder and
+   * which team it belongs to. In memory only: it says "Claude Code talked to Micelio from this
+   * folder", the proof that the connection works. A folder that belongs to no team stays with
+   * `team: null`: exactly the case to explain to whoever is setting it up.
+   */
+  private agentContacts = new Map<string, { at: number, cwd: string | null }>()
+  private lastAgentContact: { at: number, cwd: string | null, team: string | null } | null = null
+
+  /**
+   * Annota una chiamata MCP di un agente.
+   * EN: Notes an agent's MCP call.
+   * @param cwd cartella mandata dallo shim (null con una registrazione vecchia)
+   *        EN: folder sent by the shim (null with an old registration)
+   * @param team team esplicito (`/mcp/<team>`); altrimenti quello che possiede la cartella
+   *        EN: explicit team (`/mcp/<team>`); otherwise the one owning the folder
+   */
+  noteAgentContact (cwd: string | null, team?: string): void {
+    const owner = team ?? (cwd ? this.ownerOf(cwd) : null)
+    const at = Date.now()
+    this.lastAgentContact = { at, cwd, team: owner }
+    if (owner) this.agentContacts.set(owner, { at, cwd })
+  }
+
+  /**
+   * Ultimo contatto di un agente con questo team, e l'ultimo in assoluto (per spiegare una
+   * cartella sbagliata).
+   * EN: Last contact of an agent with this team, and the very last one (to explain a wrong folder).
+   */
+  agentContact (team: string): { team: { at: number, cwd: string | null } | null, last: { at: number, cwd: string | null, team: string | null } | null } {
+    return { team: this.agentContacts.get(team) ?? null, last: this.lastAgentContact }
+  }
+
   /** Id locale del team di un nodo aperto. / EN: Local team id of an open node. */
   idOf (node: MicelioNode): string {
     for (const [id, n] of this.nodes) if (n === node) return id

@@ -51,22 +51,28 @@ npm run demo                            # or: a demo team with 3 nodes and ~50 m
 
 ## Quick start
 
+You need [Claude Code](https://code.claude.com/docs/en/setup) installed and signed in, with the same PC user you use Micelio with.
+
+1. **Install** Micelio from the [latest release](https://github.com/salvatorestracquadanio86/micelio-second-brain/releases/latest) and open it.
+2. **Create a team**, or join one with the invite code a colleague sent you.
+3. The app opens **First steps**, which walks you through the rest and ticks each step by itself:
+   - **connect Claude Code** (one button: MCP server, automatic context, session collection);
+   - **choose your project folders**: Claude Code uses the team's memory only there;
+   - **check that it works**: open Claude Code in one of those folders and ask *"search Micelio for what the team knows about this project"*. The step ticks when Micelio receives the call.
+
+The full walkthrough, with what to do when something doesn't work, is in the [user guide](docs/en/user-guide.md#getting-started).
+
+<details>
+<summary>The same from a terminal</summary>
+
 ```bash
 micelio start                           # starts the local daemon
-micelio init "Team Dev" --name my-pc    # creates a team (first node only)
-micelio invite                          # generates a code for a colleague
+micelio init "Team Dev" --name my-pc    # creates a team (first node only), or: micelio join <code> --name my-pc
 micelio setup claude-code               # connects Claude Code via MCP
+micelio watch add <project folder>      # enables a project folder
+micelio invite                          # generates a code for a colleague
 ```
-
-The colleague, on their machine:
-
-```bash
-micelio start
-micelio join <code> --name their-pc
-micelio setup claude-code
-```
-
-Everything is also available from the desktop app. From then on, in Claude Code: *"search the team memory for how we solve X"* or *"save this decision in the team memory"*.
+</details>
 
 ## Documentation
 

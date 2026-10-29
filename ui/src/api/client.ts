@@ -57,6 +57,17 @@ export type { CodeRefs, Decision, ExplicitOutcome, InboxItem, IngestStatus, Invi
 /** Stato del collegamento di Claude Code (vedi claudeMcpStatus). / EN: Claude Code connection status (see claudeMcpStatus). */
 export interface ClaudeCodeStatus { registration: 'shim' | 'legacy' | 'missing' | 'other', migration: { at: number, changed: number } | null }
 
+/** Stato dei Primi passi (GET /api/setup/first-steps). / EN: First steps state (GET /api/setup/first-steps). */
+export interface FirstStepsStatus {
+  claude: { found: boolean, file: string | null, usedByThisUser: boolean }
+  registration: ClaudeCodeStatus['registration']
+  folders: string[]
+  /** Ultima chiamata di Claude Code da una cartella di questo team. / EN: Last Claude Code call from a folder of this team. */
+  agent: { at: number, cwd: string | null } | null
+  /** Ultima chiamata in assoluto, per spiegare una cartella sbagliata. / EN: The very last call, to explain a wrong folder. */
+  lastAgent: { at: number, cwd: string | null, sameTeam: boolean, inSomeTeam: boolean } | null
+}
+
 export interface TeamsInfo { teams: TeamSummary[], identity: { name: string, publicKey: string } | null }
 
 /** Errore dell'API con il messaggio leggibile restituito dal daemon. / EN: API error with the readable message returned by the daemon. */
@@ -206,6 +217,7 @@ export const api = {
   moveInbox: (id: string, team: string, publish = true) => call<{ team: string, inboxId?: string }>('POST', `/api/inbox/${enc(id)}/move`, { team, publish }),
   /** Come è collegato Claude Code (0.6.1). / EN: How Claude Code is connected (0.6.1). */
   claudeCodeStatus: () => call<ClaudeCodeStatus>('GET', '/api/setup/claude-code'),
+  firstSteps: () => call<FirstStepsStatus>('GET', '/api/setup/first-steps'),
   decisions: (limit = 200) => call<Decision[]>('GET', `/api/decisions?limit=${limit}`),
 
   // Ingestione e impostazioni
