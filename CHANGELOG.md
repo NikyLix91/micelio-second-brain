@@ -4,6 +4,10 @@ All notable changes to Micelio. The format follows [Keep a Changelog](https://ke
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-29
+
+Install this version by hand one last time: from 0.8.0 on, the desktop app downloads and installs the next versions by itself (the `.deb` package only reports them).
+
 ### Added
 
 - **Automatic updates** of the desktop app (Windows installer and AppImage): it checks GitHub releases 30 seconds after launch and every 4 hours, downloads the new version in the background and installs it only when you choose "Restart and update" (from the notification, the icon menu or Settings → Updates). Every update must carry an Ed25519 signature made by the release workflow, checked against the public keys inside the app; without it nothing is installed. With the `.deb` package the app only reports the new version. The automatic check can be turned off. This version must be installed by hand one last time.
@@ -133,7 +137,8 @@ Memory that learns from use.
 ### Added
 - First version: P2P team, memories, hybrid search, MCP for Claude Code, automatic collection with privacy filter and Inbox, document folders, priority and dreaming, desktop app with the 3D Nucleus.
 
-[Unreleased]: https://github.com/salvatorestracquadanio86/micelio-second-brain/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/salvatorestracquadanio86/micelio-second-brain/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/salvatorestracquadanio86/micelio-second-brain/releases/tag/v0.8.0
 [0.7.1]: https://github.com/salvatorestracquadanio86/micelio-second-brain/releases/tag/v0.7.1
 [0.7.0]: https://github.com/salvatorestracquadanio86/micelio-second-brain/releases/tag/v0.7.0
 [0.6.2]: https://github.com/salvatorestracquadanio86/micelio-second-brain/releases/tag/v0.6.2

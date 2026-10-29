@@ -1,6 +1,6 @@
 {
   "name": "@micelio/desktop",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "private": true,
   "description": "App desktop di Micelio (Electron): avvia il daemon, mostra la UI, notifiche e icona nell'area di notifica",
   "license": "AGPL-3.0-only",
