@@ -347,6 +347,7 @@ A version with a suffix (`0.8.0-rc.1`) is a **pre-release**: the script doesn't 
 Good to know:
 - `electron-builder` runs with `publish: 'never'` (`BUILD_OPTIONS` in `scripts/package-common.js`): in CI on a tag it would try to publish by itself. `latest.yml` and `latest-linux.yml`, which automatic updates will need, are generated anyway and end up in the release;
 - only the workflow's last job can write to the repository, and it runs no code: it downloads the files already built;
+- the tag must be created **after** the merge into `main` (step 4): GitHub runs the `release.yml` of the tag's commit, and on an old commit nothing starts or an old version of the workflow does;
 - a wrong tag is deleted with `git push --delete origin vX.Y.Z` (and `git tag -d vX.Y.Z`), together with the draft;
 - `v*` tags are protected by a ruleset: only the administrator creates, moves or deletes them;
 - out of scope for now: macOS package, Windows code signing (SmartScreen warns, the release notes explain how to proceed), the server's Docker image.

@@ -345,6 +345,7 @@ Una versione con suffisso (`0.8.0-rc.1`) è una **pre-release**: lo script non t
 Cose da sapere:
 - `electron-builder` gira con `publish: 'never'` (`BUILD_OPTIONS` in `scripts/package-common.js`): in CI su un tag proverebbe a pubblicare da solo. `latest.yml` e `latest-linux.yml`, che serviranno agli aggiornamenti automatici, si generano comunque e finiscono nella release;
 - solo l'ultimo job del workflow può scrivere nella repository, e non esegue codice: scarica i file già costruiti;
+- il tag va creato **dopo** il merge in `main` (passo 4): GitHub esegue il `release.yml` del commit del tag, e su un commit vecchio non parte nulla o parte una versione vecchia del workflow;
 - un tag sbagliato si cancella con `git push --delete origin vX.Y.Z` (e `git tag -d vX.Y.Z`), insieme alla bozza;
 - i tag `v*` sono protetti da un ruleset: solo l'amministratore li crea, li sposta o li cancella;
 - fuori per ora: pacchetto per macOS, firma del codice su Windows (SmartScreen avvisa, le note della release spiegano come procedere), immagine Docker del server.
