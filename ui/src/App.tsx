@@ -28,10 +28,12 @@ import { lazy, Suspense, useEffect } from 'react'
 import { HashRouter, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { api } from './api/client'
 import { useLiveEvents } from './api/live'
+import { useCurrentTeam } from './api/team'
 import { TeamSwitch } from './components/TeamSwitch'
 import { ErrorBox } from './components/ui'
 import { HelpProvider, useHelp } from './help'
 import { defineStrings, LangSwitch, useStrings } from './i18n'
+import { FirstSteps, firstStepsState, stepsDone } from './pages/FirstSteps'
 import { Guide } from './pages/Guide'
 import { Constellation } from './pages/Constellation'
 import { Dashboard } from './pages/Dashboard'
@@ -53,6 +55,7 @@ const S = defineStrings({
   it: {
     connecting: 'Connessione al nodo…',
     nucleusLoading: 'Accensione del nucleo…',
+    firstSteps: (n: number) => `Primi passi · ${n}/4`,
     nav: { nucleus: 'Nucleo', map: 'Mappa 2D', ask: 'Chiedi', memory: 'Memoria', roots: 'Radici', inbox: 'Inbox', team: 'Team', digest: 'Riepilogo', efficacy: 'Efficacia', dreams: 'Sogni', status: 'Stato', private: 'Registro privato', security: 'Sicurezza', settings: 'Impostazioni', guide: 'Guida' },
     live: 'Aggiornamenti in tempo reale',
     reconnecting: 'Riconnessione…'
@@ -60,6 +63,7 @@ const S = defineStrings({
   en: {
     connecting: 'Connecting to the node…',
     nucleusLoading: 'Powering up the nucleus…',
+    firstSteps: (n: number) => `First steps · ${n}/4`,
     nav: { nucleus: 'Nucleus', map: '2D map', ask: 'Ask', memory: 'Memory', roots: 'Roots', inbox: 'Inbox', team: 'Team', digest: 'Digest', efficacy: 'Efficacy', dreams: 'Dreams', status: 'Status', private: 'Private log', security: 'Security', settings: 'Settings', guide: 'Guide' },
     live: 'Live updates',
     reconnecting: 'Reconnecting…'
@@ -102,6 +106,7 @@ export function App () {
             <Route path='/sicurezza' element={<Security />} />
             <Route path='/impostazioni' element={<Settings />} />
             <Route path='/guida' element={<Guide />} />
+            <Route path='/primi-passi' element={<FirstSteps />} />
           </Routes>
         </Shell>
       </HelpProvider>
@@ -113,13 +118,15 @@ export function App () {
 export const PAGE_TOPIC: Record<string, string> = {
   '/': 'views#nucleus', '/mappa': 'views#map', '/memoria': 'memory', '/radici': 'roots', '/inbox': 'inbox',
   '/team': 'team', '/sogni': 'dreams', '/stato': 'status', '/privato': 'private', '/sicurezza': 'security',
-  '/impostazioni': 'settings', '/guida': 'overview', '/team/nuovo': 'teams', '/riepilogo': 'digest', '/efficacia': 'efficacy', '/chiedi': 'ask'
+  '/impostazioni': 'settings', '/guida': 'overview', '/team/nuovo': 'teams', '/riepilogo': 'digest', '/efficacia': 'efficacy', '/chiedi': 'ask', '/primi-passi': 'first-steps'
 }
 
 /** Pagina "Aggiungi un team": a ingresso riuscito si torna alla home, già sul nuovo team. / EN: "Add a team" page: after a successful join it goes back home, already on the new team. */
 function AddTeam () {
   const navigate = useNavigate()
-  return <Onboarding adding onDone={() => navigate('/')} />
+  // Anche un team in più ha le sue cartelle: si passa dai Primi passi
+  // EN: An extra team has its own folders too: go through the First steps
+  return <Onboarding adding onDone={() => navigate('/primi-passi')} />
 }
 
 /**
@@ -166,6 +173,7 @@ function Sidebar ({ live, team, node }: { live: boolean, team: string, node: str
         <div>Micelio<small>{team}</small></div>
       </div>
       <TeamSwitch />
+      <FirstStepsLink />
       <NavLink to='/' end className={link}>{n.nucleus}</NavLink>
       <NavLink to='/mappa' className={link}>{n.map}</NavLink>
       <NavLink to='/chiedi' className={link}>{n.ask}</NavLink>
@@ -187,4 +195,25 @@ function Sidebar ({ live, team, node }: { live: boolean, team: string, node: str
       </div>
     </nav>
   )
+}
+
+/**
+ * Voce «Primi passi» in cima alla barra laterale (ui/src/pages/FirstSteps.tsx): c'è finché il
+ * percorso è aperto (dopo la creazione del team) o mancano i passi necessari, cioè Claude Code
+ * collegato e almeno una cartella. «Ho finito» nella pagina la toglie.
+ *
+ * EN: «First steps» item at the top of the sidebar (ui/src/pages/FirstSteps.tsx): it's there while
+ * the path is open (after creating the team) or the required steps are missing, i.e. Claude Code
+ * connected and at least one folder. "I'm done" in the page removes it.
+ */
+function FirstStepsLink () {
+  const s = useStrings(S)
+  useCurrentTeam()
+  const q = useQuery({ queryKey: ['first-steps'], queryFn: api.firstSteps, staleTime: 30_000 })
+  if (!q.data) return null
+  const state = firstStepsState()
+  const done = stepsDone(q.data)
+  const required = done[1] && done[2]
+  if (state === 'done' || (state !== 'open' && required)) return null
+  return <NavLink to='/primi-passi' className={({ isActive }) => `nav-link first-steps ${isActive ? 'active' : ''}`}>{s.firstSteps(done.filter(Boolean).length)}</NavLink>
 }

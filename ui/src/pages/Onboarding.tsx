@@ -20,6 +20,7 @@ import { useState } from 'react'
 import { api } from '../api/client'
 import { setCurrentTeam } from '../api/team'
 import { RestoreBackup } from '../components/Backup'
+import { setFirstStepsState } from './FirstSteps'
 import { Card, ErrorBox, PageHeader } from '../components/ui'
 import { HelpButton } from '../help'
 import { defineStrings, LangSwitch, useStrings } from '../i18n'
@@ -89,6 +90,12 @@ export function Onboarding ({ adding = false, onDone }: { adding?: boolean, onDo
     // L'interfaccia passa subito al nuovo team
     // EN: The interface switches to the new team right away
     setCurrentTeam(r.teamId)
+    // Poi i Primi passi: collegare Claude Code e abilitare le cartelle (pages/FirstSteps.tsx).
+    // Al primo avvio l'app non ha ancora il router: basta l'indirizzo, che il router leggerà.
+    // EN: Then the First steps: connecting Claude Code and enabling the folders (pages/FirstSteps.tsx).
+    //     On first start the app has no router yet: the address is enough, the router will read it.
+    setFirstStepsState('open', r.teamId)
+    if (!adding) location.hash = '#/primi-passi'
     void client.resetQueries()
     onDone?.()
   }
