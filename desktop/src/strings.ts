@@ -1,8 +1,8 @@
 /**
  * @file Testi dell'app desktop (processo principale): menu dell'area di notifica, notifiche,
- * finestre di dialogo. Nelle due lingue dell'interfaccia (italiano, inglese).
+ * finestre di dialogo, aggiornamenti. Nelle due lingue dell'interfaccia (italiano, inglese).
  *
- * EN: Texts for the desktop app (main process): tray menu, notifications,
+ * EN: Texts for the desktop app (main process): tray menu, notifications, updates,
  * dialogs. In both interface languages (Italian, English).
  *
  * LINGUA. All'avvio si usa quella del sistema (`app.getLocale()`); poi la decide l'utente nella UI:
@@ -39,7 +39,12 @@ const STRINGS = {
     wrongTitle: 'Micelio · ricordo forse sbagliato',
     wrongBody: (title: string, reason: string | null) => `«${title}»${reason ? `: ${reason}` : ''}. Aprilo in Efficacia e decidi.`,
     digestTitle: 'Micelio · la settimana del team',
-    digestBody: (added: number, gaps: number) => `${added === 1 ? 'Un ricordo nuovo' : `${added} ricordi nuovi`}${gaps ? `, ${gaps === 1 ? 'una lacuna aperta' : `${gaps} lacune aperte`}` : ''}. Apri il riepilogo.`
+    digestBody: (added: number, gaps: number) => `${added === 1 ? 'Un ricordo nuovo' : `${added} ricordi nuovi`}${gaps ? `, ${gaps === 1 ? 'una lacuna aperta' : `${gaps} lacune aperte`}` : ''}. Apri il riepilogo.`,
+    trayUpdate: (v: string) => `Riavvia e aggiorna a ${v}`,
+    updateReadyTitle: (v: string) => `Micelio ${v} è pronta`,
+    updateReadyBody: 'Riavvia per aggiornare: dal menu dell\'icona o da Impostazioni → Aggiornamenti. L\'installazione dura qualche minuto, i dati restano dove sono.',
+    updateAvailableTitle: (v: string) => `Micelio ${v} è disponibile`,
+    updateAvailableBody: 'Clicca per aprire la pagina della versione e scaricarla.'
   },
   en: {
     trayOpen: 'Open Micelio',
@@ -58,7 +63,12 @@ const STRINGS = {
     wrongTitle: 'Micelio · memory possibly wrong',
     wrongBody: (title: string, reason: string | null) => `"${title}"${reason ? `: ${reason}` : ''}. Open it in Efficacy and decide.`,
     digestTitle: 'Micelio · the team\'s week',
-    digestBody: (added: number, gaps: number) => `${added === 1 ? 'One new memory' : `${added} new memories`}${gaps ? `, ${gaps === 1 ? 'one open gap' : `${gaps} open gaps`}` : ''}. Open the digest.`
+    digestBody: (added: number, gaps: number) => `${added === 1 ? 'One new memory' : `${added} new memories`}${gaps ? `, ${gaps === 1 ? 'one open gap' : `${gaps} open gaps`}` : ''}. Open the digest.`,
+    trayUpdate: (v: string) => `Restart and update to ${v}`,
+    updateReadyTitle: (v: string) => `Micelio ${v} is ready`,
+    updateReadyBody: 'Restart to update: from the icon menu or from Settings → Updates. The installation takes a few minutes, your data stays where it is.',
+    updateAvailableTitle: (v: string) => `Micelio ${v} is available`,
+    updateAvailableBody: 'Click to open the version page and download it.'
   }
 }
 

@@ -9,6 +9,7 @@
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AutoBackupCard } from '../components/Backup'
+import { UpdatesCard } from '../components/Updates'
 import { useState } from 'react'
 import { api, type NetworkMode } from '../api/client'
 import { Card, ConfirmButton, Empty, ErrorBox, PageHeader } from '../components/ui'
@@ -264,6 +265,7 @@ export function Settings () {
         <ContextCard />
         <AutoBackupCard />
         <ClaudeCodeCard />
+        <UpdatesCard />
         <AboutCard />
       </div>
     </>

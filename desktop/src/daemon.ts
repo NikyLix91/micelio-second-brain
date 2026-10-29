@@ -83,14 +83,14 @@ export async function isUp (info: DaemonInfo): Promise<boolean> {
  * Quale Node usare per il daemon:
  * 1. installata: il Node incluso (stessa versione con cui Micelio è stato provato);
  * 2. quello di sistema se c'è (lo stesso della CLI);
- * 3. il Node di Electron in modalità "solo Node" (ELECTRON_RUN_AS_NODE). Electron 38 include
- *    Node 22, sufficiente per `node:sqlite`.
+ * 3. il Node di Electron in modalità "solo Node" (ELECTRON_RUN_AS_NODE). Electron (38 e successivi) include
+ *    Node 22 o più recente, sufficiente per `node:sqlite`.
  *
  * EN: Which Node to use for the daemon:
  * 1. installed: the bundled Node (the same version Micelio was tested with);
  * 2. the system one, if present (the same as the CLI);
- * 3. Electron's Node in "Node only" mode (ELECTRON_RUN_AS_NODE). Electron 38 includes
- *    Node 22, enough for `node:sqlite`.
+ * 3. Electron's Node in "Node only" mode (ELECTRON_RUN_AS_NODE). Electron (38 and later) includes
+ *    Node 22 or newer, enough for `node:sqlite`.
  */
 function nodeRuntime (): { cmd: string, env: NodeJS.ProcessEnv } {
   if (BUNDLED_NODE) return { cmd: BUNDLED_NODE, env: {} }
@@ -150,4 +150,22 @@ export async function get<T> (info: DaemonInfo, route: string): Promise<T> {
   const res = await fetch(`${info.baseUrl}${route}`, { headers: { authorization: `Bearer ${info.token}` } })
   if (!res.ok) throw new Error(`HTTP ${res.status} su ${route}`)
   return await res.json() as T
+}
+
+/**
+ * Ferma il daemon in modo ordinato (come `micelio stop`) e aspetta che smetta di rispondere
+ * (max 15 s). Serve prima di installare un aggiornamento: l'app nuova deve avviare il daemon nuovo.
+ *
+ * EN: Stops the daemon in an orderly way (like `micelio stop`) and waits until it stops answering
+ * (max 15 s). Needed before installing an update: the new app must start the new daemon.
+ */
+export async function stopDaemon (info: DaemonInfo): Promise<void> {
+  if (!await isUp(info)) return
+  await requireOwnDaemon(info)
+  await fetch(`${info.baseUrl}/api/shutdown`, { method: 'POST', headers: { authorization: `Bearer ${info.token}` } })
+  for (let i = 0; i < 30; i++) {
+    if (!await isUp(info)) return
+    await new Promise((r) => setTimeout(r, 500))
+  }
+  throw new Error('the daemon is still answering after 15 seconds')
 }

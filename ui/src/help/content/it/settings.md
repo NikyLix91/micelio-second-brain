@@ -30,6 +30,10 @@ Registra Micelio come **server MCP** di Claude Code (livello utente: vale in ogn
 
 **Un utente, una configurazione.** Claude Code legge la configurazione dal profilo dell'utente del sistema che lo esegue. Se lo avvii con un utente diverso da quello con cui gira Micelio (per esempio Claude Code installato e usato da un'utenza amministrativa per policy aziendale), non vedrà mai Micelio, e Micelio non potrà leggere le sue sessioni. Micelio se ne accorge quando in questo profilo non c'è traccia di Claude Code (né sessioni né i campi che Claude Code scrive al primo avvio) e lo segnala con un avviso. La soluzione è aprire Micelio con lo stesso utente con cui usi Claude Code (tasto destro → «Esegui come altro utente»), entrare nel team con un invito e ripetere la configurazione.
 
+## Aggiornamenti {#updates}
+
+Solo nell'app desktop: versione installata, stato del controllo, «Controlla ora», «Riavvia e aggiorna» quando una versione nuova è scaricata e verificata, e il controllo automatico sì/no. Come funziona, firma compresa, è spiegato nell'argomento **Aggiornamenti**.
+
 ## Informazioni {#about}
 
 Versione dell'app, autore e licenza, con i link al codice sorgente, al testo della licenza e alla guida per contribuire.

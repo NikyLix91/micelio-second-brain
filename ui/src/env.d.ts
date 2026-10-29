@@ -14,7 +14,18 @@ interface MicelioDesktopBridge {
   showInFolder?: (path: string) => Promise<void>
   /** Comunica la lingua scelta all'app desktop (menu dell'icona e notifiche). / EN: Tells the desktop app the chosen language (tray icon menu and notifications). */
   setLang?: (lang: string) => void
+  /** Aggiornamenti dell'app (desktop/src/updater.ts); solo nell'app desktop. / EN: App updates (desktop/src/updater.ts); desktop app only. */
+  updates?: {
+    state: () => Promise<DesktopUpdateState>
+    check: () => Promise<void>
+    install: () => Promise<void>
+    setAuto: (on: boolean) => Promise<DesktopUpdateState>
+    onChange: (cb: (state: DesktopUpdateState) => void) => () => void
+  }
 }
+
+/** Stato degli aggiornamenti (desktop/src/update-types.ts). / EN: Update state (desktop/src/update-types.ts). */
+type DesktopUpdateState = import('../../desktop/src/update-types').UpdateState
 
 interface Window {
   micelio?: MicelioDesktopBridge

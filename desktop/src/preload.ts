@@ -9,7 +9,9 @@
  *   (deve essere disponibile prima che parta il codice della UI);
  * - `pickFolder()`: selettore di cartelle nativo, per abilitare la raccolta su un progetto;
  * - `showInFolder(path)`: mostra un documento scaricato in Esplora file / Finder;
- * - `setLang(lang)`: comunica la lingua scelta nella UI (menu e notifiche la seguono).
+ * - `setLang(lang)`: comunica la lingua scelta nella UI (menu e notifiche la seguono);
+ * - `updates`: stato degli aggiornamenti dell'app, controllo, installazione, controllo automatico
+ *   sì/no (desktop/src/updater.ts).
  *
  * EN: The UI runs isolated (contextIsolation): it sees neither Node nor Electron. Here we expose
  * ONLY what is needed, as `window.micelio` (typed in ui/src/env.d.ts):
@@ -17,7 +19,9 @@
  *   (it must be available before the UI code starts);
  * - `pickFolder()`: native folder picker, to enable collection on a project;
  * - `showInFolder(path)`: shows a downloaded document in File Explorer / Finder;
- * - `setLang(lang)`: reports the language chosen in the UI (menus and notifications follow it).
+ * - `setLang(lang)`: reports the language chosen in the UI (menus and notifications follow it);
+ * - `updates`: the app's update state, check, install, automatic check on/off
+ *   (desktop/src/updater.ts).
  */
 import { contextBridge, ipcRenderer } from 'electron'
 
@@ -25,5 +29,17 @@ contextBridge.exposeInMainWorld('micelio', {
   token: ipcRenderer.sendSync('micelio:token') as string,
   pickFolder: (): Promise<string | null> => ipcRenderer.invoke('micelio:pick-folder'),
   showInFolder: (file: string): Promise<void> => ipcRenderer.invoke('micelio:show-in-folder', file),
-  setLang: (lang: string): void => { ipcRenderer.send('micelio:set-lang', lang) }
+  setLang: (lang: string): void => { ipcRenderer.send('micelio:set-lang', lang) },
+  updates: {
+    state: (): Promise<unknown> => ipcRenderer.invoke('micelio:update-state'),
+    check: (): Promise<void> => ipcRenderer.invoke('micelio:update-check'),
+    install: (): Promise<void> => ipcRenderer.invoke('micelio:update-install'),
+    setAuto: (on: boolean): Promise<unknown> => ipcRenderer.invoke('micelio:update-auto', on),
+    /** Segue i cambi di stato; restituisce la funzione per smettere. / EN: Follows state changes; returns the function to stop. */
+    onChange: (cb: (state: unknown) => void): (() => void) => {
+      const listener = (_e: unknown, state: unknown) => cb(state)
+      ipcRenderer.on('micelio:update-changed', listener)
+      return () => { ipcRenderer.removeListener('micelio:update-changed', listener) }
+    }
+  }
 })
