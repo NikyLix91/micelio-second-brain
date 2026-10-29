@@ -7,13 +7,15 @@
  * 1. legge configurazione e token del nodo locale (stesso ~/.micelio della CLI);
  * 2. avvia il daemon se non è già attivo (desktop/src/daemon.ts);
  * 3. apre una finestra con la UI servita dal daemon (http://127.0.0.1:7337/ui/);
- * 4. mette un'icona nell'area di notifica e ascolta il daemon per le notifiche (D15).
+ * 4. mette un'icona nell'area di notifica e ascolta il daemon per le notifiche (D15);
+ * 5. avvia il controllo degli aggiornamenti (updater.ts).
  *
  * EN: On startup:
  * 1. reads the local node's configuration and token (same ~/.micelio as the CLI);
  * 2. starts the daemon if it isn't already running (desktop/src/daemon.ts);
  * 3. opens a window with the UI served by the daemon (http://127.0.0.1:7337/ui/);
- * 4. puts an icon in the notification area and listens to the daemon for notifications (D15).
+ * 4. puts an icon in the notification area and listens to the daemon for notifications (D15);
+ * 5. starts the update check (updater.ts).
  *
  * Chiudere la finestra la NASCONDE (l'app resta nell'area di notifica e continua a notificare).
  * "Esci" dal menu dell'icona chiude l'app; il daemon resta attivo (si ferma con `micelio stop`).
@@ -36,10 +38,11 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, shell, Tray } from 'electron'
-import { type DaemonInfo, daemonInfo, ensureDaemon, requireOwnDaemon } from './daemon'
+import { type DaemonInfo, daemonInfo, ensureDaemon, requireOwnDaemon, stopDaemon } from './daemon'
 import { nucleusIconPng } from './icon'
 import { watchDaemon } from './notifications'
 import { langFromLocale, setDesktopLang, t } from './strings'
+import { checkNow, installUpdate, onUpdateState, setAutoUpdates, startUpdates, updateState } from './updater'
 
 let win: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -160,7 +163,12 @@ let trayInfo: DaemonInfo | null = null
 function buildTrayMenu (): void {
   if (!tray || !trayInfo) return
   const info = trayInfo
+  const update = updateState()
   tray.setContextMenu(Menu.buildFromTemplate([
+    // Aggiornamento pronto: in cima, così si vede / EN: Update ready: at the top, so it's seen
+    ...(update.status === 'ready' && update.version
+      ? [{ label: t().trayUpdate(update.version), click: () => void installUpdate(() => stopDaemon(info)) }, { type: 'separator' as const }]
+      : []),
     { label: t().trayOpen, click: () => showWindow() },
     { label: t().trayInbox, click: () => showWindow('/inbox') },
     { label: t().trayBrowser, click: () => void shell.openExternal(`${info.baseUrl}/ui/`) },
@@ -246,6 +254,17 @@ app.whenReady().then(async () => {
   })
   ipcMain.handle('micelio:show-in-folder', (_e, file: string) => { if (typeof file === 'string' && fs.existsSync(file)) shell.showItemInFolder(file) })
 
+  // Aggiornamenti (updater.ts): la scheda delle Impostazioni legge lo stato e lo segue.
+  // «Installa» funziona solo con un aggiornamento già scaricato e verificato: la pagina al massimo
+  // può far riavviare l'app.
+  // EN: Updates (updater.ts): the Settings card reads the state and follows it.
+  //     "Install" works only with an update already downloaded and verified: at most the page can
+  //     make the app restart.
+  ipcMain.handle('micelio:update-state', () => updateState())
+  ipcMain.handle('micelio:update-check', () => checkNow())
+  ipcMain.handle('micelio:update-install', () => installUpdate(() => stopDaemon(info)))
+  ipcMain.handle('micelio:update-auto', (_e, on: unknown) => { if (typeof on === 'boolean') setAutoUpdates(on); return updateState() })
+
   if (screenshotDir) {
     showWindow()
     await takeScreenshots(screenshotDir)
@@ -263,6 +282,29 @@ app.whenReady().then(async () => {
     get: () => { try { return fs.readFileSync(weekFile, 'utf8').trim() || null } catch { return null } },
     set: (week: string) => { try { fs.writeFileSync(weekFile, week) } catch {} }
   }
+  // Aggiornamenti: la UI segue lo stato, il menu dell'icona mostra «Riavvia e aggiorna», e una
+  // notifica avvisa una volta per versione
+  // EN: Updates: the UI follows the state, the icon menu shows "Restart and update", and a
+  //     notification warns once per version
+  let notified = ''
+  onUpdateState((u, prev) => {
+    win?.webContents.send('micelio:update-changed', u)
+    if (u.status !== prev.status) buildTrayMenu()
+    if (u.status === prev.status || !u.version || notified === `${u.status}:${u.version}`) return
+    if (u.status === 'ready' || u.status === 'available') notified = `${u.status}:${u.version}`
+    if (u.status === 'ready') {
+      const n = new Notification({ title: t().updateReadyTitle(u.version), body: t().updateReadyBody, icon })
+      n.on('click', () => showWindow('/impostazioni'))
+      n.show()
+    } else if (u.status === 'available' && u.releaseUrl) {
+      const url = u.releaseUrl
+      const n = new Notification({ title: t().updateAvailableTitle(u.version), body: t().updateAvailableBody, icon })
+      n.on('click', () => void shell.openExternal(url))
+      n.show()
+    }
+  })
+  startUpdates(log)
+
   watchDaemon(info, (n) => {
     const notification = new Notification({ title: n.title, body: n.body, icon })
     notification.on('click', () => showWindow(n.route))

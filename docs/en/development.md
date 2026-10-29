@@ -268,14 +268,14 @@ If a test fails on one OS only, the matrix doesn't stop (`fail-fast: false`): th
 
 | In the installation | From where |
 |---|---|
-| `Micelio.exe`, `resources/app.asar` | desktop app (`desktop/dist`), without `node_modules` |
+| `Micelio.exe`, `resources/app.asar` | desktop app (`desktop/dist`) with only the production dependencies of `desktop/package.json` (`electron-updater`) |
 | `resources/micelio/` | `dist/` + the daemon's production dependencies **copied** from `node_modules` (list from `npm ls --omit=dev --workspaces=false`: same versions as the tests, no downloads), without binaries for other platforms |
 | `resources/node/node.exe` | the Node.js running the script (same version as the tests) |
 | `resources/bin/micelio.cmd` | the `micelio` command (bundled Node + CLI); added to the user's PATH by the installer |
 
 Things to know, learned while building it:
 - electron-builder's extra resources **always exclude** `node_modules` folders: `resources/micelio` is copied in the `afterPack` hook;
-- in a workspace repository electron-builder would put the root `node_modules` into `app.asar` (850 MB): `files` excludes it;
+- only the desktop app's production dependencies end up in `app.asar`: electron-builder 26 gets them from npm even in a workspace repository, without taking the root `node_modules` (850 MB);
 - Windows Defender scans the freshly created `Micelio.exe` and sometimes keeps it open ("UNKNOWN: unknown error, open …Micelio.exe"): the script retries up to 3 times;
 - the desktop app recognizes the installation from `process.resourcesPath` (`desktop/src/daemon.ts`, `PACKAGED`) and starts the daemon with the bundled Node;
 - the Claude Code hooks use absolute paths (the daemon's `process.execPath` and the installation's CLI), so they work even without PATH;
@@ -342,7 +342,7 @@ Releases are built by GitHub Actions ([.github/workflows/release.yml](../../.git
 
 A version with a suffix (`0.8.0-rc.1`) is a **pre-release**: the script doesn't touch the CHANGELOG, the notes come from Unreleased and the release is marked as a pre-release.
 
-**Dry run.** Without a tag the workflow builds everything and leaves the files as a run artifact, with no attestation or release. It starts by itself on pull requests that change how the packages are built (`release.yml`, `.nvmrc`, `scripts/package-*.js`, `scripts/set-version.js`, `desktop/build/`), and by hand from *Actions → Release → Run workflow*.
+**Dry run.** Without a tag the workflow builds everything and leaves the files as a run artifact, with no attestation or release. It starts by itself on pull requests that change how the packages are built (`release.yml`, `.nvmrc`, `scripts/package-*.js`, `scripts/set-version.js`, `scripts/update-signing.js`, `desktop/build/`), and by hand from *Actions → Release → Run workflow*.
 
 Good to know:
 - `electron-builder` runs with `publish: 'never'` (`BUILD_OPTIONS` in `scripts/package-common.js`): in CI on a tag it would try to publish by itself. `latest.yml` and `latest-linux.yml`, which automatic updates will need, are generated anyway and end up in the release;
@@ -351,6 +351,40 @@ Good to know:
 - a wrong tag is deleted with `git push --delete origin vX.Y.Z` (and `git tag -d vX.Y.Z`), together with the draft;
 - `v*` tags are protected by a ruleset: only the administrator creates, moves or deletes them;
 - out of scope for now: macOS package, Windows code signing (SmartScreen warns, the release notes explain how to proceed), the server's Docker image.
+
+## Automatic updates
+
+Since 0.8.0 the desktop app updates itself from GitHub releases with `electron-updater`. The explanation for users is in the in-app help (**Updates** topic); here is what's behind it.
+
+| File | What it does |
+|---|---|
+| `desktop/src/updater.ts` | Check (30 s after launch, then every 4 hours), download, signature verification, install on request; state for the UI; `updates.log` in Electron's logs folder |
+| `desktop/src/update-signature.ts` | Ed25519 signature verification (`.sig` format in the header comment) |
+| `desktop/src/update-keys.ts` | Accepted public keys |
+| `desktop/src/update-types.ts` | Shape of the state, shared with the UI |
+| `ui/src/components/Updates.tsx` | «Updates» card in Settings (desktop app only, through `window.micelio.updates`) |
+| `scripts/update-signing.js` | `keygen` (key pair) and `sign` (used by the release workflow) |
+
+Choices:
+- **Our own signature on top of electron-updater's SHA-512.** The SHA-512 is in `latest.yml`, in the same release: someone able to change the files would change it too. The signature covers the package's name, version and SHA-256, so an old package can't pass for a new one.
+- **Install only on request.** `autoInstallOnAppQuit` is off: it would install on quit without our verification. Before installing, the signature is verified again and the daemon is stopped (`POST /api/shutdown`): with the AppImage the new app would still find the old daemon.
+- **Modes.** `install` for the Windows installer and the AppImage; `notify` for the .deb (it needs the administrator password) and for an app without public keys; `off` from source (`npm run desktop`).
+- **Desktop app dependencies.** `electron-updater` is the only dependency in `desktop/package.json`. electron-builder 26 puts only the app's production dependencies in `app.asar` (about 2 MB), not the root `node_modules`.
+
+**Signing key.** It is created once, with `node scripts/update-signing.js keygen`:
+1. the private key goes to `~/micelio-update-signing-key.pem` (never inside the repository: the script refuses), the public key is appended to `desktop/src/update-keys.ts`;
+2. the private key's content goes into the `UPDATE_SIGNING_KEY` secret of GitHub's `release` environment (*Settings → Environments*, with the deployment rule on `v*` tags) and into a password manager; then the file is deleted;
+3. the public key goes in with a normal commit.
+
+In the release workflow the **Sign updates** job is the only one that sees the secret, and it has no write permission. It refuses to sign with a key that isn't in `update-keys.ts`: a wrong secret is caught there and not on the PCs that update. Without a tag it signs with a throwaway key (dry run).
+
+**Full local test.** `MICELIO_UPDATE_URL=<url>` makes the app read updates from any server (`generic` provider) instead of GitHub: the signature stays mandatory. The test done for 0.8.0 (Windows), with two test versions and a test key added only for the build:
+- test versions must be built with a different `appId`, `productName` **and** package name (`extraMetadata.name`): Electron's data folder (`%APPDATA%\@micelio\desktop`) and the single-instance lock come from the package name, and with the same name the test app behaves like a second copy of the real one;
+- a small HTTP server with `latest.yml`, installer and `.sig`, and the app started with its own `MICELIO_HOME`, `MICELIO_PORT` and `MICELIO_UPDATE_URL`;
+- result: check, download, signature verified, daemon stopped, silent install, app reopened on the new version with the new daemon. The installation takes **about 5 minutes** (12,000 files checked by the antivirus). The installer reopens the app through Windows, so **without** the test's environment variables;
+- with a signature from an unknown key, and with the genuine signature of an old package passed off as a new version: update refused and file deleted.
+
+On Linux (AppImage, in a Debian container with an `Xvfb` virtual screen that stays on, started with `APPIMAGE_EXTRACT_AND_RUN=1`): signature verified, daemon stopped, AppImage file replaced with the new version, app reopened by itself with the new daemon, in about 16 seconds. With `xvfb-run` the reopened app doesn't start, because the virtual screen closes together with the first one.
 
 ## Environment variables
 

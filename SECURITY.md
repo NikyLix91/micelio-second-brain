@@ -23,9 +23,20 @@ Examples of what we especially want to hear about:
 - forging events, authors or permissions in the replicated log (`src/net/apply.ts`);
 - joining a team without a valid invite, or keeping access after removal;
 - access to the local API (`127.0.0.1:7337`) or the MCP endpoint without the token, including from a web page or from another user of the same PC;
-- tampering with backups, redaction receipts or, once available, app updates.
+- tampering with backups, redaction receipts or app updates (for example getting the desktop app to install a package without a valid signature).
 
 The threat model is described in [docs/en/DESIGN.md](docs/en/DESIGN.md).
+
+## Release and update signing
+
+Since 0.8.0 the desktop app updates itself from this repository's GitHub releases. Every package it can install (Windows installer, AppImage) carries an **Ed25519 signature** in a `.sig` file, and the app installs nothing without a valid one:
+
+- the private key exists only in the `UPDATE_SIGNING_KEY` secret of the GitHub `release` environment, which only `v*` tags can use, and in an offline backup kept by the maintainer. It isn't in the repository or on any build machine;
+- the app embeds the accepted public keys ([desktop/src/update-keys.ts](desktop/src/update-keys.ts)) and checks the signature, the package name, the version and the SHA-256 of the downloaded file ([desktop/src/update-signature.ts](desktop/src/update-signature.ts)), again right before installing;
+- the app never installs on its own: the user chooses "Restart and update";
+- every release also has `SHA256SUMS.txt` and a GitHub provenance attestation (`gh attestation verify <file> --repo salvatorestracquadanio86/micelio-second-brain`).
+
+If the signing key is ever lost or compromised, a new key is added in a release signed with the old one, the old one is removed in a later release, and the change is announced in the release notes. If the old key can't be trusted any more, users are told to install the next version by hand.
 
 ## Known limitations
 

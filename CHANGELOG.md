@@ -4,6 +4,10 @@ All notable changes to Micelio. The format follows [Keep a Changelog](https://ke
 
 ## [Unreleased]
 
+### Added
+
+- **Automatic updates** of the desktop app (Windows installer and AppImage): it checks GitHub releases 30 seconds after launch and every 4 hours, downloads the new version in the background and installs it only when you choose "Restart and update" (from the notification, the icon menu or Settings → Updates). Every update must carry an Ed25519 signature made by the release workflow, checked against the public keys inside the app; without it nothing is installed. With the `.deb` package the app only reports the new version. The automatic check can be turned off. This version must be installed by hand one last time.
+
 ## [0.7.1] - 2026-10-27
 
 ### Added

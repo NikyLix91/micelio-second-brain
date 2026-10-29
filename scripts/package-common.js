@@ -142,11 +142,13 @@ function baseConfig ({ out, micelio }) {
     extraFiles: [{ from: path.join(ROOT, 'LICENSE'), to: 'LICENSE.txt' }],
     electronVersion: require(path.join(ROOT, 'node_modules', 'electron', 'package.json')).version,
     directories: { output: path.join(out, 'out'), buildResources: path.join(ROOT, 'desktop', 'build') },
-    // Solo il codice dell'app desktop. In una repository a workspace electron-builder troverebbe
-    // il node_modules della radice e lo metterebbe in app.asar: all'app non serve (850 MB in più).
-    // EN: Only the desktop app code. In a workspace repository electron-builder would find the
-    //     root node_modules and put it in app.asar: the app doesn't need it (850 MB more).
-    files: ['dist/**/*', 'package.json', '!**/node_modules/**'],
+    // Il codice dell'app desktop e le SOLE dipendenze di produzione di desktop/package.json
+    // (electron-updater e le sue librerie, circa 2 MB): electron-builder 26 le ricava da npm anche
+    // in una repository a workspace, senza prendere il node_modules della radice (850 MB).
+    // EN: The desktop app code and ONLY the production dependencies of desktop/package.json
+    //     (electron-updater and its libraries, about 2 MB): electron-builder 26 gets them from npm
+    //     even in a workspace repository, without taking the root node_modules (850 MB).
+    files: ['dist/**/*', 'package.json'],
     // Daemon e CLI con le loro dipendenze si copiano DOPO l'impacchettamento dell'app e prima
     // dell'installer: le risorse extra di electron-builder escludono sempre le cartelle
     // node_modules (anche con un filtro esplicito), e il daemon resterebbe senza dipendenze.
@@ -156,8 +158,8 @@ function baseConfig ({ out, micelio }) {
     afterPack: async (ctx) => {
       fs.cpSync(micelio, path.join(ctx.appOutDir, 'resources', 'micelio'), { recursive: true })
     },
-    // Il codice dell'app desktop non ha dipendenze proprie: niente da reinstallare né ricompilare
-    // EN: The desktop app code has no dependencies of its own: nothing to reinstall or rebuild
+    // Le dipendenze dell'app desktop sono solo JavaScript: niente da ricompilare per Electron
+    // EN: The desktop app's dependencies are plain JavaScript: nothing to rebuild for Electron
     npmRebuild: false,
     asar: true
   }

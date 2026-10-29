@@ -30,6 +30,10 @@ Registers Micelio as an **MCP server** of Claude Code (user level: valid in ever
 
 **One user, one configuration.** Claude Code reads its configuration from the profile of the system user running it. If you start it with a different user from the one Micelio runs as (for example Claude Code installed and used by an admin account because of company policy), it will never see Micelio, and Micelio won't be able to read its sessions. Micelio notices when there's no trace of Claude Code in this profile (neither sessions nor the fields Claude Code writes on first start) and shows a warning. The fix is to open Micelio with the same user you use Claude Code with (right click → "Run as different user"), join the team with an invite and run the setup again.
 
+## Updates {#updates}
+
+Desktop app only: installed version, check state, "Check now", "Restart and update" when a new version is downloaded and verified, and the automatic check on/off. How it works, signature included, is explained in the **Updates** topic.
+
 ## About {#about}
 
 App version, author and license, with links to the source code, the license text and the contribution guide.
