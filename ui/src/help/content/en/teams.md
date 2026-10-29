@@ -26,6 +26,8 @@ With several teams the app takes the **color of the team** you are working on: t
 
 Each team gets a different color automatically; the default one keeps green. To change it, on the **Team** page click the dot next to the team's name and pick from the palette. It is your own preference: it is remembered in this browser and colleagues do not see it.
 
+**How it works behind the scenes.** The colors live in the browser's `localStorage` (key `micelio.teamColors`, team id → color): they do not go through the daemon, do not enter the team log and do not leave the PC. The palette is fixed (8 colors, each with a shade for the light theme and one for the dark theme, chosen to stay readable). A new team gets the first free color, the default one tries green first; the color of a team removed from this PC becomes free again; beyond 8 teams the colors repeat. Code: `ui/src/api/teamColors.ts`.
+
 ## Adding a team {#add}
 
 "＋ Add a team…" in the switcher (or on the Team page) opens the same form as the first start: you create a new team or join an existing one with an invite code. The name is already the one of your identity; you can choose another one for the new team only. From the terminal: `micelio init <name>` or `micelio join <code>`, which are added to the teams already there.

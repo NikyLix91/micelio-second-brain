@@ -50,7 +50,8 @@ describe('assegnazione dei colori', () => {
     const many = TEAM_COLORS.map((_c, i) => team(`t${i}`)).concat(team('extra'))
     const c = assignColors(many, {})
     expect(Object.keys(c)).toHaveLength(TEAM_COLORS.length + 1)
-    expect(TEAM_COLORS).toContain(c.extra)
+    expect(new Set(Object.values(c)).size).toBe(TEAM_COLORS.length) // tutti gli 8 usati, poi si ripete / EN: all 8 used, then it repeats
+    expect(c.extra).toBe(TEAM_COLORS[0])
   })
 
   it('un colore salvato non valido viene riassegnato', () => {
@@ -90,6 +91,7 @@ describe('tema del team nell\'app', () => {
     mockFetch(teams)
     wrap(<Team />)
     fireEvent.click(await screen.findByRole('button', { name: /colore del team «beta»/i }))
+    expect(screen.getByText('beta', { selector: 'strong' })).toBeTruthy() // il pallino non prende il posto del nome / EN: the dot does not replace the name
     fireEvent.click(screen.getByRole('button', { name: 'Viola' }))
     await waitFor(() => expect(JSON.parse(localStorage.getItem('micelio.teamColors') ?? '{}').beta).toBe('violet'))
     expect(screen.queryByRole('button', { name: 'Viola' })).toBeNull() // la tavolozza si chiude / EN: the palette closes

@@ -277,6 +277,7 @@ function YourTeamsCard () {
               aria-label={s.colorOf(t.name ?? t.id)} title={s.colorOf(t.name ?? t.id)}
               onClick={() => setPicking(picking === t.id ? null : t.id)}
             />
+            <strong>{t.name ?? s.syncing}</strong>
             <span className='mono muted small'>{t.id}</span>
             <span className='muted small'>{s.teamLine(t.role ?? '-', t.members, t.memories)}</span>
             <span className='spacer' />

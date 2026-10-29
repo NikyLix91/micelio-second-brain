@@ -26,6 +26,8 @@ Con più team l'app prende il **colore del team** su cui stai lavorando: la barr
 
 Ogni team riceve in automatico un colore diverso; il predefinito tiene il verde. Per cambiarlo, nella pagina **Team** clicca il pallino accanto al nome del team e scegli dalla tavolozza. È una preferenza solo tua: si ricorda in questo browser e i colleghi non la vedono.
 
+**Come funziona dietro le quinte.** I colori stanno nel `localStorage` del browser (chiave `micelio.teamColors`, id del team → colore): non passano dal daemon, non entrano nel log del team e non escono dal PC. La tavolozza è fissa (8 colori, ognuno con una versione per il tema chiaro e una per quello scuro, scelte per restare leggibili). A un team nuovo va il primo colore libero, il predefinito prova prima il verde; il colore di un team tolto da questo PC torna libero; oltre gli 8 team i colori si ripetono. Codice: `ui/src/api/teamColors.ts`.
+
 ## Aggiungere un team {#add}
 
 «＋ Aggiungi un team…» nel selettore (o nella pagina Team) apre lo stesso modulo del primo avvio: si crea un team nuovo o si entra in uno esistente con un codice d'invito. Il nome è già quello della tua identità; puoi sceglierne un altro solo per il nuovo team. Da terminale: `micelio init <nome>` o `micelio join <codice>`, che si aggiungono ai team già presenti.
