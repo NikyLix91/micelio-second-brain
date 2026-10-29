@@ -84,8 +84,11 @@ describe('firma degli aggiornamenti', () => {
   it('keygen aggiunge la chiave pubblica a update-keys.ts e lo script la ritrova', () => {
     const keysFile = path.join(dir, 'update-keys.ts')
     fs.copyFileSync(path.join(__dirname, '..', '..', 'desktop', 'src', 'update-keys.ts'), keysFile)
+    // Il file reale contiene già le chiavi di rilascio: le nuove si aggiungono in testa.
+    // EN: The real file already holds the release keys: new ones are added at the top.
+    const existing = signing.knownKeys(keysFile).map((k) => keyId(k))
     signing.addPublicKey(main.publicKey, keysFile)
     signing.addPublicKey(other.publicKey, keysFile)
-    expect(signing.knownKeys(keysFile).map((k) => keyId(k))).toEqual([other.publicKey, main.publicKey].map((k) => keyId(k)))
+    expect(signing.knownKeys(keysFile).map((k) => keyId(k))).toEqual([...[other.publicKey, main.publicKey].map((k) => keyId(k)), ...existing])
   })
 })
