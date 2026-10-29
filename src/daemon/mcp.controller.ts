@@ -64,6 +64,9 @@ export class McpController {
     //     must not be able to make the agent read a team's memory.
     const cwd = this.cwdOf(req)
     const locked = cwd && this.micelio.host.ownerOf(cwd) ? undefined : lockedReadsMessage(cwd)
+    // Primi passi: la prova che Claude Code parla davvero con Micelio, e da dove
+    // EN: First steps: the proof that Claude Code really talks to Micelio, and from where
+    this.micelio.host.noteAgentContact(cwd)
     await this.serve(node, req, res, locked)
   }
 
@@ -115,6 +118,7 @@ export class McpController {
       res.status(404).json({ jsonrpc: '2.0', error: { code: -32001, message: (err as Error).message }, id: null })
       return
     }
+    this.micelio.host.noteAgentContact(this.cwdOf(req), this.micelio.host.idOf(node))
     await this.serve(node, req, res)
   }
 

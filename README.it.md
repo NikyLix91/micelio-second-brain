@@ -51,22 +51,28 @@ npm run demo                            # oppure: team dimostrativo con 3 nodi e
 
 ## Per iniziare
 
+Ti serve [Claude Code](https://code.claude.com/docs/en/setup) installato e con l'accesso fatto, con lo stesso utente del PC con cui usi Micelio.
+
+1. **Installa** Micelio dall'[ultima release](https://github.com/salvatorestracquadanio86/micelio-second-brain/releases/latest) e aprilo.
+2. **Crea un team**, oppure entra in quello di un collega con il codice d'invito che ti ha mandato.
+3. L'app apre **Primi passi**, che ti guida nel resto e spunta da sola ogni passo:
+   - **collega Claude Code** (un pulsante: server MCP, contesto automatico, raccolta delle sessioni);
+   - **scegli le cartelle dei tuoi progetti**: Claude Code usa la memoria del team solo lì;
+   - **prova che funziona**: apri Claude Code in una di quelle cartelle e chiedi *«cerca in Micelio cosa sa il team di questo progetto»*. Il passo si spunta quando Micelio riceve la chiamata.
+
+Il percorso completo, con cosa fare quando qualcosa non va, è nella [guida utente](docs/guida-utente.md#per-iniziare).
+
+<details>
+<summary>Lo stesso da terminale</summary>
+
 ```bash
 micelio start                           # avvia il daemon locale
-micelio init "Team Dev" --name mio-pc   # crea un team (solo il primo nodo)
-micelio invite                          # genera un codice per un collega
+micelio init "Team Dev" --name mio-pc   # crea un team (solo il primo nodo), oppure: micelio join <codice> --name mio-pc
 micelio setup claude-code               # collega Claude Code via MCP
+micelio watch add <cartella progetto>   # abilita una cartella di progetto
+micelio invite                          # genera un codice per un collega
 ```
-
-Il collega, sulla sua macchina:
-
-```bash
-micelio start
-micelio join <codice> --name suo-pc
-micelio setup claude-code
-```
-
-Tutto si può fare anche dall'app desktop. Da quel momento, in Claude Code: *"cerca nella memoria del team come risolviamo X"* oppure *"salva questa decisione nella memoria del team"*.
+</details>
 
 ## Documentazione
 

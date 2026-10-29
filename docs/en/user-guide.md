@@ -4,7 +4,68 @@
 
 Micelio is your team's shared memory, designed for AI assistants. Each colleague runs a **node** on their own machine. Nodes sync with each other over the internet without a central server, and each one holds a full copy of the team's knowledge.
 
-> Current version: **Phase 2**. Knowledge comes in two ways: explicit saves and automatic collection from Claude Code sessions in the projects you enable. Before it reaches your colleagues, every piece of content goes through a **privacy filter**.
+Knowledge comes in two ways: explicit saves and automatic collection from Claude Code sessions in the projects you enable. Before it reaches your colleagues, every piece of content goes through a **privacy filter**.
+
+## Getting started
+
+From installation to Claude Code's first answer with the team's memory, in six steps. The app guides you: after creating the team it opens **First steps**, which ticks every step by itself once it's done.
+
+**You need:** [Claude Code](https://code.claude.com/docs/en/setup) installed and signed in, on the same PC and **with the same user** you'll use Micelio with. Micelio uses your Claude subscription: no API key.
+
+![First steps](../img/first-steps.png)
+
+### 1. Install Micelio
+
+Download the package from the [latest release](https://github.com/salvatorestracquadanio86/micelio-second-brain/releases/latest):
+- **Windows**: `Micelio-Setup-<version>.exe`. No administrator rights needed. The installer isn't signed: if Windows shows "Windows protected your PC", choose **More info → Run anyway**. At the end Micelio opens by itself.
+- **Linux**: `Micelio-<version>-x86_64.AppImage` (any distribution: make it executable and run it) or `micelio_<version>_amd64.deb` (`sudo apt install ./micelio_<version>_amd64.deb`).
+
+Micelio stays in the notification area even when you close the window: it must stay on for colleagues to send you knowledge and for Claude Code to use it.
+
+### 2. Create the team, or join a colleague's
+
+At first launch choose:
+- **Create a new team**: if you're the first. Give the team a name and your own name, visible to colleagues. You become admin.
+- **I have an invite**: if a colleague sent you an invite code (they create it in **Team → Invite a colleague**). Paste the code and wait for their Micelio to let you in: a few seconds if their PC is on.
+
+Right after, **First steps** opens.
+
+### 3. Connect Claude Code
+
+In First steps press **Connect Claude Code**. Micelio joins Claude Code's tools (MCP server), and Claude Code receives the team's knowledge at the start of every session. It applies to all your projects; before touching Claude Code's configuration, Micelio saves a copy of it.
+
+**Then close and reopen the Claude Code sessions already open** (in VS Code: reload the window). Claude Code reads its tools only at startup.
+
+### 4. Choose your project folders
+
+Press **Choose folder…** and pick the folder of every project you work on with the team, for example `C:\SourceCode\project-name` (subfolders count too; you can pick the folder that contains them all).
+
+It's the step people forget most: **Claude Code uses the team's memory only in these folders.** Outside them it reads nothing, for safety, and what it saves ends up in the Inbox instead of reaching the team.
+
+### 5. Check that it works
+
+Open Claude Code in one of the enabled folders (from a terminal: go into the folder and start `claude`; in VS Code: open the folder and start a new session) and write:
+
+> Search Micelio for what the team knows about this project
+
+In First steps, "Check that it works" ticks by itself when Micelio receives the call. With a new team the memory is empty: the answer will be that there's nothing yet, and that's right. Try saving too: *"remember that for this project we use …"*. The memory shows up in the **Memory** page.
+
+### 6. Invite your colleagues
+
+In **Team → Invite a colleague** create a code and send it to the colleague: it's a secret, for them only. They install Micelio, choose **I have an invite** and follow the same First steps.
+
+### If something goes wrong
+
+| What you see | What to do |
+|---|---|
+| "Claude Code isn't installed, or Micelio can't find it" | Install it from the [official page](https://code.claude.com/docs/en/setup), open it once, sign in, then **Check again** |
+| "This PC user has never opened it" | Claude Code is used with another Windows user (for example an administrator account): it will never see Micelio. Use Micelio and Claude Code with the same user |
+| "Check that it works" doesn't tick | The session must be opened **after** connecting. In Claude Code type `/mcp`: "micelio" must show as connected |
+| "Claude Code called from a folder that isn't enabled" | Enable that folder (step 4 above), or open Claude Code in a folder already enabled |
+| Memories saved by Claude Code end up in the Inbox | Same reason: the session's folder isn't enabled in this team. Enable it, then in the Inbox use **Publish to…** |
+| The invite code keeps waiting | The PC of the colleague who created it must be on, with Micelio open |
+
+The rest of this guide explains every feature in detail. Inside the app, the **F1** key or the **?** button open the explanation of the page you're on.
 
 ## 1. Installation
 
@@ -14,7 +75,7 @@ Micelio is your team's shared memory, designed for AI assistants. Each colleague
 
 1. run the installer. It is not digitally signed: if Windows shows "Windows protected your PC", choose **More info → Run anyway**;
 2. choose the folder (default `%LOCALAPPDATA%\Programs\Micelio`) and finish: the app opens;
-3. create your team or join with an invite; then go to **Settings → Claude Code → Configure** to connect Claude Code (MCP, collection and automatic context).
+3. create your team or join with an invite: **First steps** opens and guides you to connect Claude Code and enable the folders (see [Getting started](#getting-started)).
 
 The `micelio` command is available in terminals opened **after** installation (the `resources\bin` folder is added to the user's PATH). Your data stays in `%USERPROFILE%\.micelio`: uninstalling or updating doesn't touch it. Uninstalling stops the daemon and removes `micelio` from the PATH. To update you don't need to close anything: the installer stops the daemon and closes the app and the Micelio processes started by Claude Code (since 0.6.2 hooks and shim don't restart it while the installation is in progress); it asks you to close it by hand only if something resists.
 

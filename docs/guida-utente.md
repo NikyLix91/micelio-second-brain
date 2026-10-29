@@ -2,7 +2,68 @@
 
 Micelio è la memoria condivisa del team, pensata per gli assistenti AI. Ogni collega esegue un **nodo** sulla propria macchina. I nodi si sincronizzano tra loro via internet senza server centrale, e ognuno ha una copia completa del sapere del team.
 
-> Versione attuale: **Fase 2**. Il sapere entra in due modi: salvataggi espliciti e raccolta automatica dalle sessioni di Claude Code nei progetti che abiliti tu. Prima di arrivare ai colleghi, ogni contenuto passa da un **filtro privacy**.
+Il sapere entra in due modi: salvataggi espliciti e raccolta automatica dalle sessioni di Claude Code nei progetti che abiliti tu. Prima di arrivare ai colleghi, ogni contenuto passa da un **filtro privacy**.
+
+## Per iniziare
+
+Dall'installazione alla prima risposta di Claude Code con la memoria del team, in sei passi. L'app fa da guida: dopo la creazione del team apre **Primi passi**, che spunta da solo ogni passo fatto.
+
+**Ti serve:** [Claude Code](https://code.claude.com/docs/en/setup) installato e con l'accesso fatto, sullo stesso PC e **con lo stesso utente** con cui userai Micelio. Micelio usa il tuo abbonamento a Claude: nessuna chiave API.
+
+![Primi passi](img/primi-passi.png)
+
+### 1. Installa Micelio
+
+Scarica il pacchetto dall'[ultima release](https://github.com/salvatorestracquadanio86/micelio-second-brain/releases/latest):
+- **Windows**: `Micelio-Setup-<versione>.exe`. Non serve essere amministratori. L'installer non è firmato: se Windows mostra «PC protetto da Windows», scegli **Ulteriori informazioni → Esegui comunque**. Alla fine Micelio si apre da solo.
+- **Linux**: `Micelio-<versione>-x86_64.AppImage` (qualunque distribuzione: rendilo eseguibile e avvialo) oppure `micelio_<versione>_amd64.deb` (`sudo apt install ./micelio_<versione>_amd64.deb`).
+
+Micelio resta nell'area di notifica anche quando chiudi la finestra: deve restare acceso perché i colleghi ti mandino il sapere e perché Claude Code possa usarlo.
+
+### 2. Crea il team, o entra in quello di un collega
+
+Al primo avvio scegli:
+- **Crea un nuovo team**: se sei il primo. Dai un nome al team e il tuo nome, visibile ai colleghi. Diventi admin.
+- **Ho un invito**: se un collega ti ha mandato un codice d'invito (lo crea in **Team → Invita un collega**). Incolla il codice e aspetta che il suo Micelio ti accolga: bastano pochi secondi se il suo PC è acceso.
+
+Subito dopo si apre **Primi passi**.
+
+### 3. Collega Claude Code
+
+In Primi passi premi **Collega Claude Code**. Micelio entra fra gli strumenti di Claude Code (server MCP), e Claude Code riceve il sapere del team all'inizio di ogni sessione. È per tutti i tuoi progetti; prima di toccare la configurazione di Claude Code, Micelio ne salva una copia.
+
+**Poi chiudi e riapri le sessioni di Claude Code già aperte** (in VS Code: ricarica la finestra). Claude Code legge i suoi strumenti solo all'avvio.
+
+### 4. Scegli le cartelle dei tuoi progetti
+
+Premi **Scegli cartella…** e indica la cartella di ogni progetto su cui lavori con il team, per esempio `C:\SourceCode\nome-progetto` (valgono anche le sottocartelle; puoi indicare la cartella che li contiene tutti).
+
+È il passo che si dimentica più spesso: **Claude Code usa la memoria del team solo in queste cartelle.** Fuori non legge niente, per sicurezza, e quello che salva finisce nell'Inbox invece che al team.
+
+### 5. Prova che funziona
+
+Apri Claude Code in una delle cartelle abilitate (da terminale: entra nella cartella e avvia `claude`; in VS Code: apri la cartella e avvia una sessione nuova) e scrivi:
+
+> Cerca in Micelio cosa sa il team di questo progetto
+
+In Primi passi, «Prova che funziona» si spunta da solo quando Micelio riceve la chiamata. Con un team nuovo la memoria è vuota: la risposta sarà che non c'è ancora niente, ed è giusto così. Prova anche a salvare: *«ricorda che per questo progetto usiamo …»*. Il ricordo compare nella pagina **Memoria**.
+
+### 6. Invita i colleghi
+
+In **Team → Invita un collega** crea un codice e mandalo al collega: è un segreto, solo per lui. Lui installa Micelio, sceglie **Ho un invito** e segue gli stessi Primi passi.
+
+### Se qualcosa non va
+
+| Cosa vedi | Cosa fare |
+|---|---|
+| «Claude Code non è installato, o Micelio non lo trova» | Installalo dalla [pagina ufficiale](https://code.claude.com/docs/en/setup), aprilo una volta, fai l'accesso, poi **Ricontrolla** |
+| «Questo utente del PC non l'ha mai aperto» | Claude Code si usa con un altro utente di Windows (per esempio un account amministratore): non vedrà mai Micelio. Usa Micelio e Claude Code con lo stesso utente |
+| «Prova che funziona» non si spunta | La sessione va aperta **dopo** il collegamento. In Claude Code scrivi `/mcp`: «micelio» deve risultare collegato |
+| «Claude Code ha chiamato da una cartella che non è abilitata» | Abilita quella cartella (passo 4 qui sopra), o apri Claude Code in una cartella già abilitata |
+| I ricordi salvati da Claude Code finiscono nell'Inbox | Stesso motivo: la cartella della sessione non è abilitata in questo team. Abilitala, poi in Inbox **Pubblica in…** |
+| Il codice d'invito resta in attesa | Il PC del collega che l'ha creato deve essere acceso, con Micelio aperto |
+
+Il resto di questa guida spiega ogni funzione nel dettaglio. Dentro l'app, il tasto **F1** o il pulsante **?** aprono la spiegazione della pagina in cui sei.
 
 ## 1. Installazione
 
@@ -12,7 +73,7 @@ Micelio è la memoria condivisa del team, pensata per gli assistenti AI. Ogni co
 
 1. avvia l'installer. Non è firmato digitalmente: se Windows mostra «PC protetto da Windows», scegli **Ulteriori informazioni → Esegui comunque**;
 2. scegli la cartella (default `%LOCALAPPDATA%\Programs\Micelio`) e completa: si apre l'app;
-3. crea il tuo team o entra con un invito; poi **Impostazioni → Claude Code → Configura** per collegare Claude Code (MCP, raccolta e contesto automatico).
+3. crea il tuo team o entra con un invito: si apre **Primi passi**, che ti guida a collegare Claude Code e ad abilitare le cartelle (vedi [Per iniziare](#per-iniziare)).
 
 Il comando `micelio` è disponibile nei terminali aperti **dopo** l'installazione (la cartella `resources\bin` viene aggiunta al PATH dell'utente). I dati restano in `%USERPROFILE%\.micelio`: disinstallare o aggiornare non li tocca. La disinstallazione ferma il daemon e toglie `micelio` dal PATH. Per aggiornare non serve chiudere niente: l'installer ferma il daemon e chiude l'app e i processi di Micelio avviati da Claude Code (dalla 0.6.2 hook e shim non lo riavviano mentre l'installazione è in corso); chiede di chiudere a mano solo se qualcosa resiste.
 

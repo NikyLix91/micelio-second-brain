@@ -4,6 +4,11 @@ All notable changes to Micelio. The format follows [Keep a Changelog](https://ke
 
 ## [Unreleased]
 
+### Added
+
+- **First steps**: after creating or joining a team the app opens a guided page that connects Claude Code, enables the project folders and checks that it works. Every step ticks itself: Claude Code found and used by this PC user, MCP registration active, at least one folder enabled, and a real call from Claude Code received from one of the team's folders. If the call comes from a folder that isn't enabled, the page says which one and what to do. The page stays at the top of the sidebar until the required steps are done; it's also a topic of the in-app help.
+- The user guide and the README open with a step-by-step **Getting started**, with screenshots and the common problems.
+
 ## [0.7.1] - 2026-10-27
 
 ### Added
