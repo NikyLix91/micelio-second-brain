@@ -1,0 +1,61 @@
+# Analisi statica di sicurezza con CodeQL (gratuita per le repository pubbliche): cerca nel codice
+# TypeScript/JavaScript e nei workflow schemi di vulnerabilità noti (iniezioni, percorsi non
+# controllati, segreti nei log…). I risultati compaiono in Security → Code scanning.
+# Gira a ogni push su main/develop, sulle pull request e una volta alla settimana, perché le
+# regole di CodeQL si aggiornano anche quando il codice non cambia.
+# EN: Static security analysis with CodeQL (free for public repositories): looks in the
+#     TypeScript/JavaScript code and in the workflows for known vulnerability patterns
+#     (injections, unchecked paths, secrets in logs…). Results show up in Security → Code scanning.
+#     Runs on every push to main/develop, on pull requests and once a week, because the CodeQL
+#     rules are updated even when the code doesn't change.
+name: CodeQL
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    # Lunedì alle 05:17 UTC (minuto non tondo: meno code sui runner)
+    # EN: Monday at 05:17 UTC (odd minute: shorter queues on the runners)
+    - cron: '17 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      # Serve per pubblicare i risultati in Code scanning
+      # EN: Needed to upload the results to Code scanning
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        # `actions` analizza anche i workflow di questa cartella
+        # EN: `actions` also analyzes the workflows in this folder
+        language: [javascript-typescript, actions]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # TypeScript si analizza dal sorgente: nessuna build necessaria
+      # EN: TypeScript is analyzed from source: no build needed
+      - uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+
+      - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          category: /language:${{ matrix.language }}

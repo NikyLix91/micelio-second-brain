@@ -1,6 +1,6 @@
 {
   "name": "micelio",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "A distributed, peer-to-peer second brain for a development team's AI tools",
   "keywords": [
     "p2p",
@@ -43,7 +43,8 @@
     "desktop": "npm run start -w desktop",
     "test:ui": "npm test -w ui",
     "package:win": "node scripts/package-win.js",
-    "package:linux": "node scripts/package-linux.js"
+    "package:linux": "node scripts/package-linux.js",
+    "version:set": "node scripts/set-version.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",
@@ -86,5 +87,8 @@
   ],
   "optionalDependencies": {
     "@huggingface/transformers": "^4.3.1"
+  },
+  "overrides": {
+    "multer": "^2.5.0"
   }
 }

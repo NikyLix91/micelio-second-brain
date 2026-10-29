@@ -164,6 +164,19 @@ function baseConfig ({ out, micelio }) {
 }
 
 /**
+ * Opzioni di `builder.build()` comuni ai sistemi. `publish: 'never'`: electron-builder non carica
+ * mai nulla da solo. Senza, in CI su un tag proverebbe a pubblicare su GitHub per conto suo; la
+ * release la crea invece il workflow (.github/workflows/release.yml), dopo checksum e attestazione.
+ * I file per gli aggiornamenti (latest.yml, latest-linux.yml) si scrivono lo stesso.
+ *
+ * EN: `builder.build()` options shared across OSes. `publish: 'never'`: electron-builder never
+ * uploads anything on its own. Without it, in CI on a tag it would try to publish to GitHub by
+ * itself; the release is created by the workflow instead (.github/workflows/release.yml), after
+ * checksums and attestation. The update files (latest.yml, latest-linux.yml) are written anyway.
+ */
+const BUILD_OPTIONS = { publish: 'never' }
+
+/**
  * Toglie le cartelle di binari nativi per altri sistemi (prebuilds e simili).
  *
  * EN: Removes the native binary folders for other OSes (prebuilds and similar).
@@ -200,4 +213,4 @@ function size (p) {
   return fs.readdirSync(p).reduce((n, f) => n + size(path.join(p, f)), 0)
 }
 
-module.exports = { ROOT, tools, buildAndStage, baseConfig, desktopVersion }
+module.exports = { ROOT, tools, buildAndStage, baseConfig, desktopVersion, BUILD_OPTIONS }

@@ -1,0 +1,137 @@
+# Integrazione continua: a ogni push su main/develop e a ogni pull request verso di loro
+# controlla tipi, build e test (daemon e UI) su Linux, Windows e macOS, più la build del
+# server del team. Restano fuori lo scenario Docker (usa la DHT pubblica, quindi dipende
+# dalla rete di internet) e il set di valutazione (usa Claude reale).
+# EN: Continuous integration: on every push to main/develop and every pull request against
+#     them, checks types, build and tests (daemon and UI) on Linux, Windows and macOS, plus
+#     the build of the team server. The Docker scenario (it uses the public DHT, so it depends
+#     on the internet) and the evaluation set (it uses the real Claude) are left out.
+#
+# Sicurezza (repository pubblica):
+# - permessi minimi: il token può solo leggere il codice;
+# - azioni fissate allo SHA del commit (un tag si può spostare, uno SHA no); Dependabot le aggiorna;
+# - `pull_request` e non `pull_request_target`: il codice di un fork gira senza segreti;
+# - `persist-credentials: false`: il token non resta nella configurazione git del runner.
+# EN: Security (public repository):
+# - least privilege: the token can only read the code;
+# - actions pinned to a commit SHA (a tag can be moved, a SHA can't); Dependabot updates them;
+# - `pull_request`, not `pull_request_target`: code from a fork runs without secrets;
+# - `persist-credentials: false`: the token doesn't stay in the runner's git config.
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+  # Lo richiama anche il workflow di release, prima di costruire i pacchetti
+  # EN: The release workflow calls it too, before building the packages
+  workflow_call:
+
+permissions:
+  contents: read
+
+# Un push nuovo sullo stesso branch o PR annulla l'esecuzione precedente, ormai inutile.
+# Il prefisso `ci-` evita che, richiamato dalla release (dove github.workflow è "Release"),
+# il gruppo coincida con quello della release stessa e la blocchi.
+# EN: A new push to the same branch or PR cancels the previous run, which is now useless.
+#     The `ci-` prefix keeps the group, when called by the release (where github.workflow is
+#     "Release"), from matching the release's own group and blocking it.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Il binario di Electron non si scarica con `npm ci` (da Electron 42 lo scarica il primo avvio):
+  # tipi, build e test non lo avviano, quindi in CI non viene mai scaricato.
+  # EN: The Electron binary isn't downloaded by `npm ci` (since Electron 42 the first launch downloads
+  #     it): types, build and tests don't launch it, so CI never downloads it.
+  # Niente richieste di telemetria/aggiornamento da npm nei log
+  # EN: No npm update/funding noise in the logs
+  NPM_CONFIG_FUND: 'false'
+  NPM_CONFIG_AUDIT: 'false'
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }}, Node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      # Un sistema che fallisce non ferma gli altri: serve sapere quali sistemi sono rotti
+      # EN: A failing OS doesn't stop the others: we need to know which ones are broken
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        # 22 è il minimo dichiarato in engines (node:sqlite senza flag da 22.13)
+        # EN: 22 is the minimum declared in engines (node:sqlite without a flag since 22.13)
+        node: ['22']
+        include:
+          # La versione LTS successiva solo su Linux: basta per accorgersi di rotture
+          # EN: The next LTS only on Linux: enough to notice breakages
+          - os: ubuntu-latest
+            node: '24'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build (daemon + UI)
+        run: npm run build
+
+      - name: Test (daemon)
+        run: npm test
+
+      - name: Test (UI)
+        run: npm run test:ui
+
+  server:
+    name: Build team server
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+  # Sulle pull request segnala dipendenze nuove con vulnerabilità note (gravità alta o critica)
+  # EN: On pull requests, flags new dependencies with known vulnerabilities (high or critical)
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
